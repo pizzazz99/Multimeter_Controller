@@ -36,6 +36,7 @@ namespace Multimeter_Controller
       Record_Button = new Button ( );
       Load_Button = new Button ( );
       Theme_Button = new Button ( );
+      Save_Chart_Button = new Button ( );
       ( (System.ComponentModel.ISupportInitialize) Readings_Numeric ).BeginInit ( );
       ( (System.ComponentModel.ISupportInitialize) Delay_Numeric ).BeginInit ( );
       SuspendLayout ( );
@@ -226,6 +227,16 @@ namespace Multimeter_Controller
       Theme_Button.UseVisualStyleBackColor = true;
       Theme_Button.Click += Theme_Button_Click;
       //
+      // Save_Chart_Button
+      //
+      Save_Chart_Button.Location = new Point ( 407, 148 );
+      Save_Chart_Button.Name = "Save_Chart_Button";
+      Save_Chart_Button.Size = new Size ( 85, 28 );
+      Save_Chart_Button.TabIndex = 19;
+      Save_Chart_Button.Text = "Save Chart";
+      Save_Chart_Button.UseVisualStyleBackColor = true;
+      Save_Chart_Button.Click += Save_Chart_Button_Click;
+      //
       // Voltage_Reader_Form
       //
       AutoScaleDimensions = new SizeF ( 7F, 15F );
@@ -249,6 +260,7 @@ namespace Multimeter_Controller
       Controls.Add ( Record_Button );
       Controls.Add ( Load_Button );
       Controls.Add ( Theme_Button );
+      Controls.Add ( Save_Chart_Button );
       Controls.Add ( Chart_Panel );
       MinimumSize = new Size ( 600, 430 );
       Name = "Voltage_Reader_Form";
@@ -281,5 +293,6 @@ namespace Multimeter_Controller
     private System.Windows.Forms.Button Record_Button;
     private System.Windows.Forms.Button Load_Button;
     private System.Windows.Forms.Button Theme_Button;
+    private System.Windows.Forms.Button Save_Chart_Button;
   }
 }

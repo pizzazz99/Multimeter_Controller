@@ -1,10 +1,20 @@
+using System.ComponentModel;
+
 namespace Multimeter_Controller
 {
   public partial class Theme_Settings_Form : Form
   {
     private Chart_Theme _Working;
 
+    [DesignerSerializationVisibility (
+      DesignerSerializationVisibility.Hidden )]
     public Chart_Theme Result { get; private set; } = null!;
+
+    public Theme_Settings_Form ( )
+    {
+      InitializeComponent ( );
+      _Working = new Chart_Theme ( );
+    }
 
     public Theme_Settings_Form ( Chart_Theme Current )
     {

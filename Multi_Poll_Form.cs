@@ -2,7 +2,7 @@ namespace Multimeter_Controller
 {
   public partial class Multi_Poll_Form : Form
   {
-    private Prologix_Serial_Comm _Comm = null!;
+    private Instrument_Comm _Comm = null!;
     private readonly List<Instrument_Series> _Series =
       new List<Instrument_Series> ( );
     private CancellationTokenSource? _Cts;
@@ -15,13 +15,29 @@ namespace Multimeter_Controller
 
     private Chart_Theme _Theme = Chart_Theme.Load ( );
 
+    private static readonly (string Label, string Cmd_3458A,
+      string Cmd_34401A, string Unit) [ ] _Measurements =
+    {
+      ( "DC Voltage",    "DCV",    "CONF:VOLT:DC",  "V" ),
+      ( "AC Voltage",    "ACV",    "CONF:VOLT:AC",  "V" ),
+      ( "AC+DC Voltage", "ACDCV",  "",              "V" ),
+      ( "DC Current",    "DCI",    "CONF:CURR:DC",  "A" ),
+      ( "AC Current",    "ACI",    "CONF:CURR:AC",  "A" ),
+      ( "AC+DC Current", "ACDCI",  "",              "A" ),
+      ( "2-Wire Ohms",   "OHM",    "CONF:RES",      "Ohm" ),
+      ( "4-Wire Ohms",   "OHMF",   "CONF:FRES",     "Ohm" ),
+      ( "Frequency",     "FREQ",   "CONF:FREQ",     "Hz" ),
+      ( "Period",        "PER",    "CONF:PER",      "s" ),
+      ( "Temperature",   "TEMP?",  "",              "\u00b0C" ),
+    };
+
     public Multi_Poll_Form ( )
     {
       InitializeComponent ( );
     }
 
     public Multi_Poll_Form (
-      Prologix_Serial_Comm Comm,
+      Instrument_Comm Comm,
       List<(string Name, int Address, Meter_Type Type)>
         Instruments )
     {
@@ -45,6 +61,77 @@ namespace Multimeter_Controller
       Chart_Panel.BackColor = _Theme.Background;
       Text = $"Multi-Instrument Poller  " +
         $"({Instruments.Count} instruments)";
+
+      Populate_Measurement_Combo ( );
+
+      // Set default NPLC value
+      NPLC_Combo.SelectedIndex = 4; // Default to 100 NPLC
+    }
+
+    private void Populate_Measurement_Combo ( )
+    {
+      Measurement_Combo.Items.Clear ( );
+
+      // Find common measurements supported by all instruments
+      foreach ( var Measurement in _Measurements )
+      {
+        bool Supported_By_All = true;
+
+        foreach ( var Inst in _Series )
+        {
+          string Cmd = Inst.Type == Meter_Type.HP_34401A
+            ? Measurement.Cmd_34401A
+            : Measurement.Cmd_3458A;
+
+          if ( string.IsNullOrEmpty ( Cmd ) )
+          {
+            Supported_By_All = false;
+            break;
+          }
+        }
+
+        if ( Supported_By_All )
+        {
+          Measurement_Combo.Items.Add ( Measurement.Label );
+        }
+      }
+
+      // Default to DC Voltage if available
+      int Dc_Index = Measurement_Combo.Items
+        .IndexOf ( "DC Voltage" );
+      if ( Dc_Index >= 0 )
+      {
+        Measurement_Combo.SelectedIndex = Dc_Index;
+      }
+      else if ( Measurement_Combo.Items.Count > 0 )
+      {
+        Measurement_Combo.SelectedIndex = 0;
+      }
+    }
+
+    private void Measurement_Combo_Changed (
+      object Sender, EventArgs E )
+    {
+      if ( Measurement_Combo.SelectedIndex < 0 ||
+        Measurement_Combo.SelectedItem == null )
+      {
+        return;
+      }
+
+      string Selected = Measurement_Combo.SelectedItem
+        .ToString ( ) ?? "";
+
+      // Find the measurement and update Query_Text
+      for ( int I = 0; I < _Measurements.Length; I++ )
+      {
+        if ( _Measurements [ I ].Label == Selected )
+        {
+          // Use 3458A command by default
+          // (will be translated per-instrument in polling loop)
+          Query_Text.Text = _Measurements [ I ].Cmd_3458A;
+          break;
+        }
+      }
     }
 
     protected override void OnFormClosing (
@@ -106,6 +193,9 @@ namespace Multimeter_Controller
       Status_Label.ForeColor = Color.Green;
       Query_Text.Enabled = false;
       Delay_Numeric.Enabled = false;
+      NPLC_Combo.Enabled = false;
+      Measurement_Combo.Enabled = false;
+      Continuous_Check.Enabled = false;
       Clear_Button.Enabled = false;
       Load_Button.Enabled = false;
 
@@ -113,8 +203,55 @@ namespace Multimeter_Controller
       int Original_Address = _Comm.GPIB_Address;
       CancellationToken Token = _Cts.Token;
 
+      // Get NPLC value
+      string NPLC_Value = NPLC_Combo.SelectedItem?.ToString ( )
+        ?? "10";
+
+      // Pre-configure HP 34401A instruments on first cycle
+      bool [ ] Configured = new bool [ _Series.Count ];
+
       try
       {
+        // Configure NPLC for all instruments
+        Status_Label.Text = "Configuring NPLC...";
+        Progress_Label.Text = "Setting integration time";
+
+        for ( int I = 0; I < _Series.Count; I++ )
+        {
+          Token.ThrowIfCancellationRequested ( );
+
+          var S = _Series [ I ];
+
+          await Task.Run ( ( ) =>
+          {
+            _Comm.Change_GPIB_Address ( S.Address );
+          }, Token );
+
+          await Task.Delay ( 50, Token );
+
+          await Task.Run ( ( ) =>
+          {
+            // Clear the instrument to reset GPIB state
+            _Comm.Send_Prologix_Command ( "++clr" );
+          }, Token );
+
+          await Task.Delay ( 100, Token );
+
+          // Send NPLC command based on meter type
+          string NPLC_Cmd = S.Type == Meter_Type.HP_34401A
+            ? $"VOLT:DC:NPLC {NPLC_Value}"
+            : $"NPLC {NPLC_Value}";
+
+          await Task.Run ( ( ) =>
+            _Comm.Send_Instrument_Command ( NPLC_Cmd ),
+            Token );
+
+          await Task.Delay ( 200, Token ); // Longer delay
+        }
+
+        Status_Label.Text = "Polling...";
+        Progress_Label.Text = "";
+        await Task.Delay ( 300, Token );
         while ( !Token.IsCancellationRequested )
         {
           _Cycle_Count++;
@@ -132,11 +269,33 @@ namespace Multimeter_Controller
             await Task.Run ( ( ) =>
             {
               _Comm.Change_GPIB_Address ( S.Address );
-              Thread.Sleep ( 50 );
             }, Token );
 
+            await Task.Delay ( 50, Token );
+
+            // Configure HP 34401A on first cycle
+            if ( !Configured [ I ] &&
+              S.Type == Meter_Type.HP_34401A )
+            {
+              string Config_Cmd =
+                Get_Config_Command_For_34401A ( Command );
+              if ( !string.IsNullOrEmpty ( Config_Cmd ) &&
+                !Config_Cmd.EndsWith ( "?" ) )
+              {
+                await Task.Run ( ( ) =>
+                  _Comm.Send_Instrument_Command (
+                    Config_Cmd ), Token );
+                await Task.Delay ( 300, Token );
+              }
+              Configured [ I ] = true;
+            }
+
+            // Translate command for this instrument's type
+            string Inst_Command = Translate_Command_For_Instrument (
+              Command, S.Type );
+
             string Response = await Task.Run ( ( ) =>
-              _Comm.Query_Instrument ( Command ), Token );
+              _Comm.Query_Instrument ( Inst_Command ), Token );
 
             Token.ThrowIfCancellationRequested ( );
 
@@ -160,10 +319,35 @@ namespace Multimeter_Controller
       {
         // Stopped by user
       }
+      catch ( TimeoutException )
+      {
+        // Write or read timeout - already logged by Instrument_Comm
+        MessageBox.Show (
+          "Operation timed out. Check instrument connection " +
+          "and GPIB bus status.",
+          "Timeout Error",
+          MessageBoxButtons.OK,
+          MessageBoxIcon.Warning );
+      }
+      catch ( Exception Ex )
+      {
+        MessageBox.Show (
+          $"Polling error: {Ex.Message}",
+          "Error",
+          MessageBoxButtons.OK,
+          MessageBoxIcon.Error );
+      }
       finally
       {
         // Restore original address
-        _Comm.Change_GPIB_Address ( Original_Address );
+        try
+        {
+          _Comm.Change_GPIB_Address ( Original_Address );
+        }
+        catch
+        {
+          // Ignore errors during cleanup
+        }
         Finish_Polling ( );
       }
     }
@@ -183,8 +367,61 @@ namespace Multimeter_Controller
       Status_Label.ForeColor = Color.Gray;
       Query_Text.Enabled = true;
       Delay_Numeric.Enabled = true;
+      NPLC_Combo.Enabled = true;
+      Measurement_Combo.Enabled = true;
+      Continuous_Check.Enabled = true;
       Clear_Button.Enabled = true;
       Load_Button.Enabled = true;
+    }
+
+    private string Translate_Command_For_Instrument (
+      string Base_Command, Meter_Type Meter )
+    {
+      // Find the measurement that matches the base command
+      foreach ( var Measurement in _Measurements )
+      {
+        if ( Measurement.Cmd_3458A == Base_Command )
+        {
+          // Translate to the appropriate command for
+          // this meter type
+          if ( Meter == Meter_Type.HP_34401A )
+          {
+            string Cmd = Measurement.Cmd_34401A;
+            if ( !string.IsNullOrEmpty ( Cmd ) )
+            {
+              // 34401A needs READ? for configured
+              // measurements
+              if ( !Cmd.EndsWith ( "?" ) )
+              {
+                return "READ?";
+              }
+              return Cmd;
+            }
+          }
+
+          // Default to 3458A command
+          return Base_Command;
+        }
+      }
+
+      // If not found in measurement list,
+      // return as-is (custom command)
+      return Base_Command;
+    }
+
+    private string Get_Config_Command_For_34401A (
+      string Base_Command )
+    {
+      // Find the measurement that matches the base command
+      foreach ( var Measurement in _Measurements )
+      {
+        if ( Measurement.Cmd_3458A == Base_Command )
+        {
+          return Measurement.Cmd_34401A;
+        }
+      }
+
+      return Base_Command;
     }
 
     private void Clear_Button_Click (
@@ -570,29 +807,29 @@ namespace Multimeter_Controller
       }
 
       // Compute shared time range across all series
-      DateTime T_Min = DateTime.MaxValue;
-      DateTime T_Max = DateTime.MinValue;
+      DateTime Time_Min = DateTime.MaxValue;
+      DateTime Time_Max = DateTime.MinValue;
       foreach ( var S in _Series )
       {
         if ( S.Points.Count == 0 )
         {
           continue;
         }
-        if ( S.Points [ 0 ].Time < T_Min )
+        if ( S.Points [ 0 ].Time < Time_Min )
         {
-          T_Min = S.Points [ 0 ].Time;
+          Time_Min = S.Points [ 0 ].Time;
         }
-        if ( S.Points [ S.Points.Count - 1 ].Time > T_Max )
+        if ( S.Points [ S.Points.Count - 1 ].Time > Time_Max )
         {
-          T_Max = S.Points [ S.Points.Count - 1 ].Time;
+          Time_Max = S.Points [ S.Points.Count - 1 ].Time;
         }
       }
 
-      double T_Range_Sec =
-        ( T_Max - T_Min ).TotalSeconds;
-      if ( T_Range_Sec < 0.001 )
+      double Time_Range_Sec =
+        ( Time_Max - Time_Min ).TotalSeconds;
+      if ( Time_Range_Sec < 0.001 )
       {
-        T_Range_Sec = 1.0;
+        Time_Range_Sec = 1.0;
       }
 
       int Margin_Left = 80;
@@ -710,15 +947,15 @@ namespace Multimeter_Controller
         PointF [ ] Points = new PointF [ Count ];
         for ( int I = 0; I < Count; I++ )
         {
-          double T_Sec =
-            ( S.Points [ I ].Time - T_Min ).TotalSeconds;
-          double T_Frac = T_Sec / T_Range_Sec;
+          double Time_Sec =
+            ( S.Points [ I ].Time - Time_Min ).TotalSeconds;
+          double Time_Frac = Time_Sec / Time_Range_Sec;
           double V_Frac =
             ( S.Points [ I ].Value - Padded_Min )
             / Padded_Range;
 
           float X = Margin_Left +
-            (float) ( T_Frac * Chart_W );
+            (float) ( Time_Frac * Chart_W );
           float Y = Sub_Bottom -
             (float) ( V_Frac * Plot_H );
 
@@ -809,13 +1046,13 @@ namespace Multimeter_Controller
         int X_Pos = Margin_Left +
           (int) ( Fraction * Chart_W );
 
-        double Sec = Fraction * T_Range_Sec;
+        double Sec = Fraction * Time_Range_Sec;
         string Time_Text;
-        if ( T_Range_Sec < 60 )
+        if ( Time_Range_Sec < 60 )
         {
           Time_Text = $"{Sec:F1}s";
         }
-        else if ( T_Range_Sec < 3600 )
+        else if ( Time_Range_Sec < 3600 )
         {
           Time_Text = $"{Sec / 60:F1}m";
         }

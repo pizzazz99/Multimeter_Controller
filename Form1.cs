@@ -36,7 +36,7 @@
 //      settings are disabled to prevent changes mid-session.
 //
 //   3. Communication Event Handling:
-//      Subscribes to three events from the Prologix_Serial_Comm class:
+//      Subscribes to three events from the Instrument_Comm class:
 //        - Connection_Changed: updates the status label and toggles
 //          UI enable/disable state (thread-safe via Invoke).
 //        - Error_Occurred: displays errors in a MessageBox (thread-safe).
@@ -50,8 +50,8 @@
 //
 // Dependencies:
 //   - System.IO.Ports (SerialPort for USB-serial communication)
-//   - Command_Dictionary.cs (static command reference data)
-//   - Prologix_Serial_Comm.cs (serial/GPIB communication layer)
+//   - Command_Dictionary_Class.cs (static command reference data)
+//   - Instrument_Comm.cs (serial/GPIB communication layer)
 //   - Dictionary_Form.cs (full searchable command dictionary dialog)
 //   - Form1.Designer.cs (WinForms designer-generated layout code)
 //
@@ -61,16 +61,21 @@
 
 using System.IO.Ports;
 using System.Windows.Forms;
+using static System.ComponentModel.Design.ObjectSelectorEditor;
 
 namespace Multimeter_Controller
 {
   public partial class Form1 : Form
   {
     private List<Command_Entry> _All_Commands;
-    private readonly Prologix_Serial_Comm _Comm;
+    private readonly Instrument_Comm _Comm;
     private Meter_Type _Selected_Meter = Meter_Type.Keysight_3458A;
     private CancellationTokenSource? _Scan_Cts;
     private bool _Is_Scanning;
+    private bool _Ignore_Selection_Changed = false;
+
+    // Maximum number of commands to keep in history
+    private const int _Max_History_Size = 50;
 
     private readonly List<(string Name, int Address, Meter_Type Type)>
       _Instruments = new List<(string, int, Meter_Type)> ( );
@@ -79,24 +84,26 @@ namespace Multimeter_Controller
     {
       InitializeComponent ( );
 
-      Layout_Connection_Group ( );
+      //   Layout_Connection_Group ( );
 
-      _All_Commands = Command_Dictionary.Get_All_Commands (
-        _Selected_Meter );
-      _Comm = new Prologix_Serial_Comm ( );
+      //   _All_Commands = Command_Dictionary_Class.Get_All_Commands (
+      //     _Selected_Meter );
+      _Comm = new Instrument_Comm ( );
 
       _Comm.Connection_Changed += Comm_Connection_Changed;
       _Comm.Error_Occurred += Comm_Error_Occurred;
       _Comm.Data_Received += Comm_Data_Received;
 
-      Populate_Command_List ( );
+      //  Populate_Command_List ( );
       Populate_Connection_Controls ( );
 
       // Populate instrument type combo
       Instrument_Type_Combo.Items.Add ( "Keysight 3458A" );
       Instrument_Type_Combo.Items.Add ( "HP 34401A" );
       Instrument_Type_Combo.Items.Add ( "HP 33120A" );
-      Instrument_Type_Combo.SelectedIndex = 0;
+      Instrument_Type_Combo.SelectedIndex = 1;
+
+      Connected_Instrument_Textbox.Text = "";
     }
 
 
@@ -110,7 +117,7 @@ namespace Multimeter_Controller
 
       int Grp_Y = 12;
       int Grp_W = 240;
-      int Grp_H = 503;
+      int Grp_H = 533;
 
 
 
@@ -119,14 +126,19 @@ namespace Multimeter_Controller
       int Y = 22;
 
 
-      // int Row_H = Font.Height + 14;
-      // int Y = Font.Height + 6;
-
-
       // GroupBox
       Connection_Group.Location = new Point ( Grp_X, Grp_Y );
       Connection_Group.Size = new Size ( Grp_W, Grp_H );
       Connection_Group.Anchor = AnchorStyles.Top | AnchorStyles.Right | AnchorStyles.Bottom;
+
+      // ================= Connection Mode =================
+      Connection_Mode_Label.Location = new Point ( Lbl_X, Y + 3 );
+      Connection_Mode_Label.Text = "Mode:";
+
+      Connection_Mode_Combo.Location = new Point ( Ctl_X, Y );
+      Connection_Mode_Combo.Size = new Size ( Ctl_W, 23 );
+
+      Y += Row_H;
 
       // ================= COM Port =================
       COM_Port_Label.Location = new Point ( Lbl_X, Y + 3 );
@@ -188,14 +200,7 @@ namespace Multimeter_Controller
       Y += Row_H + 10;
 
       // ================= Prologix Header =================
-      var Prologix_Header = new Label
-      {
-        AutoSize = true,
-        Font = new Font ( "Segoe UI", 9F, FontStyle.Bold ),
-        Location = new Point ( Lbl_X, Y ),
-        Text = "Prologix Settings"
-      };
-      Connection_Group.Controls.Add ( Prologix_Header );
+      Prologix_Header_Label.Location = new Point ( Lbl_X, Y );
 
       Y += 22;
 
@@ -246,6 +251,16 @@ namespace Multimeter_Controller
       Connect_Button.Text = "Connect";
     }
 
+    private Command_Entry _Selected_Command
+    {
+      get
+      {
+        if ( Command_List.SelectedIndex < 0 )
+          return null;
+
+        return _All_Commands [ Command_List.SelectedIndex ];
+      }
+    }
 
 
 
@@ -270,6 +285,11 @@ namespace Multimeter_Controller
     private void Command_List_Selected_Index_Changed (
       object Sender, EventArgs E )
     {
+
+      if ( _Ignore_Selection_Changed )
+        return;
+
+
       if ( Command_List.SelectedIndex < 0
         || Command_List.SelectedIndex >= _All_Commands.Count )
       {
@@ -279,6 +299,7 @@ namespace Multimeter_Controller
 
       Command_Entry Selected =
         _All_Commands [ Command_List.SelectedIndex ];
+
       Detail_Text_Box.Text =
         $"Command:     {Selected.Command}\r\n" +
         $"Syntax:      {Selected.Syntax}\r\n" +
@@ -289,7 +310,42 @@ namespace Multimeter_Controller
         $"Default:     {Selected.Default_Value}\r\n" +
         $"Example:     {Selected.Example}";
 
-      Command_Input_Text_Box.Text = Selected.Example;
+      Send_Command_Text_Box.Text = Selected.Command;
+
+      Update_Button_State ( Selected );
+
+      /*
+      switch ( Selected.Get_Command_Mode ( ) )
+      {
+        case CommandMode.Both:
+          Query_Button.Enabled = true;
+          Send_Button.Enabled = true;
+          break;
+
+        case CommandMode.Query_Only:
+          Query_Button.Enabled = true;
+          Send_Button.Enabled = false;
+          break;
+
+        case CommandMode.Set_Only:
+          Query_Button.Enabled = false;
+          Send_Button.Enabled = true;
+          break;
+
+        case CommandMode.None:
+        default:
+          Query_Button.Enabled = false;
+          Send_Button.Enabled = false;
+          break;
+      }
+
+      Query_Button.Refresh ( );
+
+      */
+      Execute_Button.Refresh ( );
+
+
+
     }
 
 
@@ -330,9 +386,13 @@ namespace Multimeter_Controller
     // ===== Instrument List =====
 
 
- private async void Add_Instrument_Button_Click (
-      object Sender, EventArgs E )
+    private async void Add_Instrument_Button_Click (
+         object Sender, EventArgs E )
     {
+
+      Instrument_Type_Combo.Enabled = true;
+      Instrument_Type_Label.Enabled = true;
+
       int Address = (int) Instrument_Address_Numeric.Value;
       Meter_Type Type = Instrument_Type_Combo.SelectedIndex switch
       {
@@ -399,8 +459,33 @@ namespace Multimeter_Controller
       }
 
       _Instruments.Add ( (Name, Address, Type) );
-      Instruments_List.Items.Add (
-        $"{Name}  (GPIB {Address}, {Get_Meter_Name ( Type )})" );
+
+      bool Is_GPIB = Connection_Mode_Combo.SelectedIndex == 0;
+      string Display = Is_GPIB
+        ? $"{Name}  (GPIB {Address}, {Get_Meter_Name ( Type )})"
+        : $"{Name}  ({Get_Meter_Name ( Type )})";
+      Instruments_List.Items.Add ( Display );
+    }
+
+
+    public void Set_GPID_Controls ( bool State )
+    {
+      GPIB_Address_Numeric.Enabled = State;
+      //  EOS_Mode_Combo.Enabled = State;
+      Auto_Read_Check.Enabled = State;
+      EOI_Check.Enabled = State;
+      Select_Instrument_Button.Enabled = State;
+      Instrument_Address_Label.Enabled = State;
+      Instrument_Address_Numeric.Enabled = State;
+      Add_Instrument_Button.Enabled = State;
+      Remove_Instrument_Button.Enabled = State;
+      Scan_Bus_Button.Enabled = State;
+      Saved_Instruments_Label.Enabled = State;
+      Instruments_List.Enabled = State;
+
+      Instrument_Type_Combo.Enabled = true;
+      Instrument_Type_Label.Enabled = true;
+
     }
 
 
@@ -414,14 +499,21 @@ namespace Multimeter_Controller
         _ => Meter_Type.Keysight_3458A
       };
 
-      Instrument_Name_Text.Text = Get_Meter_Name ( Type );
+
+
+      // Set button text to reflect selected meter type
+      Open_Dictionary_Button.Text = "Dictionary";
+      Command_List_Label.Text = Type + " Commands";
 
       _Selected_Meter = Type;
-      _All_Commands = Command_Dictionary.Get_All_Commands (
+
+      Instrument_Name_Text.Text = _Selected_Meter.ToString ( );
+
+      _All_Commands = Command_Dictionary_Class.Get_All_Commands (
         _Selected_Meter );
-      Populate_Command_List ( );
+      //  Populate_Command_List ( );
       Detail_Text_Box.Text = "";
-      Command_Input_Text_Box.Text = "";
+      Send_Command_Text_Box.Text = "";
     }
 
     private static string Get_Meter_Name ( Meter_Type Type )
@@ -549,74 +641,144 @@ namespace Multimeter_Controller
       }
     }
 
-    private void Send_Button_Click (
-      object Sender, EventArgs E )
+    private void Update_Command_Mode ( Command_Entry Entry )
     {
-      string Command = Command_Input_Text_Box.Text.Trim ( );
-      if ( string.IsNullOrEmpty ( Command ) )
+      if ( Entry == null )
       {
+        Execute_Button.Enabled = false;
+        Query_Button.Enabled = false;
         return;
       }
 
-      if ( !_Comm.Is_Connected )
-      {
-        Append_Response ( "[Not connected]" );
-        return;
-      }
-
-      _Comm.Send_Instrument_Command ( Command );
-      Append_Response ( $"> {Command}" );
+      Execute_Button.Enabled = Entry.Has_Command;
+      Query_Button.Enabled = Entry.Has_Query;
     }
 
-    private async void Query_Button_Click (
-      object Sender, EventArgs E )
+
+
+
+    private void Query_Button_Click ( object Sender, EventArgs E )
     {
-      string Command = Command_Input_Text_Box.Text.Trim ( );
-      if ( string.IsNullOrEmpty ( Command ) )
-      {
+      var Selected = _Selected_Command;
+      if ( Selected == null )
         return;
-      }
 
+      string Input = Send_Command_Text_Box.Text.Trim ( );
+      if ( string.IsNullOrWhiteSpace ( Input ) )
+        return;
+
+      string [ ] Parts = Input.Split ( ' ', 2 );
+
+      string Base_Token = Parts [ 0 ].TrimEnd ( '?' ) + "?";
+      string Final_Command = Parts.Length > 1
+          ? Base_Token + " " + Parts [ 1 ]
+          : Base_Token;
+
+      Execute_Query ( Final_Command );
+    }
+
+    private void Execute_Button_Click ( object Sender, EventArgs E )
+    {
+      var Selected = _Selected_Command;
+      if ( Selected == null )
+        return;
+
+      string Input = Send_Command_Text_Box.Text.Trim ( );
+      if ( string.IsNullOrWhiteSpace ( Input ) )
+        return;
+
+      string [ ] Parts = Input.Split ( ' ', 2 );
+
+      string Base_Token = Parts [ 0 ].TrimEnd ( '?' );
+      string Final_Command = Parts.Length > 1
+          ? Base_Token + " " + Parts [ 1 ]
+          : Base_Token;
+
+      Execute_Command ( Final_Command );
+    }
+
+
+
+
+
+
+    private void Execute_Command ( string Command )
+    {
       if ( !_Comm.Is_Connected )
-      {
-        Append_Response ( "[Not connected]" );
         return;
-      }
-
-      Query_Button.Enabled = false;
-      Send_Button.Enabled = false;
 
       try
       {
-        string Response = await Task.Run ( ( ) =>
-          _Comm.Query_Instrument ( Command ) );
+        Add_Command_To_History ( $"{Command}" );
 
-        Append_Response ( $"> {Command}" );
-
-        if ( !string.IsNullOrEmpty ( Response ) )
-        {
-          Append_Response ( $"  {Response}" );
-        }
-        else
-        {
-          Append_Response ( "  [No response]" );
-        }
+        _Comm.Send_Instrument_Command ( Command );
       }
-      finally
+      catch ( Exception Ex )
       {
-        Query_Button.Enabled = true;
-        Send_Button.Enabled = true;
+        Add_Command_To_History ( $"ERROR: {Ex.Message}" );
       }
     }
+
+
+    private void Execute_Query ( string Command )
+    {
+      if ( !_Comm.Is_Connected )
+        return;
+
+      try
+      {
+
+        Add_Command_To_History ( $"{Command}" );
+
+        string Response = _Comm.Query_Instrument ( Command );
+        Append_Response ( $"< {Response}" );
+
+      }
+      catch ( Exception Ex )
+      {
+        Add_Command_To_History ( $"ERROR: {Ex.Message}" );
+      }
+    }
+
+
+
+    private void Empty_Windows ( )
+    {
+      Command_List.Items.Clear ( );
+      Send_Command_Text_Box.Clear ( );
+      Command_History_List_Box.Items.Clear ( );
+      Send_Command_Text_Box.Clear ( );
+      Connected_Instrument_Textbox.Clear ( );
+      Detail_Text_Box.Clear ( );
+      Response_Text_Box.Clear ( );
+    }
+
+
+    private void Clear_Command_And_Details ( )
+    {
+      // Clear selection safely
+      _Ignore_Selection_Changed = true;
+
+      Command_List.ClearSelected ( );
+      //  Detail_Text_Box.Clear ( );
+      Send_Command_Text_Box.Clear ( );
+
+      _Ignore_Selection_Changed = false;
+
+    }
+
 
     private async void Diag_Button_Click (
       object Sender, EventArgs E )
     {
-      string Command = Command_Input_Text_Box.Text.Trim ( );
+      string Command = Send_Command_Text_Box.Text.Trim ( );
+
+      /*
       if ( string.IsNullOrEmpty ( Command ) )
       {
         Command = "++ver";
       }
+      */
 
       if ( !_Comm.Is_Connected )
       {
@@ -625,6 +787,8 @@ namespace Multimeter_Controller
       }
 
       Diag_Button.Enabled = false;
+      Append_Response ( "" );
+      Append_Response ( "" );
       Append_Response ( $"[DIAG] Sending: {Command}" );
 
       try
@@ -652,13 +816,21 @@ namespace Multimeter_Controller
 
     private void Populate_Connection_Controls ( )
     {
+      // Connection mode
+      Connection_Mode_Combo.Items.Clear ( );
+      Connection_Mode_Combo.Items.Add ( "Prologix GPIB" );
+      Connection_Mode_Combo.Items.Add ( "Direct Serial (RS-232)" );
+      Connection_Mode_Combo.SelectedIndex = 1;
+
+      Set_GPID_Controls ( State: false );
+
       // COM ports
       Refresh_Ports ( );
 
       // Baud rates
       Baud_Rate_Combo.Items.Clear ( );
       foreach ( int Rate in
-        Prologix_Serial_Comm.Get_Available_Baud_Rates ( ) )
+        Instrument_Comm.Get_Available_Baud_Rates ( ) )
       {
         Baud_Rate_Combo.Items.Add ( Rate );
       }
@@ -667,7 +839,7 @@ namespace Multimeter_Controller
       // Data bits
       Data_Bits_Combo.Items.Clear ( );
       foreach ( int Bits in
-        Prologix_Serial_Comm.Get_Available_Data_Bits ( ) )
+        Instrument_Comm.Get_Available_Data_Bits ( ) )
       {
         Data_Bits_Combo.Items.Add ( Bits );
       }
@@ -728,7 +900,7 @@ namespace Multimeter_Controller
 
       COM_Port_Combo.Items.Clear ( );
       string [ ] Ports =
-        Prologix_Serial_Comm.Get_Available_Ports ( );
+        Instrument_Comm.Get_Available_Ports ( );
 
       foreach ( string Port in Ports )
       {
@@ -755,17 +927,34 @@ namespace Multimeter_Controller
     private void Defaults_Button_Click (
       object Sender, EventArgs E )
     {
-      // Recommended defaults for Keysight 3458A
-      // via Prologix GPIB-USB-HS adapter
-      Baud_Rate_Combo.SelectedItem = 9600;
-      Data_Bits_Combo.SelectedItem = 8;
-      Parity_Combo.SelectedItem = Parity.None;
-      Stop_Bits_Combo.SelectedItem = StopBits.Two;
-      Flow_Control_Combo.SelectedItem = Handshake.None;
-      GPIB_Address_Numeric.Value = 22;
-      EOS_Mode_Combo.SelectedIndex = 2; // LF
-      Auto_Read_Check.Checked = false;
-      EOI_Check.Checked = true;
+      if ( Connection_Mode_Combo.SelectedIndex == 1 )
+      {
+        // Defaults for Direct Serial (RS-232)
+        Baud_Rate_Combo.SelectedItem = 9600;
+        Data_Bits_Combo.SelectedItem = 8;
+        Parity_Combo.SelectedItem = Parity.None;
+        Stop_Bits_Combo.SelectedItem = StopBits.One;
+        Flow_Control_Combo.SelectedItem = Handshake.None;
+        EOS_Mode_Combo.SelectedIndex = 3; // None
+        Connected_Instrument_Textbox.Text = "";
+
+        Set_GPID_Controls ( State: false );
+      }
+      else
+      {
+        // Defaults for Prologix GPIB-USB-HS adapter
+        Baud_Rate_Combo.SelectedItem = 9600;
+        Data_Bits_Combo.SelectedItem = 8;
+        Parity_Combo.SelectedItem = Parity.None;
+        Stop_Bits_Combo.SelectedItem = StopBits.Two;
+        Flow_Control_Combo.SelectedItem = Handshake.None;
+        GPIB_Address_Numeric.Value = 22;
+        EOS_Mode_Combo.SelectedIndex = 2; // LF
+        Auto_Read_Check.Checked = false;
+        EOI_Check.Checked = true;
+
+        Set_GPID_Controls ( State: true );
+      }
     }
 
     private void Connect_Button_Click (
@@ -774,6 +963,10 @@ namespace Multimeter_Controller
       if ( _Comm.Is_Connected )
       {
         _Comm.Disconnect ( );
+
+        Empty_Windows ( );
+
+
         return;
       }
 
@@ -786,6 +979,11 @@ namespace Multimeter_Controller
           MessageBoxIcon.Warning );
         return;
       }
+
+      // Apply connection mode
+      _Comm.Mode = Connection_Mode_Combo.SelectedIndex == 0
+        ? Connection_Mode.Prologix_GPIB
+        : Connection_Mode.Direct_Serial;
 
       // Apply all settings from UI
       _Comm.Port_Name = COM_Port_Combo.SelectedItem.ToString ( )!;
@@ -802,7 +1000,14 @@ namespace Multimeter_Controller
         (Prologix_Eos_Mode) EOS_Mode_Combo.SelectedIndex;
 
       _Comm.Connect ( );
+
+      Populate_Command_List ( );
+
+      Initialize_Remote_Connection ( );
     }
+
+
+
 
     private void Update_Connection_Status ( bool Connected )
     {
@@ -813,6 +1018,7 @@ namespace Multimeter_Controller
         Connect_Button.Text = "Disconnect";
 
         // Disable settings while connected
+        Connection_Mode_Combo.Enabled = false;
         COM_Port_Combo.Enabled = false;
         Baud_Rate_Combo.Enabled = false;
         Data_Bits_Combo.Enabled = false;
@@ -821,9 +1027,14 @@ namespace Multimeter_Controller
         Flow_Control_Combo.Enabled = false;
         Refresh_Ports_Button.Enabled = false;
         Defaults_Button.Enabled = false;
+        Instrument_Type_Combo.Enabled = false;
+        Instrument_Type_Label.Enabled = false;
 
-        // Enable scan button
-        Scan_Bus_Button.Enabled = true;
+        //   Initialize_Remote_Connection ( );
+
+        // Enable scan button only in GPIB mode
+        bool Is_GPIB = _Comm.Mode == Connection_Mode.Prologix_GPIB;
+        Scan_Bus_Button.Enabled = Is_GPIB;
       }
       else
       {
@@ -832,6 +1043,7 @@ namespace Multimeter_Controller
         Connect_Button.Text = "Connect";
 
         // Enable settings while disconnected
+        Connection_Mode_Combo.Enabled = true;
         COM_Port_Combo.Enabled = true;
         Baud_Rate_Combo.Enabled = true;
         Data_Bits_Combo.Enabled = true;
@@ -840,10 +1052,37 @@ namespace Multimeter_Controller
         Flow_Control_Combo.Enabled = true;
         Refresh_Ports_Button.Enabled = true;
         Defaults_Button.Enabled = true;
+        Instrument_Type_Combo.Enabled = true;
+        Instrument_Type_Label.Enabled = true;
 
         // Disable scan while disconnected
         Scan_Bus_Button.Enabled = false;
       }
+    }
+
+    private void Connection_Mode_Combo_SelectedIndexChanged (
+      object? Sender, EventArgs E )
+    {
+      bool Is_GPIB = Connection_Mode_Combo.SelectedIndex == 0;
+
+      Set_GPID_Controls ( State: Is_GPIB );
+
+      // Show/hide Prologix-specific controls
+      Prologix_Header_Label.Visible = Is_GPIB;
+      GPIB_Address_Label.Visible = Is_GPIB;
+      GPIB_Address_Numeric.Visible = Is_GPIB;
+      //  EOS_Mode_Label.Visible = Is_GPIB;
+      //  EOS_Mode_Combo.Visible = Is_GPIB;
+      Auto_Read_Check.Visible = Is_GPIB;
+      EOI_Check.Visible = Is_GPIB;
+
+      // Update instrument group title
+      Instruments_Group.Text = Is_GPIB
+        ? "GPIB Instruments"
+        : "Instruments";
+
+      // Hide scan bus in direct serial mode
+      Scan_Bus_Button.Visible = Is_GPIB;
     }
 
     // ===== Event Handlers =====
@@ -898,5 +1137,128 @@ namespace Multimeter_Controller
         MessageBoxButtons.OK,
         MessageBoxIcon.Error );
     }
+
+
+    public void Initialize_Remote_Connection ( )
+    {
+      // If we are talking to an HP meter, we MUST establish remote communication
+      if ( _Comm.Is_Connected )
+      {
+        switch ( _Selected_Meter )
+        {
+          case Meter_Type.HP_33120A:
+          case Meter_Type.HP_34401A:
+            _Comm.Send_Instrument_Command ( "SYSTEM:REMOTE" );
+            Append_Response ( "> SYSTEM:REMOTE" );
+            break;
+
+          case Meter_Type.Keysight_3458A:
+            _Comm.Send_Instrument_Command ( "ID" );
+            Append_Response ( "> ID" );
+            break;
+
+          default:
+            throw new ArgumentOutOfRangeException ( );
+        }
+
+        Connected_Instrument_Textbox.Text = _Selected_Meter.ToString ( );
+        Command_History_List_Box.ClearSelected ( );
+      }
+    }
+
+
+    private void Add_Command_To_History ( string Command )
+    {
+      if ( string.IsNullOrWhiteSpace ( Command ) )
+        return; // Don't add empty commands
+
+      // Check for duplicates: remove existing one if present
+      //    int Existing_Index = Command_History_List_Box.Items.IndexOf ( Command );
+
+      //    if ( Existing_Index >= 0 )
+      //    {
+      //      Command_History_List_Box.Items.RemoveAt ( Existing_Index );
+      //    }
+
+      // Add to bottom
+      Command_History_List_Box.Items.Add ( Command );
+
+      // Trim history if it exceeds max size
+      while ( Command_History_List_Box.Items.Count > _Max_History_Size )
+      {
+        // Remove oldest (top item)
+        Command_History_List_Box.Items.RemoveAt ( 0 );
+      }
+
+      // Scroll to newest command
+      int Last_Index = Command_History_List_Box.Items.Count - 1;
+      Command_History_List_Box.SelectedIndex = Last_Index;
+      Command_History_List_Box.TopIndex = Last_Index;
+    }
+
+
+    private void Update_Button_State ( Command_Entry Entry )
+    {
+      if ( Entry == null )
+      {
+        Execute_Button.Enabled = false;
+        Query_Button.Enabled = false;
+        return;
+      }
+
+      CommandMode Mode = Entry.Get_Command_Mode ( );
+
+      switch ( Mode )
+      {
+        case CommandMode.Both:
+          Execute_Button.Enabled = true;
+          Query_Button.Enabled = true;
+          break;
+
+        case CommandMode.Query_Only:
+          Execute_Button.Enabled = false;
+          Query_Button.Enabled = true;
+          break;
+
+        case CommandMode.Set_Only:
+          Execute_Button.Enabled = true;
+          Query_Button.Enabled = false;
+          break;
+
+        case CommandMode.None:
+        default:
+          Execute_Button.Enabled = false;
+          Query_Button.Enabled = false;
+          break;
+      }
+    }
+
+
+    private void Command_History_ListBox_DoubleClick ( object Sender, EventArgs E )
+    {
+      if ( Command_History_List_Box.SelectedItem != null )
+      {
+        string? History_Text = Command_History_List_Box.SelectedItem.ToString ( );
+        if ( string.IsNullOrWhiteSpace ( History_Text ) )
+          return;
+
+        Send_Command_Text_Box.Text = History_Text;
+        Send_Command_Text_Box.Focus ( );
+        Send_Command_Text_Box.SelectionStart = Send_Command_Text_Box.Text.Length;
+
+        // Match history command to a Command_Entry and update buttons
+        string Raw_Token = History_Text.Split ( ' ', 2 ) [ 0 ];
+        string Trimmed_Token = Raw_Token.TrimEnd ( '?' );
+
+        Command_Entry? Matched = _All_Commands?.FirstOrDefault ( C =>
+          string.Equals ( C.Command, Raw_Token,
+            StringComparison.OrdinalIgnoreCase )
+          || string.Equals ( C.Command, Trimmed_Token,
+            StringComparison.OrdinalIgnoreCase ) );
+
+        Update_Button_State ( Matched );
+      }
+    }
+
   }
 }

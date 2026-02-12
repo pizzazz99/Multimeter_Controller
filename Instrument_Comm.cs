@@ -1,7 +1,17 @@
+using System.CodeDom;
+using System.Diagnostics;
 using System.IO.Ports;
+using System.Linq.Expressions;
+using System.Text;
 
 namespace Multimeter_Controller
 {
+  public enum Connection_Mode
+  {
+    Prologix_GPIB,
+    Direct_Serial
+  }
+
   public enum Prologix_Eos_Mode
   {
     CR_LF = 0,
@@ -23,10 +33,17 @@ namespace Multimeter_Controller
     }
   }
 
-  public class Prologix_Serial_Comm : IDisposable
+  public class Instrument_Comm : IDisposable
   {
     private SerialPort? _Port;
     private bool _Disposed;
+
+    // Connection mode
+    public Connection_Mode Mode
+    {
+      get; set;
+    } =
+      Connection_Mode.Prologix_GPIB;
 
     // Configurable serial settings
     public string Port_Name { get; set; } = "";
@@ -36,15 +53,17 @@ namespace Multimeter_Controller
     public StopBits Stop_Bits { get; set; } = StopBits.One;
     public Handshake Flow_Control { get; set; } = Handshake.None;
 
-    // Configurable Prologix settings
+    // Configurable Prologix settings (ignored in Direct_Serial mode)
     public int GPIB_Address { get; set; } = 22;
     public bool Auto_Read { get; set; } = true;
     public bool EOI_Enabled { get; set; } = true;
     public Prologix_Eos_Mode EOS_Mode { get; set; } = Prologix_Eos_Mode.LF;
 
     // Configurable timeouts
-    public int Read_Timeout_Ms { get; set; } = 5000;
-    public int Write_Timeout_Ms { get; set; } = 3000;
+    // Read timeout increased to 15s to support NPLC=100
+    // (NPLC=100 takes ~3-6 seconds per measurement)
+    public int Read_Timeout_Ms { get; set; } = 15000;
+    public int Write_Timeout_Ms { get; set; } = 5000; // 5s - allows for slow instruments
     public int Prologix_Read_Timeout_Ms { get; set; } = 3000;
 
     public bool Is_Connected => _Port?.IsOpen == true;
@@ -107,7 +126,11 @@ namespace Multimeter_Controller
         _Port.DiscardInBuffer ( );
         _Port.DiscardOutBuffer ( );
 
-        Configure_Prologix ( );
+        if ( Mode == Connection_Mode.Prologix_GPIB )
+        {
+          Configure_Prologix ( );
+        }
+
         Connection_Changed?.Invoke ( this, true );
       }
       catch ( Exception Ex )
@@ -129,16 +152,47 @@ namespace Multimeter_Controller
       {
         if ( _Port.IsOpen )
         {
+          // Forcefully clear any pending operations
+          try
+          {
+            _Port.DiscardInBuffer ( );
+            _Port.DiscardOutBuffer ( );
+          }
+          catch { /* Ignore errors during cleanup */ }
+
+          // Disable control lines to release the port
+          try
+          {
+            _Port.DtrEnable = false;
+            _Port.RtsEnable = false;
+          }
+          catch { /* Ignore errors during cleanup */ }
+
+          // Close the base stream first (more forceful)
+          try
+          {
+            _Port.BaseStream?.Close ( );
+          }
+          catch { /* Ignore errors during cleanup */ }
+
+          // Then close the port
           _Port.Close ( );
         }
       }
       catch ( Exception Ex )
       {
-        Raise_Error ( $"Disconnect error: {Ex.Message}" );
+        // Log but don't fail - we're disconnecting anyway
+        Raise_Error ( $"Disconnect warning: {Ex.Message}" );
       }
       finally
       {
-        _Port.Dispose ( );
+        // Always dispose and clear reference
+        try
+        {
+          _Port.Dispose ( );
+        }
+        catch { /* Force cleanup even if dispose fails */ }
+
         _Port = null;
         Connection_Changed?.Invoke ( this, false );
       }
@@ -150,9 +204,9 @@ namespace Multimeter_Controller
       Send_Prologix_Command ( "++mode 1" );
       Thread.Sleep ( 50 );
 
-      // Disable auto-read immediately to prevent
-      // unwanted GPIB bus activity
-      Send_Prologix_Command ( "++auto 0" );
+      // Enable auto-read for continuous measurements
+      // (Prologix automatically reads when instrument has data)
+      Send_Prologix_Command ( "++auto 1" );
       Thread.Sleep ( 50 );
 
       // Prevent Prologix from saving config to EEPROM
@@ -182,51 +236,139 @@ namespace Multimeter_Controller
       Send_Prologix_Command ( "++clr" );
       Thread.Sleep ( 100 );
 
-      // Set auto-read to desired value last
-      Send_Prologix_Command (
-        $"++auto {( Auto_Read ? 1 : 0 )}" );
+      // Confirm auto-read is enabled
+      Send_Prologix_Command ( "++auto 1" );
       Thread.Sleep ( 50 );
     }
 
     public void Send_Prologix_Command ( string Command )
     {
+      if ( Mode == Connection_Mode.Direct_Serial )
+      {
+        return;
+      }
+
       if ( _Port == null || !_Port.IsOpen )
       {
-        Raise_Error ( "Not connected." );
-        return;
+        throw new InvalidOperationException ( "Not connected." );
       }
 
       try
       {
         _Port.WriteLine ( Command );
       }
+      catch ( TimeoutException )
+      {
+        // Let caller handle timeout
+        throw;
+      }
       catch ( Exception Ex )
       {
-        Raise_Error (
-          $"Prologix command failed: {Ex.Message}" );
+        throw;
       }
     }
+
+    // Check if instrument has data ready using serial poll
+    // Returns true if MAV (Message Available) bit is set
+    // Note: May return false if instrument is in talk mode
+    public bool Is_Data_Available ( )
+    {
+      if ( _Port == null || !_Port.IsOpen )
+      {
+        return false;
+      }
+
+      try
+      {
+        _Port.DiscardInBuffer ( );
+
+        if ( Mode == Connection_Mode.Prologix_GPIB )
+        {
+          // Use Prologix serial poll command
+          _Port.WriteLine ( "++spoll" );
+        }
+        else
+        {
+          // Direct RS-232: Query instrument status byte
+          _Port.WriteLine ( "*STB?" );
+        }
+
+        // Wait briefly for response (reduced for responsiveness)
+        Thread.Sleep ( 50 );
+
+        if ( _Port.BytesToRead > 0 )
+        {
+          string Response = _Port.ReadLine ( ).Trim ( );
+
+          if ( int.TryParse ( Response, out int Status_Byte ) )
+          {
+            // Bit 4 (value 16) is MAV (Message Available)
+            bool MAV = ( Status_Byte & 0x10 ) != 0;
+            return MAV;
+          }
+        }
+
+        return false;
+      }
+      catch ( TimeoutException )
+      {
+        // Timeout likely means instrument is in talk mode
+        // Return true to trigger a read attempt
+        return true;
+      }
+      catch ( Exception Ex )
+      {
+        Raise_Error ( $"Status poll failed: {Ex.Message}" );
+        return false;
+      }
+    }
+
+
+
+
+
+
 
     public void Send_Instrument_Command ( string Command )
     {
       if ( _Port == null || !_Port.IsOpen )
-      {
-        Raise_Error ( "Not connected." );
-        return;
-      }
+        throw new InvalidOperationException ( "Not connected." );
+
+      // Build the exact string that will be sent
+      string New_Line = _Port.NewLine ?? "";
+      string Full_Command = Command + New_Line;
+
+      // Debug display with escaped control chars
+      string Visible = Full_Command
+        .Replace ( "\r", "\\r" )
+        .Replace ( "\n", "\\n" );
+
+      // Debug.WriteLine ( $"TX [{Visible}]" );
+
+
+      Command = Command.Trim ( );
 
       try
       {
+        _Port.DiscardInBuffer ( );
+        _Port.NewLine = "\r\n";
         _Port.WriteLine ( Command );
+
       }
-      catch ( Exception Ex )
+      catch ( TimeoutException )
       {
-        Raise_Error (
-          $"Send failed: {Ex.Message}" );
+        throw;
       }
     }
 
     public string Query_Instrument ( string Command )
+    {
+      return Query_Instrument ( Command,
+        CancellationToken.None );
+    }
+
+    public string Query_Instrument ( string Command,
+      CancellationToken Token )
     {
       if ( _Port == null || !_Port.IsOpen )
       {
@@ -236,29 +378,17 @@ namespace Multimeter_Controller
 
       try
       {
-        // Clear any pending data
-        _Port.DiscardInBuffer ( );
 
+        // Debug.WriteLine ( $"Querying: {Command}" );
         // Send the query
-        _Port.WriteLine ( Command );
+        Send_Instrument_Command ( Command );
 
-        if ( Auto_Read )
-        {
-          // With auto-read, Prologix automatically
-          // requests data from the instrument
-          string Response = _Port.ReadLine ( ).Trim ( );
-          Data_Received?.Invoke ( this, Response );
-          return Response;
-        }
-        else
-        {
-          // Without auto-read, must explicitly request
-          Thread.Sleep ( 100 );
-          _Port.WriteLine ( "++read eoi" );
-          string Response = _Port.ReadLine ( ).Trim ( );
-          Data_Received?.Invoke ( this, Response );
-          return Response;
-        }
+        // Use Read_Instrument with cancellation support
+        return Read_Instrument ( Token );
+      }
+      catch ( OperationCanceledException )
+      {
+        throw; // Propagate cancellation
       }
       catch ( TimeoutException )
       {
@@ -275,6 +405,12 @@ namespace Multimeter_Controller
 
     public string Verify_GPIB_Address ( int Address )
     {
+      if ( Mode == Connection_Mode.Direct_Serial )
+      {
+        // In direct serial mode, just query the instrument
+        return Query_Instrument ( "*IDN?" );
+      }
+
       if ( _Port == null || !_Port.IsOpen )
       {
         return "";
@@ -329,6 +465,11 @@ namespace Multimeter_Controller
 
     public void Change_GPIB_Address ( int New_Address )
     {
+      if ( Mode == Connection_Mode.Direct_Serial )
+      {
+        return;
+      }
+
       if ( New_Address < 0 || New_Address > 30 )
       {
         Raise_Error (
@@ -345,8 +486,7 @@ namespace Multimeter_Controller
       }
     }
 
-    public string Read_Instrument (
-      CancellationToken Token = default )
+    public string? Read_Instrument ( CancellationToken Token = default )
     {
       if ( _Port == null || !_Port.IsOpen )
       {
@@ -356,31 +496,87 @@ namespace Multimeter_Controller
 
       try
       {
-        _Port.DiscardInBuffer ( );
-        _Port.WriteLine ( "++read eoi" );
 
-        // Poll for response so cancellation token can
-        // interrupt instead of blocking on ReadLine
-        int Elapsed = 0;
-        while ( _Port.BytesToRead == 0 )
+
+        if ( Mode == Connection_Mode.Prologix_GPIB )
         {
-          Token.ThrowIfCancellationRequested ( );
-          Thread.Sleep ( 50 );
-          Elapsed += 50;
-          if ( Elapsed >= Read_Timeout_Ms )
+          // GPIB: Send ++read eoi
+          bool Read_Sent = false;
+          int Retry_Count = 0;
+          const int Max_Retries = 3;
+
+          while ( !Read_Sent && Retry_Count < Max_Retries )
           {
-            Raise_Error (
-              "Timeout waiting for instrument response." );
+            Token.ThrowIfCancellationRequested ( );
+
+            try
+            {
+              _Port.WriteLine ( "++read eoi" );
+              Read_Sent = true;
+            }
+            catch ( TimeoutException )
+            {
+              Retry_Count++;
+              if ( Retry_Count < Max_Retries )
+                Thread.Sleep ( 100 );
+            }
+          }
+
+          if ( !Read_Sent && _Port.BytesToRead == 0 )
+          {
+            Raise_Error ( "Failed to send ++read eoi after retries." );
             return "";
           }
+
+          // Wait for response
+          int Buffer_Wait = 0;
+          while ( _Port.BytesToRead == 0 )
+          {
+            Token.ThrowIfCancellationRequested ( );
+            Thread.Sleep ( 10 );
+            Buffer_Wait += 10;
+            if ( Buffer_Wait >= Read_Timeout_Ms )
+            {
+              Raise_Error ( "Timeout waiting for GPIB buffer." );
+              return "";
+            }
+          }
+
+          // Read whatever is in the buffer
+          return Read_Response ( );
         }
+        else
+        {
+          // RS-232 branch
+          int Elapsed = 0;
+          while ( _Port.BytesToRead == 0 )
+          {
+            Token.ThrowIfCancellationRequested ( );
+            Thread.Sleep ( 20 );
+            Elapsed += 20;
+            if ( Elapsed >= Read_Timeout_Ms )
+            {
+              Raise_Error ( "Timeout waiting for RS-232 response." );
+              return "";
+            }
+          }
 
-        // Allow remaining bytes to arrive
-        Thread.Sleep ( 100 );
-
-        string Response = _Port.ReadExisting ( ).Trim ( );
-        Data_Received?.Invoke ( this, Response );
-        return Response;
+          Thread.Sleep ( 100 ); // allow remaining bytes
+          try
+          {
+            return Read_Response ( );
+          }
+          catch ( TimeoutException Tex )
+          {
+            Console.WriteLine ( $"Serial timeout: {Tex.Message}" );
+            return null;
+          }
+          catch ( Exception Ex )
+          {
+            Console.WriteLine ( $"Serial read error: {Ex.Message}" );
+            return null;
+          }
+        }
       }
       catch ( OperationCanceledException )
       {
@@ -393,8 +589,50 @@ namespace Multimeter_Controller
       }
     }
 
+
+
+
+    public string Read_Response ( int Timeout_Ms = 2000 )
+    {
+      if ( _Port == null || !_Port.IsOpen )
+        throw new InvalidOperationException ( "Port not open." );
+
+      int Elapsed = 0;
+      int Poll_Interval = 20;
+
+      // wait for at least 1 byte
+      while ( _Port.BytesToRead == 0 )
+      {
+        Thread.Sleep ( Poll_Interval );
+        Elapsed += Poll_Interval;
+        ;
+        if ( Elapsed >= Timeout_Ms )
+        {
+          throw new TimeoutException ( "Timeout waiting for serial data." );
+        }
+      }
+
+      // read all available data
+      string Response = _Port.ReadExisting ( );
+
+      // remove trailing CR/LF or whitespace
+      Response = Response.Trim ( );
+
+      Data_Received?.Invoke ( this, Response );
+      return Response;
+    }
+
+
+
+
+
     public string Query_Prologix_Version ( )
     {
+      if ( Mode == Connection_Mode.Direct_Serial )
+      {
+        return "[Direct Serial - no Prologix adapter]";
+      }
+
       if ( _Port == null || !_Port.IsOpen )
       {
         return "";
@@ -420,17 +658,23 @@ namespace Multimeter_Controller
       }
 
       var Result = new System.Text.StringBuilder ( );
-      Result.AppendLine (
-        $"Port: {_Port.PortName}  Baud: {_Port.BaudRate}  " +
-        $"DTR: {_Port.DtrEnable}  RTS: {_Port.RtsEnable}  " +
-        $"Handshake: {_Port.Handshake}" );
-      Result.AppendLine (
-        $"CTS: {_Port.CtsHolding}  DSR: {_Port.DsrHolding}  " +
-        $"CD: {_Port.CDHolding}" );
+
+      Result.AppendLine ( "" );
+      Result.AppendLine ( "" );
+      Result.AppendLine ( $"  Mode      -> {Mode}" );
+      Result.AppendLine ( $"  Port      -> {_Port.PortName}" );
+      Result.AppendLine ( $"  Baud Rate -> {_Port.BaudRate}" );
+      Result.AppendLine ( $"  DTR       -> {_Port.DtrEnable}" );
+      Result.AppendLine ( $"  RTS       -> {_Port.RtsEnable}" );
+      Result.AppendLine ( $"  Handshake -> {_Port.Handshake}" );
+      Result.AppendLine ( $"  CTS       -> {_Port.CtsHolding}" );
+      Result.AppendLine ( $"  DSR       -> {_Port.DsrHolding}" );
+      Result.AppendLine ( $"  CD        -> {_Port.CDHolding}" );
+      Result.AppendLine ( "" );
 
       // Try three terminator styles
-      string [ ] Terminators = { "\r\n", "\n", "\r" };
-      string [ ] Terminator_Names = { "CR+LF", "LF", "CR" };
+      string [ ] Terminators = { "\r\n", "\n", "\r", "" };
+      string [ ] Terminator_Names = { "CR+LF", "LF", "CR", "None" };
 
       for ( int I = 0; I < Terminators.Length; I++ )
       {
@@ -475,6 +719,7 @@ namespace Multimeter_Controller
             $"[{Terminator_Names [ I ]}] " +
             $"\"{Text.Replace ( "\r", "\\r" )
               .Replace ( "\n", "\\n" )}\"" );
+
           Result.AppendLine ( $"  Hex: {Hex}" );
 
           // If we got a response, no need to try other
@@ -488,6 +733,8 @@ namespace Multimeter_Controller
         }
       }
 
+      Result.AppendLine ( "" );
+
       return Result.ToString ( ).TrimEnd ( );
     }
 
@@ -496,6 +743,13 @@ namespace Multimeter_Controller
       CancellationToken Token = default )
     {
       var Results = new List<Scan_Result> ( );
+
+      if ( Mode == Connection_Mode.Direct_Serial )
+      {
+        Raise_Error (
+          "Bus scanning is not available in Direct Serial mode." );
+        return Results;
+      }
 
       if ( _Port == null || !_Port.IsOpen )
       {
@@ -606,6 +860,12 @@ namespace Multimeter_Controller
         _Port.DiscardInBuffer ( );
         _Port.WriteLine ( Command );
         Thread.Sleep ( 50 );
+
+        if ( Mode == Connection_Mode.Direct_Serial )
+        {
+          return _Port.ReadLine ( ).Trim ( );
+        }
+
         _Port.WriteLine ( "++read eoi" );
         return _Port.ReadLine ( ).Trim ( );
       }

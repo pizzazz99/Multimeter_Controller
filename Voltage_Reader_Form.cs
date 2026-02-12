@@ -10,7 +10,7 @@ namespace Multimeter_Controller
 {
   public partial class Voltage_Reader_Form : Form
   {
-    private Prologix_Serial_Comm _Comm = null!;
+    private Instrument_Comm _Comm = null!;
     private Meter_Type _Meter;
     private readonly List<double> _Readings = new List<double> ( );
     private CancellationTokenSource? _Cts;
@@ -53,7 +53,7 @@ namespace Multimeter_Controller
     }
 
     public Voltage_Reader_Form (
-      Prologix_Serial_Comm Comm, Meter_Type Meter )
+      Instrument_Comm Comm, Meter_Type Meter )
     {
       InitializeComponent ( );
       _Comm = Comm;
@@ -75,6 +75,8 @@ namespace Multimeter_Controller
       Graph_Style_Combo.Items.Add ( "Bar" );
       Graph_Style_Combo.Items.Add ( "Scatter" );
       Graph_Style_Combo.Items.Add ( "Step" );
+      Graph_Style_Combo.Items.Add ( "Histogram" );
+      Graph_Style_Combo.Items.Add ( "Pie" );
       Graph_Style_Combo.SelectedIndex = 0;
 
       Chart_Panel.BackColor = _Theme.Background;
@@ -141,6 +143,36 @@ namespace Multimeter_Controller
         _Theme.Save ( );
         Chart_Panel.BackColor = _Theme.Background;
         Chart_Panel.Invalidate ( );
+      }
+    }
+
+    private void Save_Chart_Button_Click (
+      object Sender, EventArgs E )
+    {
+      using var Bmp = new Bitmap (
+        Chart_Panel.ClientSize.Width,
+        Chart_Panel.ClientSize.Height );
+      Chart_Panel.DrawToBitmap ( Bmp,
+        new Rectangle ( 0, 0,
+          Bmp.Width, Bmp.Height ) );
+
+      string Folder = Path.Combine (
+        AppContext.BaseDirectory, "Graph_Captures" );
+      Directory.CreateDirectory ( Folder );
+
+      string Default_Name =
+        $"{DateTime.Now:yyyy-MM-dd_HH-mm-ss}" +
+        $"_{Function_Combo.Text.Replace ( " ", "_" )}.png";
+
+      using var Dlg = new SaveFileDialog ( );
+      Dlg.Filter = "PNG Image|*.png";
+      Dlg.InitialDirectory = Folder;
+      Dlg.FileName = Default_Name;
+
+      if ( Dlg.ShowDialog ( this ) == DialogResult.OK )
+      {
+        Bmp.Save ( Dlg.FileName,
+          System.Drawing.Imaging.ImageFormat.Png );
       }
     }
 
@@ -585,6 +617,30 @@ namespace Multimeter_Controller
         return;
       }
 
+      int Style = Graph_Style_Combo.SelectedIndex;
+
+      // Histogram and Pie handle their own layout
+      if ( Style == 4 ) // Histogram
+      {
+        Draw_Histogram ( G, W, H,
+          Margin_Left, Margin_Right, Margin_Top,
+          Margin_Bottom, Chart_W, Chart_H );
+        Draw_Stats_Overlay ( G, W, Margin_Top,
+          Margin_Right );
+        return;
+      }
+
+      if ( Style == 5 ) // Pie
+      {
+        Draw_Pie_Chart ( G, W, H,
+          Margin_Left, Margin_Right, Margin_Top,
+          Margin_Bottom, Chart_W, Chart_H );
+        Draw_Stats_Overlay ( G, W, Margin_Top,
+          Margin_Right, Bottom: true, H: H,
+          Margin_Bottom: Margin_Bottom );
+        return;
+      }
+
       // Determine Y-axis range
       double Min_V = _Readings.Min ( );
       double Max_V = _Readings.Max ( );
@@ -664,7 +720,6 @@ namespace Multimeter_Controller
         Points [ I ] = new PointF ( X, Y );
       }
 
-      int Style = Graph_Style_Combo.SelectedIndex;
       float Baseline = H - Margin_Bottom;
 
       Color Line_Color = _Theme.Line_Colors [ 0 ];
@@ -720,6 +775,10 @@ namespace Multimeter_Controller
         Label_Brush,
         Margin_Left + Chart_W / 2 - X_Size.Width / 2,
         H - Margin_Bottom + 14 );
+
+      // Stats overlay
+      Draw_Stats_Overlay ( G, W, Margin_Top,
+        Margin_Right );
     }
 
     private void Draw_Line_Chart ( Graphics G,
@@ -868,6 +927,476 @@ namespace Multimeter_Controller
 
       // Draw the step line
       G.DrawLines ( Line_Pen, Step_Array );
+    }
+
+    private int Get_Bin_Count ( int N )
+    {
+      // Sturges' rule, clamped to 5-30
+      int Bins = (int) Math.Ceiling (
+        1.0 + 3.322 * Math.Log10 ( N ) );
+      return Math.Clamp ( Bins, 5, 30 );
+    }
+
+    private Color Get_Bin_Color ( int Index )
+    {
+      Color [ ] Base = _Theme.Line_Colors;
+      int Cycle = Index / Base.Length;
+      Color C = Base [ Index % Base.Length ];
+
+      if ( Cycle == 0 )
+        return C;
+
+      // Lighten for additional cycles
+      int Shift = Cycle * 40;
+      return Color.FromArgb (
+        Math.Min ( 255, C.R + Shift ),
+        Math.Min ( 255, C.G + Shift ),
+        Math.Min ( 255, C.B + Shift ) );
+    }
+
+    private void Draw_Histogram ( Graphics G,
+      int W, int H, int Margin_Left, int Margin_Right,
+      int Margin_Top, int Margin_Bottom,
+      int Chart_W, int Chart_H )
+    {
+      int Count = _Readings.Count;
+      double Min_V = _Readings.Min ( );
+      double Max_V = _Readings.Max ( );
+      double Range = Max_V - Min_V;
+
+      int Num_Bins = Get_Bin_Count ( Count );
+
+      // Handle all-same-value case
+      if ( Range < 1e-12 )
+      {
+        Range = Math.Abs ( Max_V ) * 0.1;
+        if ( Range < 1e-12 )
+          Range = 1.0;
+        Min_V -= Range / 2;
+        Max_V += Range / 2;
+        Range = Max_V - Min_V;
+      }
+
+      double Bin_Width = Range / Num_Bins;
+
+      // Count readings per bin
+      int [ ] Bin_Counts = new int [ Num_Bins ];
+      foreach ( double V in _Readings )
+      {
+        int Bin = (int) ( ( V - Min_V ) / Bin_Width );
+        if ( Bin >= Num_Bins )
+          Bin = Num_Bins - 1;
+        if ( Bin < 0 )
+          Bin = 0;
+        Bin_Counts [ Bin ]++;
+      }
+
+      int Max_Count = Bin_Counts.Max ( );
+      if ( Max_Count == 0 )
+        Max_Count = 1;
+
+      // Pad Y range slightly
+      double Y_Max = Max_Count * 1.1;
+
+      // Draw grid and Y-axis labels (frequency)
+      using var Grid_Pen = new Pen ( _Theme.Grid, 1f );
+      using var Label_Font = new Font ( "Consolas", 7.5F );
+      using var Label_Brush =
+        new SolidBrush ( _Theme.Labels );
+
+      int Num_Grid_Lines = 5;
+      for ( int I = 0; I <= Num_Grid_Lines; I++ )
+      {
+        double Fraction = (double) I / Num_Grid_Lines;
+        int Y_Pos = H - Margin_Bottom -
+          (int) ( Fraction * Chart_H );
+
+        G.DrawLine ( Grid_Pen,
+          Margin_Left, Y_Pos,
+          W - Margin_Right, Y_Pos );
+
+        int Label_Val = (int) Math.Round (
+          Fraction * Y_Max );
+        string Label_Text = Label_Val.ToString ( );
+        var Label_Size = G.MeasureString (
+          Label_Text, Label_Font );
+        G.DrawString ( Label_Text, Label_Font,
+          Label_Brush,
+          Margin_Left - Label_Size.Width - 6,
+          Y_Pos - Label_Size.Height / 2 );
+      }
+
+      // Draw bars
+      float Bar_Spacing = Chart_W / (float) Num_Bins;
+      float Bar_W = Bar_Spacing * 0.8f;
+      float Gap = Bar_Spacing * 0.1f;
+
+      Color Bar_Color = _Theme.Line_Colors [ 0 ];
+      using var Bar_Brush = new SolidBrush ( Bar_Color );
+      using var Bar_Border_Pen = new Pen (
+        Color.FromArgb (
+          (int) ( Bar_Color.R * 0.7 ),
+          (int) ( Bar_Color.G * 0.7 ),
+          (int) ( Bar_Color.B * 0.7 ) ), 1f );
+
+      float Baseline = H - Margin_Bottom;
+
+      for ( int I = 0; I < Num_Bins; I++ )
+      {
+        float X = Margin_Left + I * Bar_Spacing + Gap;
+        float Bar_H = (float) (
+          ( Bin_Counts [ I ] / Y_Max ) * Chart_H );
+        if ( Bar_H < 1 && Bin_Counts [ I ] > 0 )
+          Bar_H = 1;
+
+        RectangleF Rect = new RectangleF (
+          X, Baseline - Bar_H, Bar_W, Bar_H );
+        G.FillRectangle ( Bar_Brush, Rect );
+        G.DrawRectangle ( Bar_Border_Pen,
+          Rect.X, Rect.Y, Rect.Width, Rect.Height );
+
+        // Frequency label above bar
+        if ( Bin_Counts [ I ] > 0 )
+        {
+          string Freq_Text = Bin_Counts [ I ].ToString ( );
+          var Freq_Size = G.MeasureString (
+            Freq_Text, Label_Font );
+          G.DrawString ( Freq_Text, Label_Font,
+            Label_Brush,
+            X + Bar_W / 2 - Freq_Size.Width / 2,
+            Baseline - Bar_H - Freq_Size.Height - 2 );
+        }
+      }
+
+      // Normal distribution curve overlay
+      double Mean = _Readings.Average ( );
+      double Sum_Sq = 0;
+      foreach ( double V in _Readings )
+      {
+        double D = V - Mean;
+        Sum_Sq += D * D;
+      }
+      double Std_Dev = Math.Sqrt ( Sum_Sq / Count );
+
+      if ( Std_Dev > 1e-15 )
+      {
+        Color Curve_Color = _Theme.Line_Colors [ 1 ];
+        using var Curve_Pen = new Pen (
+          Curve_Color, 2.5f );
+
+        int Num_Pts = 100;
+        PointF [ ] Curve_Pts = new PointF [ Num_Pts ];
+        double Scale = Bin_Width * Count;
+
+        for ( int I = 0; I < Num_Pts; I++ )
+        {
+          double X_Val = Min_V +
+            ( I / (double) ( Num_Pts - 1 ) ) * Range;
+          double Z = ( X_Val - Mean ) / Std_Dev;
+          double PDF = ( 1.0 / ( Std_Dev *
+            Math.Sqrt ( 2.0 * Math.PI ) ) ) *
+            Math.Exp ( -0.5 * Z * Z );
+          double Freq = PDF * Scale;
+
+          float Px = Margin_Left +
+            (float) ( ( X_Val - Min_V ) / Range *
+              Chart_W );
+          float Py = Baseline -
+            (float) ( ( Freq / Y_Max ) * Chart_H );
+
+          Curve_Pts [ I ] = new PointF ( Px, Py );
+        }
+
+        G.DrawLines ( Curve_Pen, Curve_Pts );
+
+        // Mean line (dashed)
+        Color Mean_Color = _Theme.Line_Colors [ 2 ];
+        using var Mean_Pen = new Pen (
+          Mean_Color, 2f );
+        Mean_Pen.DashStyle =
+          System.Drawing.Drawing2D.DashStyle.Dash;
+
+        float Mean_X = Margin_Left +
+          (float) ( ( Mean - Min_V ) / Range *
+            Chart_W );
+        G.DrawLine ( Mean_Pen, Mean_X, Margin_Top,
+          Mean_X, Baseline );
+
+        // Sigma lines
+        using var Sigma_Pen = new Pen (
+          Color.FromArgb ( 120, Mean_Color ), 1.5f );
+        Sigma_Pen.DashStyle =
+          System.Drawing.Drawing2D.DashStyle.Dot;
+
+        using var Sigma_Font =
+          new Font ( "Consolas", 7F );
+        using var Sigma_Brush =
+          new SolidBrush ( Mean_Color );
+
+        // Label for mean
+        G.DrawString ( "\u03bc", Sigma_Font,
+          Sigma_Brush,
+          Mean_X + 3, Margin_Top + 2 );
+
+        double [ ] Sigmas = { -2, -1, 1, 2 };
+        string [ ] Sigma_Labels =
+          { "-2\u03c3", "-1\u03c3",
+            "+1\u03c3", "+2\u03c3" };
+
+        for ( int I = 0; I < Sigmas.Length; I++ )
+        {
+          double Sv = Mean + Sigmas [ I ] * Std_Dev;
+          if ( Sv < Min_V || Sv > Max_V )
+            continue;
+
+          float Sx = Margin_Left +
+            (float) ( ( Sv - Min_V ) / Range *
+              Chart_W );
+          G.DrawLine ( Sigma_Pen, Sx, Margin_Top,
+            Sx, Baseline );
+          G.DrawString ( Sigma_Labels [ I ],
+            Sigma_Font, Sigma_Brush,
+            Sx + 3, Margin_Top + 2 );
+        }
+      }
+
+      // X-axis labels (bin center values)
+      using var X_Font = new Font ( "Consolas", 6.5F );
+      int Label_Step = Math.Max ( 1,
+        Num_Bins / 8 );
+
+      for ( int I = 0; I < Num_Bins; I += Label_Step )
+      {
+        double Bin_Center = Min_V +
+          ( I + 0.5 ) * Bin_Width;
+        string X_Label = Format_Value (
+          Bin_Center, _Current_Unit );
+        var X_Size = G.MeasureString (
+          X_Label, X_Font );
+        float X_Pos = Margin_Left +
+          I * Bar_Spacing + Bar_Spacing / 2;
+        G.DrawString ( X_Label, X_Font, Label_Brush,
+          X_Pos - X_Size.Width / 2,
+          H - Margin_Bottom + 4 );
+      }
+
+      // Title label
+      using var Title_Font = new Font ( "Segoe UI", 7.5F );
+      string Title = $"Distribution  ({Count} readings)";
+      var Title_Size = G.MeasureString (
+        Title, Title_Font );
+      G.DrawString ( Title, Title_Font, Label_Brush,
+        Margin_Left + Chart_W / 2 -
+          Title_Size.Width / 2,
+        H - Margin_Bottom + 18 );
+    }
+
+    private void Draw_Pie_Chart ( Graphics G,
+      int W, int H, int Margin_Left, int Margin_Right,
+      int Margin_Top, int Margin_Bottom,
+      int Chart_W, int Chart_H )
+    {
+      int Count = _Readings.Count;
+      double Min_V = _Readings.Min ( );
+      double Max_V = _Readings.Max ( );
+      double Range = Max_V - Min_V;
+
+      int Num_Bins = Get_Bin_Count ( Count );
+
+      // Handle all-same-value case
+      if ( Range < 1e-12 )
+      {
+        Range = Math.Abs ( Max_V ) * 0.1;
+        if ( Range < 1e-12 )
+          Range = 1.0;
+        Min_V -= Range / 2;
+        Max_V += Range / 2;
+        Range = Max_V - Min_V;
+      }
+
+      double Bin_Width = Range / Num_Bins;
+
+      // Count readings per bin
+      int [ ] Bin_Counts = new int [ Num_Bins ];
+      foreach ( double V in _Readings )
+      {
+        int Bin = (int) ( ( V - Min_V ) / Bin_Width );
+        if ( Bin >= Num_Bins )
+          Bin = Num_Bins - 1;
+        if ( Bin < 0 )
+          Bin = 0;
+        Bin_Counts [ Bin ]++;
+      }
+
+      // Layout: pie on the left, legend on the right
+      int Legend_W = 200;
+      int Pie_Area_W = Chart_W - Legend_W;
+      if ( Pie_Area_W < 100 )
+      {
+        Pie_Area_W = Chart_W;
+        Legend_W = 0;
+      }
+
+      int Diameter = Math.Min ( Pie_Area_W, Chart_H )
+        - 20;
+      if ( Diameter < 40 )
+        Diameter = 40;
+
+      int Pie_X = Margin_Left +
+        ( Pie_Area_W - Diameter ) / 2;
+      int Pie_Y = Margin_Top +
+        ( Chart_H - Diameter ) / 2;
+
+      Rectangle Pie_Rect = new Rectangle (
+        Pie_X, Pie_Y, Diameter, Diameter );
+
+      // Draw slices
+      float Start_Angle = -90f;
+      using var Outline_Pen = new Pen (
+        _Theme.Background, 2f );
+
+      for ( int I = 0; I < Num_Bins; I++ )
+      {
+        if ( Bin_Counts [ I ] == 0 )
+          continue;
+
+        float Sweep = 360f * Bin_Counts [ I ] / Count;
+        Color Slice_Color = Get_Bin_Color ( I );
+        using var Slice_Brush =
+          new SolidBrush ( Slice_Color );
+
+        G.FillPie ( Slice_Brush, Pie_Rect,
+          Start_Angle, Sweep );
+        G.DrawPie ( Outline_Pen, Pie_Rect,
+          Start_Angle, Sweep );
+
+        Start_Angle += Sweep;
+      }
+
+      // Draw legend
+      if ( Legend_W > 0 )
+      {
+        using var Legend_Font =
+          new Font ( "Consolas", 7.5F );
+        using var Label_Brush =
+          new SolidBrush ( _Theme.Labels );
+
+        int Leg_X = Margin_Left + Pie_Area_W + 10;
+        int Leg_Y = Margin_Top + 10;
+        int Row_H = 20;
+
+        // Title
+        using var Title_Font =
+          new Font ( "Segoe UI", 8F, FontStyle.Bold );
+        G.DrawString ( "Distribution", Title_Font,
+          Label_Brush, Leg_X, Leg_Y );
+        Leg_Y += Row_H + 4;
+
+        for ( int I = 0; I < Num_Bins; I++ )
+        {
+          if ( Bin_Counts [ I ] == 0 )
+            continue;
+
+          if ( Leg_Y + Row_H > H - Margin_Bottom )
+            break;
+
+          Color Swatch_Color = Get_Bin_Color ( I );
+          using var Swatch_Brush =
+            new SolidBrush ( Swatch_Color );
+
+          G.FillRectangle ( Swatch_Brush,
+            Leg_X, Leg_Y + 2, 12, 12 );
+
+          double Bin_Low = Min_V + I * Bin_Width;
+          double Bin_High = Bin_Low + Bin_Width;
+          double Pct = 100.0 * Bin_Counts [ I ] / Count;
+
+          string Entry_Text =
+            $"{Format_Value ( Bin_Low, _Current_Unit )}" +
+            $" - {Format_Value ( Bin_High, _Current_Unit )}" +
+            $"  ({Pct:F1}%)";
+
+          G.DrawString ( Entry_Text, Legend_Font,
+            Label_Brush, Leg_X + 18, Leg_Y );
+
+          Leg_Y += Row_H;
+        }
+      }
+    }
+
+    private void Draw_Stats_Overlay ( Graphics G,
+      int W, int Margin_Top, int Margin_Right,
+      bool Bottom = false, int H = 0,
+      int Margin_Bottom = 0 )
+    {
+      if ( _Readings.Count == 0 )
+        return;
+
+      int Count = _Readings.Count;
+      double Min_V = _Readings.Min ( );
+      double Max_V = _Readings.Max ( );
+      double Mean = _Readings.Average ( );
+      double Sum_Sq = 0;
+      foreach ( double V in _Readings )
+      {
+        double D = V - Mean;
+        Sum_Sq += D * D;
+      }
+      double Std_Dev = Math.Sqrt ( Sum_Sq / Count );
+
+      string [ ] Lines =
+      {
+        $"Mean:    {Format_Value ( Mean, _Current_Unit )}",
+        $"Std Dev: {Format_Value ( Std_Dev, _Current_Unit )}",
+        $"Min:     {Format_Value ( Min_V, _Current_Unit )}",
+        $"Max:     {Format_Value ( Max_V, _Current_Unit )}",
+        $"Count:   {Count}"
+      };
+
+      using var Stats_Font = new Font ( "Consolas", 7.5F );
+      using var Text_Brush =
+        new SolidBrush ( _Theme.Labels );
+
+      // Measure box size
+      float Line_H = G.MeasureString ( "X",
+        Stats_Font ).Height + 2;
+      float Box_W = 0;
+      foreach ( string L in Lines )
+      {
+        float Lw = G.MeasureString ( L,
+          Stats_Font ).Width;
+        if ( Lw > Box_W )
+          Box_W = Lw;
+      }
+
+      float Padding = 8;
+      float Box_H = Lines.Length * Line_H + Padding * 2;
+      Box_W += Padding * 2;
+
+      float Box_X = W - Margin_Right - Box_W - 5;
+      float Box_Y = Bottom
+        ? H - Margin_Bottom - Box_H - 5
+        : Margin_Top + 5;
+
+      // Semi-transparent background
+      using var Bg_Brush = new SolidBrush (
+        Color.FromArgb ( 180, _Theme.Background ) );
+      using var Border_Pen = new Pen (
+        _Theme.Grid, 1f );
+
+      G.FillRectangle ( Bg_Brush,
+        Box_X, Box_Y, Box_W, Box_H );
+      G.DrawRectangle ( Border_Pen,
+        Box_X, Box_Y, Box_W, Box_H );
+
+      // Draw text lines
+      float Y = Box_Y + Padding;
+      foreach ( string L in Lines )
+      {
+        G.DrawString ( L, Stats_Font, Text_Brush,
+          Box_X + Padding, Y );
+        Y += Line_H;
+      }
     }
 
     private static string Format_Value (

@@ -1,10 +1,10 @@
 # Keysight 3458A Multimeter Controller
 
-A Windows Forms desktop application for controlling **GPIB test instruments** over a **Prologix GPIB-USB-HS** adapter. Originally built for the Keysight (HP/Agilent) 3458A 8.5-Digit Digital Multimeter, it now supports multiple instrument types on the same GPIB bus.
+A Windows Forms desktop application for controlling **test instruments** via **Prologix GPIB-USB-HS** adapter or **direct RS-232 serial** connection. Originally built for the Keysight (HP/Agilent) 3458A 8.5-Digit Digital Multimeter, it now supports multiple instrument types and two connection modes.
 
 ## Overview
 
-The 3458A is one of the highest-precision digital multimeters ever produced, capable of 8.5 digits of resolution on DC voltage measurements. This application provides a graphical interface for connecting to instruments via a Prologix USB-to-GPIB bridge, browsing full GPIB command sets, taking measurements with real-time charting, and polling multiple instruments simultaneously.
+The 3458A is one of the highest-precision digital multimeters ever produced, capable of 8.5 digits of resolution on DC voltage measurements. This application provides a graphical interface for connecting to instruments via GPIB (Prologix USB-to-GPIB bridge) or direct RS-232 over USB, browsing full command sets, taking measurements with real-time charting, and polling multiple instruments simultaneously.
 
 ## Supported Instruments
 
@@ -16,9 +16,13 @@ The 3458A is one of the highest-precision digital multimeters ever produced, cap
 
 ## Features
 
+### Connection Modes
+- **Prologix GPIB** - Connect via Prologix GPIB-USB-HS adapter to instruments on a GPIB bus (IEEE 488). Supports bus scanning, address switching, and multi-instrument polling.
+- **Direct Serial (RS-232)** - Connect directly to an instrument's RS-232 port via a USB-to-serial adapter. No GPIB adapter required. Prologix-specific settings are hidden automatically.
+
 ### Multi-Instrument Management
 - **Add/Remove instruments** with name, GPIB address, and meter type
-- **GPIB bus scan** to auto-detect connected instruments and identify types from ID strings
+- **GPIB bus scan** to auto-detect connected instruments and identify types from ID strings (GPIB mode only)
 - **Live instrument switching** - change the active instrument on-the-fly while connected
 - **Address verification** when adding instruments (queries the instrument for its ID)
 
@@ -62,47 +66,59 @@ The 3458A is one of the highest-precision digital multimeters ever produced, cap
 - **Persistent settings** saved to `chart_theme.json` and restored on startup
 
 ### Serial / GPIB Connection
-- Configurable serial port settings:
+- **Connection mode selector** - choose between Prologix GPIB and Direct Serial (RS-232) before connecting
+- Configurable serial port settings (shared by both modes):
   - COM port selection with refresh capability
   - Baud rate (9600 to 921600; default 115200)
   - Data bits (7 or 8; default 8)
   - Parity (None, Odd, Even, Mark, Space; default None)
   - Stop bits (One, OnePointFive, Two; default One)
   - Flow control / handshake (None, XOnXOff, RtsCts; default None)
-- Prologix GPIB-USB adapter settings:
+- Prologix GPIB-USB adapter settings (GPIB mode only, hidden in Direct Serial mode):
   - GPIB address (0-30; default 22)
   - EOS mode (CR+LF, CR, LF, None; default LF)
   - Auto Read after query (`++auto`; default enabled)
   - EOI assertion (`++eoi`; default enabled)
-- One-click "Defaults" button to restore recommended settings
+- One-click "Defaults" button to restore recommended settings (mode-aware)
 - Connection status indicator with color-coded label
-- Diagnostic command button for raw Prologix commands (`++ver`, etc.)
+- Diagnostic command button for raw commands
 - Response logging panel for all command/response interactions
 
 ## Hardware Requirements
 
 | Component | Details |
 |-----------|---------|
-| **Instruments** | Keysight 3458A, HP 34401A, HP 33120A (or any GPIB instrument) |
-| **GPIB Adapter** | Prologix GPIB-USB-HS Controller |
-| **Connection** | USB (host PC) to GPIB (instrument) via Prologix adapter |
+| **Instruments** | Keysight 3458A, HP 34401A, HP 33120A (or any SCPI/GPIB instrument) |
+| **GPIB Adapter** | Prologix GPIB-USB-HS Controller (for GPIB mode) |
+| **RS-232 Adapter** | Any USB-to-serial adapter (for Direct Serial mode) |
+| **Connection** | USB to GPIB via Prologix, or USB to RS-232 via serial adapter |
 | **Operating System** | Windows 10/11 (x64) |
 
 ## Default Connection Settings
 
-These defaults match the recommended configuration for a Prologix GPIB-USB-HS adapter:
+### Prologix GPIB Mode
 
 | Setting | Default Value |
 |---------|---------------|
-| Baud Rate | 115200 |
+| Baud Rate | 9600 |
+| Data Bits | 8 |
+| Parity | None |
+| Stop Bits | Two |
+| Flow Control | None |
+| GPIB Address | 22 |
+| EOS Mode | LF |
+| Auto Read | Disabled |
+| EOI | Enabled |
+
+### Direct Serial (RS-232) Mode
+
+| Setting | Default Value |
+|---------|---------------|
+| Baud Rate | 9600 |
 | Data Bits | 8 |
 | Parity | None |
 | Stop Bits | One |
 | Flow Control | None |
-| GPIB Address | 22 |
-| EOS Mode | LF |
-| Auto Read | Enabled |
-| EOI | Enabled |
 
 ## Project Structure
 
@@ -114,11 +130,11 @@ Multimeter_Controller/
 ├── Multi_Poll_Form.cs / .Designer      # Multi-instrument poller with subplots
 ├── Theme_Settings_Form.cs / .Designer  # Chart theme customization dialog
 ├── Chart_Theme.cs                     # Shared theme data + JSON persistence
-├── Command_Dictionary.cs             # Keysight 3458A command reference
-├── HP34401A_Command_Dictionary.cs    # HP 34401A command reference
-├── HP33120A_Command_Dictionary.cs    # HP 33120A command reference
+├── Command_Dictionary_Class.cs             # Keysight 3458A command reference
+├── HP_34401A_Command_Dictionary_Class.cs    # HP 34401A command reference
+├── HP_33120A_Command_Dictionary_Class.cs    # HP 33120A command reference
 ├── Dictionary_Form.cs / .Designer     # Searchable command dictionary dialog
-├── Prologix_Serial_Comm.cs           # Serial/GPIB communication layer
+├── Instrument_Comm.cs                # Serial/GPIB communication layer
 ├── Graph_Captures/                    # Recorded measurement data (CSV files)
 └── Properties/
     ├── AssemblyInfo.cs
@@ -128,7 +144,7 @@ Multimeter_Controller/
 
 ### Key Files
 
-- **Form1.cs** - Main application window. Manages the instrument list (add, remove, scan, switch), displays a quick-reference command list that updates per meter type, and provides the full connection settings panel for the Prologix adapter.
+- **Form1.cs** - Main application window. Manages the instrument list (add, remove, scan, switch), displays a quick-reference command list that updates per meter type, and provides the connection settings panel with mode selection (Prologix GPIB or Direct Serial).
 
 - **Voltage_Reader_Form.cs** - Single-instrument measurement window. Configures the instrument for a selected measurement function, takes readings in a loop, and plots results in real-time with four selectable graph styles. Supports recording to CSV and replaying saved data.
 
@@ -138,11 +154,11 @@ Multimeter_Controller/
 
 - **Theme_Settings_Form.cs** - Modal dialog for customizing chart colors. Presents clickable color swatches that open the system ColorDialog, with preset buttons for quick theme switching.
 
-- **Command_Dictionary.cs / HP34401A_Command_Dictionary.cs / HP33120A_Command_Dictionary.cs** - Static command references for each supported instrument type. Each entry includes syntax, parameter descriptions, query form, default value, and usage example.
+- **Command_Dictionary_Class.cs / HP_34401A_Command_Dictionary_Class.cs / HP_33120A_Command_Dictionary_Class.cs** - Static command references for each supported instrument type. Each entry includes syntax, parameter descriptions, query form, default value, and usage example.
 
 - **Dictionary_Form.cs** - Modal dialog presenting the full command dictionary in a DataGridView with real-time search filtering and category-based filtering.
 
-- **Prologix_Serial_Comm.cs** - Communication layer that manages the serial port connection and Prologix adapter configuration. Provides methods for sending Prologix `++` commands, instrument commands, and queries. Raises events for connection changes, errors, and received data.
+- **Instrument_Comm.cs** - Communication layer that manages the serial port connection in both Prologix GPIB and Direct Serial modes. In GPIB mode, handles Prologix `++` adapter commands, GPIB addressing, and bus scanning. In Direct Serial mode, communicates directly with the instrument over RS-232 (no Prologix commands). Raises events for connection changes, errors, and received data.
 
 ## Supported 3458A Command Categories
 

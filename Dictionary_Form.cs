@@ -20,7 +20,7 @@ namespace Multimeter_Controller
       Text = $"{Meter_Name} - Command Dictionary";
       Title_Label.Text = $"{Meter_Name} Command Dictionary";
 
-      _All_Commands = Command_Dictionary.Get_All_Commands ( Meter );
+      _All_Commands = Command_Dictionary_Class.Get_All_Commands ( Meter );
       _Filtered_Commands = new List<Command_Entry> ( _All_Commands );
       Populate_Category_Filter ( );
       Bind_Grid ( );
