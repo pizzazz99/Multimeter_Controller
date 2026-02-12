@@ -55,7 +55,7 @@ namespace Multimeter_Controller
 
     // Configurable Prologix settings (ignored in Direct_Serial mode)
     public int GPIB_Address { get; set; } = 22;
-    public bool Auto_Read { get; set; } = true;
+    public bool Auto_Read { get; set; } = false;
     public bool EOI_Enabled { get; set; } = true;
     public Prologix_Eos_Mode EOS_Mode { get; set; } = Prologix_Eos_Mode.LF;
 
@@ -204,9 +204,11 @@ namespace Multimeter_Controller
       Send_Prologix_Command ( "++mode 1" );
       Thread.Sleep ( 50 );
 
-      // Enable auto-read for continuous measurements
-      // (Prologix automatically reads when instrument has data)
-      Send_Prologix_Command ( "++auto 1" );
+      // Set auto-read from configuration
+      // auto 0: only read when we explicitly send ++read eoi
+      // auto 1: Prologix reads after every command (can cause
+      //         errors on commands like *CLS that have no response)
+      Send_Prologix_Command ( $"++auto {( Auto_Read ? 1 : 0 )}" );
       Thread.Sleep ( 50 );
 
       // Prevent Prologix from saving config to EEPROM
@@ -236,8 +238,8 @@ namespace Multimeter_Controller
       Send_Prologix_Command ( "++clr" );
       Thread.Sleep ( 100 );
 
-      // Confirm auto-read is enabled
-      Send_Prologix_Command ( "++auto 1" );
+      // Confirm auto-read setting
+      Send_Prologix_Command ( $"++auto {( Auto_Read ? 1 : 0 )}" );
       Thread.Sleep ( 50 );
     }
 
@@ -351,7 +353,6 @@ namespace Multimeter_Controller
       try
       {
         _Port.DiscardInBuffer ( );
-        _Port.NewLine = "\r\n";
         _Port.WriteLine ( Command );
 
       }
@@ -605,18 +606,39 @@ namespace Multimeter_Controller
       {
         Thread.Sleep ( Poll_Interval );
         Elapsed += Poll_Interval;
-        ;
         if ( Elapsed >= Timeout_Ms )
         {
           throw new TimeoutException ( "Timeout waiting for serial data." );
         }
       }
 
-      // read all available data
-      string Response = _Port.ReadExisting ( );
+      // wait for the complete response by reading until no new data arrives
+      StringBuilder Response_Builder = new StringBuilder ( );
+      while ( true )
+      {
+        string Chunk = _Port.ReadExisting ( );
+        if ( Chunk.Length > 0 )
+        {
+          Response_Builder.Append ( Chunk );
 
-      // remove trailing CR/LF or whitespace
-      Response = Response.Trim ( );
+          // check if we received a line terminator indicating end of response
+          if ( Chunk.Contains ( '\n' ) || Chunk.Contains ( '\r' ) )
+            break;
+        }
+
+        // wait briefly for more data to arrive
+        Thread.Sleep ( 50 );
+
+        // if no more data and we already have some, we're done
+        if ( _Port.BytesToRead == 0 && Response_Builder.Length > 0 )
+          break;
+
+        Elapsed += 50;
+        if ( Elapsed >= Timeout_Ms )
+          break;
+      }
+
+      string Response = Response_Builder.ToString ( ).Trim ( );
 
       Data_Received?.Invoke ( this, Response );
       return Response;
@@ -861,13 +883,12 @@ namespace Multimeter_Controller
         _Port.WriteLine ( Command );
         Thread.Sleep ( 50 );
 
-        if ( Mode == Connection_Mode.Direct_Serial )
+        if ( Mode == Connection_Mode.Prologix_GPIB )
         {
-          return _Port.ReadLine ( ).Trim ( );
+          _Port.WriteLine ( "++read eoi" );
         }
 
-        _Port.WriteLine ( "++read eoi" );
-        return _Port.ReadLine ( ).Trim ( );
+        return Read_Response ( Prologix_Read_Timeout_Ms );
       }
       catch ( TimeoutException )
       {

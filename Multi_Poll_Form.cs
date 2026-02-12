@@ -109,6 +109,14 @@ namespace Multimeter_Controller
       }
     }
 
+    private void Continuous_Check_Changed (
+      object Sender, EventArgs E )
+    {
+      bool Checked = Continuous_Check.Checked;
+      Cycles_Label.Enabled = !Checked;
+      Cycles_Numeric.Enabled = !Checked && !_Is_Running;
+    }
+
     private void Measurement_Combo_Changed (
       object Sender, EventArgs E )
     {
@@ -196,10 +204,13 @@ namespace Multimeter_Controller
       NPLC_Combo.Enabled = false;
       Measurement_Combo.Enabled = false;
       Continuous_Check.Enabled = false;
+      Cycles_Numeric.Enabled = false;
       Clear_Button.Enabled = false;
       Load_Button.Enabled = false;
 
       int Delay_Ms = (int) Delay_Numeric.Value;
+      bool Continuous = Continuous_Check.Checked;
+      int Total_Cycles = (int) Cycles_Numeric.Value;
       int Original_Address = _Comm.GPIB_Address;
       CancellationToken Token = _Cts.Token;
 
@@ -212,6 +223,12 @@ namespace Multimeter_Controller
 
       try
       {
+        // Suppress error dialogs during polling to prevent
+        // deadlock (MessageBox.Show via Invoke blocks when
+        // UI thread is awaiting Task.Run)
+        _Comm.Error_Occurred -= On_Poll_Error;
+        _Comm.Error_Occurred += On_Poll_Error;
+
         // Configure NPLC for all instruments
         Status_Label.Text = "Configuring NPLC...";
         Progress_Label.Text = "Setting integration time";
@@ -252,7 +269,13 @@ namespace Multimeter_Controller
         Status_Label.Text = "Polling...";
         Progress_Label.Text = "";
         await Task.Delay ( 300, Token );
-        while ( !Token.IsCancellationRequested )
+
+        // Track last address across cycles so we only
+        // switch when actually changing instruments
+        int Previous_Address = -1;
+
+        while ( !Token.IsCancellationRequested &&
+          ( Continuous || _Cycle_Count < Total_Cycles ) )
         {
           _Cycle_Count++;
           DateTime Cycle_Time = DateTime.Now;
@@ -266,36 +289,86 @@ namespace Multimeter_Controller
               $"Cycle {_Cycle_Count}: querying " +
               $"{S.Name} (GPIB {S.Address})";
 
-            await Task.Run ( ( ) =>
+            // Only change address and clear bus when
+            // switching to a different instrument
+            if ( S.Address != Previous_Address )
             {
-              _Comm.Change_GPIB_Address ( S.Address );
-            }, Token );
+              await Task.Run ( ( ) =>
+              {
+                _Comm.Change_GPIB_Address ( S.Address );
+              }, Token );
 
-            await Task.Delay ( 50, Token );
+              await Task.Delay ( 50, Token );
 
-            // Configure HP 34401A on first cycle
-            if ( !Configured [ I ] &&
-              S.Type == Meter_Type.HP_34401A )
-            {
-              string Config_Cmd =
-                Get_Config_Command_For_34401A ( Command );
-              if ( !string.IsNullOrEmpty ( Config_Cmd ) &&
-                !Config_Cmd.EndsWith ( "?" ) )
+              // Clear GPIB bus state when switching
+              // instruments to prevent stale data
+              if ( _Series.Count > 1 )
               {
                 await Task.Run ( ( ) =>
+                  _Comm.Send_Prologix_Command ( "++clr" ),
+                  Token );
+
+                await Task.Delay ( 100, Token );
+              }
+
+              Previous_Address = S.Address;
+            }
+
+            // Configure instrument on first cycle
+            if ( !Configured [ I ] )
+            {
+              if ( S.Type == Meter_Type.HP_34401A )
+              {
+                string Config_Cmd =
+                  Get_Config_Command_For_34401A ( Command );
+                if ( !string.IsNullOrEmpty ( Config_Cmd ) &&
+                  !Config_Cmd.EndsWith ( "?" ) )
+                {
+                  await Task.Run ( ( ) =>
+                    _Comm.Send_Instrument_Command (
+                      Config_Cmd ), Token );
+                  await Task.Delay ( 300, Token );
+                }
+              }
+              else
+              {
+                // 3458A: send measurement command once
+                // to configure, then just read on
+                // subsequent cycles
+                await Task.Run ( ( ) =>
                   _Comm.Send_Instrument_Command (
-                    Config_Cmd ), Token );
-                await Task.Delay ( 300, Token );
+                    Command ), Token );
+
+                // Allow the 3458A to complete its first
+                // measurement before attempting to read
+                await Task.Delay ( 500, Token );
               }
               Configured [ I ] = true;
             }
 
-            // Translate command for this instrument's type
+            // Read the measurement
+            string Response;
             string Inst_Command = Translate_Command_For_Instrument (
               Command, S.Type );
 
-            string Response = await Task.Run ( ( ) =>
-              _Comm.Query_Instrument ( Inst_Command ), Token );
+            if ( S.Type == Meter_Type.HP_34401A ||
+              Inst_Command.EndsWith ( "?" ) )
+            {
+              // 34401A needs READ? each cycle;
+              // query-mode commands (e.g. TEMP?) also
+              // need the command sent each time
+              Response = await Task.Run ( ( ) =>
+                _Comm.Query_Instrument ( Inst_Command, Token ),
+                Token );
+            }
+            else
+            {
+              // 3458A auto-triggers after initial config,
+              // so just read the next available measurement
+              Response = await Task.Run ( ( ) =>
+                _Comm.Read_Instrument ( Token ),
+                Token ) ?? "";
+            }
 
             Token.ThrowIfCancellationRequested ( );
 
@@ -309,10 +382,24 @@ namespace Multimeter_Controller
             }
           }
 
-          Cycle_Label.Text = $"Cycle {_Cycle_Count}";
+          if ( Continuous )
+          {
+            Cycle_Label.Text =
+              $"Cycle {_Cycle_Count}  (Continuous)";
+          }
+          else
+          {
+            Cycle_Label.Text =
+              $"Cycle {_Cycle_Count} of {Total_Cycles}";
+          }
           Chart_Panel.Invalidate ( );
 
-          await Task.Delay ( Delay_Ms, Token );
+          bool Has_More = Continuous ||
+            _Cycle_Count < Total_Cycles;
+          if ( Has_More )
+          {
+            await Task.Delay ( Delay_Ms, Token );
+          }
         }
       }
       catch ( OperationCanceledException )
@@ -339,6 +426,9 @@ namespace Multimeter_Controller
       }
       finally
       {
+        // Stop suppressing error dialogs
+        _Comm.Error_Occurred -= On_Poll_Error;
+
         // Restore original address
         try
         {
@@ -357,6 +447,23 @@ namespace Multimeter_Controller
       _Cts?.Cancel ( );
     }
 
+    // Swallow errors during polling so that Raise_Error
+    // does not deadlock by calling MessageBox via Invoke
+    // while the UI thread is awaiting Task.Run.
+    private void On_Poll_Error ( object? Sender, string Message )
+    {
+      // Log to Progress_Label instead of blocking with a dialog
+      if ( InvokeRequired )
+      {
+        BeginInvoke ( ( ) =>
+          Progress_Label.Text = $"Error: {Message}" );
+      }
+      else
+      {
+        Progress_Label.Text = $"Error: {Message}";
+      }
+    }
+
     private void Finish_Polling ( )
     {
       _Is_Running = false;
@@ -370,6 +477,7 @@ namespace Multimeter_Controller
       NPLC_Combo.Enabled = true;
       Measurement_Combo.Enabled = true;
       Continuous_Check.Enabled = true;
+      Cycles_Numeric.Enabled = !Continuous_Check.Checked;
       Clear_Button.Enabled = true;
       Load_Button.Enabled = true;
     }

@@ -36,11 +36,14 @@ namespace Multimeter_Controller
       Measurement_Label = new Label ( );
       NPLC_Label = new Label ( );
       NPLC_Combo = new ComboBox ( );
+      Cycles_Label = new Label ( );
+      Cycles_Numeric = new NumericUpDown ( );
       ( (System.ComponentModel.ISupportInitialize) Delay_Numeric ).BeginInit ( );
+      ( (System.ComponentModel.ISupportInitialize) Cycles_Numeric ).BeginInit ( );
       SuspendLayout ( );
-      // 
+      //
       // Title_Label
-      // 
+      //
       Title_Label.AutoSize = true;
       Title_Label.Font = new Font ( "Segoe UI", 12F, FontStyle.Bold );
       Title_Label.Location = new Point ( 12, 12 );
@@ -109,12 +112,36 @@ namespace Multimeter_Controller
       // Continuous_Check
       //
       Continuous_Check.AutoSize = true;
+      Continuous_Check.Checked = true;
+      Continuous_Check.CheckState = CheckState.Checked;
       Continuous_Check.Location = new Point ( 12, 78 );
       Continuous_Check.Name = "Continuous_Check";
       Continuous_Check.Size = new Size ( 115, 19 );
       Continuous_Check.TabIndex = 16;
       Continuous_Check.Text = "Continuous Poll";
       Continuous_Check.UseVisualStyleBackColor = true;
+      Continuous_Check.CheckedChanged += Continuous_Check_Changed;
+      //
+      // Cycles_Label
+      //
+      Cycles_Label.AutoSize = true;
+      Cycles_Label.Location = new Point ( 135, 80 );
+      Cycles_Label.Name = "Cycles_Label";
+      Cycles_Label.Size = new Size ( 44, 15 );
+      Cycles_Label.TabIndex = 19;
+      Cycles_Label.Text = "Cycles:";
+      Cycles_Label.Enabled = false;
+      //
+      // Cycles_Numeric
+      //
+      Cycles_Numeric.Location = new Point ( 185, 77 );
+      Cycles_Numeric.Maximum = new decimal ( new int [ ] { 100000, 0, 0, 0 } );
+      Cycles_Numeric.Minimum = new decimal ( new int [ ] { 1, 0, 0, 0 } );
+      Cycles_Numeric.Name = "Cycles_Numeric";
+      Cycles_Numeric.Size = new Size ( 70, 23 );
+      Cycles_Numeric.TabIndex = 20;
+      Cycles_Numeric.Value = new decimal ( new int [ ] { 10, 0, 0, 0 } );
+      Cycles_Numeric.Enabled = false;
       //
       // NPLC_Label
       //
@@ -138,7 +165,7 @@ namespace Multimeter_Controller
       //
       // Start_Stop_Button
       //
-      Start_Stop_Button.Location = new Point ( 145, 78 );
+      Start_Stop_Button.Location = new Point ( 265, 78 );
       Start_Stop_Button.Name = "Start_Stop_Button";
       Start_Stop_Button.Size = new Size ( 85, 28 );
       Start_Stop_Button.TabIndex = 5;
@@ -148,7 +175,7 @@ namespace Multimeter_Controller
       //
       // Clear_Button
       //
-      Clear_Button.Location = new Point ( 236, 78 );
+      Clear_Button.Location = new Point ( 356, 78 );
       Clear_Button.Name = "Clear_Button";
       Clear_Button.Size = new Size ( 65, 28 );
       Clear_Button.TabIndex = 6;
@@ -158,7 +185,7 @@ namespace Multimeter_Controller
       //
       // Record_Button
       //
-      Record_Button.Location = new Point ( 307, 78 );
+      Record_Button.Location = new Point ( 427, 78 );
       Record_Button.Name = "Record_Button";
       Record_Button.Size = new Size ( 85, 28 );
       Record_Button.TabIndex = 7;
@@ -168,7 +195,7 @@ namespace Multimeter_Controller
       //
       // Load_Button
       //
-      Load_Button.Location = new Point ( 398, 78 );
+      Load_Button.Location = new Point ( 518, 78 );
       Load_Button.Name = "Load_Button";
       Load_Button.Size = new Size ( 65, 28 );
       Load_Button.TabIndex = 8;
@@ -196,17 +223,17 @@ namespace Multimeter_Controller
       Status_Label.Size = new Size ( 28, 15 );
       Status_Label.TabIndex = 9;
       Status_Label.Text = "Idle";
-      // 
+      //
       // Progress_Label
-      // 
+      //
       Progress_Label.AutoSize = true;
       Progress_Label.Location = new Point ( 420, 85 );
       Progress_Label.Name = "Progress_Label";
       Progress_Label.Size = new Size ( 0, 15 );
       Progress_Label.TabIndex = 10;
-      // 
+      //
       // Cycle_Label
-      // 
+      //
       Cycle_Label.AutoSize = true;
       Cycle_Label.Font = new Font ( "Consolas", 10F, FontStyle.Bold );
       Cycle_Label.ForeColor = Color.DarkBlue;
@@ -214,9 +241,9 @@ namespace Multimeter_Controller
       Cycle_Label.Name = "Cycle_Label";
       Cycle_Label.Size = new Size ( 0, 17 );
       Cycle_Label.TabIndex = 11;
-      // 
+      //
       // Chart_Panel
-      // 
+      //
       Chart_Panel.Anchor =     AnchorStyles.Top  |  AnchorStyles.Bottom   |  AnchorStyles.Left   |  AnchorStyles.Right ;
       Chart_Panel.BackColor = Color.FromArgb (   24,   27,   31 );
       Chart_Panel.BorderStyle = BorderStyle.FixedSingle;
@@ -226,9 +253,9 @@ namespace Multimeter_Controller
       Chart_Panel.TabIndex = 12;
       Chart_Panel.Paint +=  Chart_Panel_Paint ;
       Chart_Panel.Resize +=  Chart_Panel_Resize ;
-      // 
+      //
       // Multi_Poll_Form
-      // 
+      //
       AutoScaleDimensions = new SizeF ( 7F, 15F );
       AutoScaleMode = AutoScaleMode.Font;
       ClientSize = new Size ( 884, 561 );
@@ -242,6 +269,8 @@ namespace Multimeter_Controller
       Controls.Add ( Measurement_Label );
       Controls.Add ( Measurement_Combo );
       Controls.Add ( Continuous_Check );
+      Controls.Add ( Cycles_Label );
+      Controls.Add ( Cycles_Numeric );
       Controls.Add ( Start_Stop_Button );
       Controls.Add ( Clear_Button );
       Controls.Add ( Record_Button );
@@ -256,6 +285,7 @@ namespace Multimeter_Controller
       StartPosition = FormStartPosition.CenterParent;
       Text = "Multi-Instrument Poller";
       ( (System.ComponentModel.ISupportInitialize) Delay_Numeric ).EndInit ( );
+      ( (System.ComponentModel.ISupportInitialize) Cycles_Numeric ).EndInit ( );
       ResumeLayout ( false );
       PerformLayout ( );
     }
@@ -272,6 +302,8 @@ namespace Multimeter_Controller
     private System.Windows.Forms.Label Measurement_Label;
     private System.Windows.Forms.ComboBox Measurement_Combo;
     private System.Windows.Forms.CheckBox Continuous_Check;
+    private System.Windows.Forms.Label Cycles_Label;
+    private System.Windows.Forms.NumericUpDown Cycles_Numeric;
     private System.Windows.Forms.Button Start_Stop_Button;
     private System.Windows.Forms.Button Clear_Button;
     private System.Windows.Forms.Button Record_Button;
