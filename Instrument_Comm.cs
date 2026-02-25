@@ -1,15 +1,18 @@
 using System.CodeDom;
 using System.Diagnostics;
 using System.IO.Ports;
-using System.Linq.Expressions;
+using System.Net.Sockets;
 using System.Text;
+using Trace_Execution_Namespace;
+using static Trace_Execution_Namespace.Trace_Execution;
 
 namespace Multimeter_Controller
 {
   public enum Connection_Mode
   {
+    Direct_Serial,
     Prologix_GPIB,
-    Direct_Serial
+    Prologix_Ethernet
   }
 
   public enum Prologix_Eos_Mode
@@ -35,17 +38,33 @@ namespace Multimeter_Controller
 
   public class Instrument_Comm : IDisposable
   {
-    private SerialPort? _Port;
-    private bool _Disposed;
 
-    // Connection mode
-    public Connection_Mode Mode
+    private readonly Application_Settings _Settings;
+
+    public Instrument_Comm ( Application_Settings Settings )
     {
-      get; set;
-    } =
-      Connection_Mode.Prologix_GPIB;
+      _Settings = Settings;
+    }
 
-    // Configurable serial settings
+
+
+
+    // =========================================================
+    // PRIVATE STATE
+    // =========================================================
+    private SerialPort? _Port;
+    private TcpClient? _Tcp_Client;
+    private NetworkStream? _Tcp_Stream;
+    private bool _Disposed;
+    private bool _Is_First_Connect = true;
+
+    // Add this property to Instrument_Comm:
+    public Meter_Type Connected_Meter { get; set; } = Meter_Type.HP34401A;
+
+    // =========================================================
+    // CONNECTION PROPERTIES
+    // =========================================================
+    public Connection_Mode Mode { get; set; } = Connection_Mode.Prologix_GPIB;
     public string Port_Name { get; set; } = "";
     public int Baud_Rate { get; set; } = 115200;
     public int Data_Bits { get; set; } = 8;
@@ -53,80 +72,70 @@ namespace Multimeter_Controller
     public StopBits Stop_Bits { get; set; } = StopBits.One;
     public Handshake Flow_Control { get; set; } = Handshake.None;
 
-    // Configurable Prologix settings (ignored in Direct_Serial mode)
+    public int Instrument_Settle_Ms { get; set; } = 200;
+    public int Prologix_Fetch_Ms { get; set; } = 1000;
+
+    // Ethernet-specific
+    public string Ethernet_Host { get; set; } = "192.168.1.100";
+    public int Ethernet_Port { get; set; } = 1234;  // Prologix default
+
+    // GPIB settings
     public int GPIB_Address { get; set; } = 22;
     public bool Auto_Read { get; set; } = false;
-    public bool EOI_Enabled { get; set; } = true;
+    public bool EOI_Enabled { get; set; } = false;  // off by default
     public Prologix_Eos_Mode EOS_Mode { get; set; } = Prologix_Eos_Mode.LF;
 
-    // Configurable timeouts
-    // Read timeout increased to 15s to support NPLC=100
-    // (NPLC=100 takes ~3-6 seconds per measurement)
+    // Timeouts
     public int Read_Timeout_Ms { get; set; } = 15000;
-    public int Write_Timeout_Ms { get; set; } = 5000; // 5s - allows for slow instruments
+    public int Write_Timeout_Ms { get; set; } = 5000;
     public int Prologix_Read_Timeout_Ms { get; set; } = 3000;
 
-    public bool Is_Connected => _Port?.IsOpen == true;
+    public bool Is_Connected =>
+        Mode == Connection_Mode.Prologix_Ethernet
+            ? _Tcp_Client?.Connected == true
+            : _Port?.IsOpen == true;
 
+    // =========================================================
+    // EVENTS
+    // =========================================================
     public event EventHandler<string>? Data_Received;
     public event EventHandler<string>? Error_Occurred;
     public event EventHandler<bool>? Connection_Changed;
 
-    public static string [ ] Get_Available_Ports ( )
-    {
-      return SerialPort.GetPortNames ( );
-    }
+    // =========================================================
+    // STATIC HELPERS
+    // =========================================================
+    public static string [ ] Get_Available_Ports ( ) => SerialPort.GetPortNames ( );
+    public static int [ ] Get_Available_Baud_Rates ( ) =>
+        new [ ] { 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600 };
+    public static int [ ] Get_Available_Data_Bits ( ) => new [ ] { 7, 8 };
 
-    public static int [ ] Get_Available_Baud_Rates ( )
-    {
-      return new int [ ]
-      {
-        9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600
-      };
-    }
-
-    public static int [ ] Get_Available_Data_Bits ( )
-    {
-      return new int [ ] { 7, 8 };
-    }
-
+    // =========================================================
+    // CONNECT / DISCONNECT
+    // =========================================================
     public void Connect ( )
     {
-      if ( Is_Connected )
-      {
-        Disconnect ( );
-      }
+      using var Block = Trace_Block.Start_If_Enabled ( );
 
-      if ( string.IsNullOrEmpty ( Port_Name ) )
-      {
-        Raise_Error ( "No COM port selected." );
-        return;
-      }
+      if ( Is_Connected )
+        Disconnect ( );
 
       try
       {
-        _Port = new SerialPort
+        switch ( Mode )
         {
-          PortName = Port_Name,
-          BaudRate = Baud_Rate,
-          DataBits = Data_Bits,
-          Parity = Parity,
-          StopBits = Stop_Bits,
-          Handshake = Flow_Control,
-          ReadTimeout = Read_Timeout_Ms,
-          WriteTimeout = Write_Timeout_Ms,
-          NewLine = "\n",
-          DtrEnable = true,
-          RtsEnable = true
-        };
+          case Connection_Mode.Prologix_Ethernet:
+            Connect_Ethernet ( );
+            break;
 
-        _Port.Open ( );
-        Thread.Sleep ( 200 );
+          case Connection_Mode.Direct_Serial:
+          case Connection_Mode.Prologix_GPIB:
+            Connect_Serial ( );
+            break;
+        }
 
-        _Port.DiscardInBuffer ( );
-        _Port.DiscardOutBuffer ( );
-
-        if ( Mode == Connection_Mode.Prologix_GPIB )
+        if ( Mode == Connection_Mode.Prologix_GPIB ||
+            Mode == Connection_Mode.Prologix_Ethernet )
         {
           Configure_Prologix ( );
         }
@@ -136,265 +145,343 @@ namespace Multimeter_Controller
       catch ( Exception Ex )
       {
         Raise_Error ( $"Connection failed: {Ex.Message}" );
-        _Port?.Dispose ( );
-        _Port = null;
+        Cleanup_Connections ( );
       }
+    }
+
+    public void Discard_Input_Buffer ( )
+    {
+      if ( _Port == null || !_Port.IsOpen )
+        return;
+      _Port.DiscardInBuffer ( );
+    }
+
+
+    public void Flush_Buffers ( )
+    {
+      if ( Mode == Connection_Mode.Prologix_Ethernet )
+      {
+        // No buffer to flush on TCP - just drain any pending data
+        if ( _Tcp_Stream?.DataAvailable == true )
+        {
+          byte [ ] Drain = new byte [ 1024 ];
+          while ( _Tcp_Stream.DataAvailable )
+            _Tcp_Stream.Read ( Drain, 0, Drain.Length );
+        }
+        return;
+      }
+      _Port?.DiscardInBuffer ( );
+      _Port?.DiscardOutBuffer ( );
+    }
+
+
+
+    private void Connect_Serial ( )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
+      if ( string.IsNullOrEmpty ( Port_Name ) )
+      {
+        Raise_Error ( "No COM port selected." );
+        return;
+      }
+
+      _Port = new SerialPort
+      {
+        PortName = Port_Name,
+        BaudRate = Baud_Rate,
+        DataBits = Data_Bits,
+        Parity = Parity,
+        StopBits = Stop_Bits,
+        Handshake = Flow_Control,
+        ReadTimeout = Read_Timeout_Ms,
+        WriteTimeout = Write_Timeout_Ms,
+        NewLine = "\n",
+        DtrEnable = true,
+        RtsEnable = true
+      };
+
+      _Port.Open ( );
+      Thread.Sleep ( 200 );
+      _Port.DiscardInBuffer ( );
+      _Port.DiscardOutBuffer ( );
+    }
+
+    private void Connect_Ethernet ( )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
+      Capture_Trace.Write ( $"Connecting to Prologix at {Ethernet_Host}:{Ethernet_Port}" );
+
+      _Tcp_Client = new TcpClient ( );
+      _Tcp_Client.Connect ( Ethernet_Host, Ethernet_Port );
+      _Tcp_Client.ReceiveTimeout = Read_Timeout_Ms;
+      _Tcp_Client.SendTimeout = Write_Timeout_Ms;
+      _Tcp_Stream = _Tcp_Client.GetStream ( );
+      Thread.Sleep ( 200 );
     }
 
     public void Disconnect ( )
     {
-      if ( _Port == null )
-      {
-        return;
-      }
+      using var Block = Trace_Block.Start_If_Enabled ( );
 
       try
       {
-        if ( _Port.IsOpen )
+        if ( _Port?.IsOpen == true )
         {
-          // Forcefully clear any pending operations
           try
           {
             _Port.DiscardInBuffer ( );
+          }
+          catch { }
+          try
+          {
             _Port.DiscardOutBuffer ( );
           }
-          catch { /* Ignore errors during cleanup */ }
-
-          // Disable control lines to release the port
+          catch { }
           try
           {
             _Port.DtrEnable = false;
+          }
+          catch { }
+          try
+          {
             _Port.RtsEnable = false;
           }
-          catch { /* Ignore errors during cleanup */ }
-
-          // Close the base stream first (more forceful)
+          catch { }
           try
           {
             _Port.BaseStream?.Close ( );
           }
-          catch { /* Ignore errors during cleanup */ }
-
-          // Then close the port
+          catch { }
           _Port.Close ( );
         }
+
+        _Tcp_Stream?.Close ( );
+        _Tcp_Client?.Close ( );
       }
       catch ( Exception Ex )
       {
-        // Log but don't fail - we're disconnecting anyway
         Raise_Error ( $"Disconnect warning: {Ex.Message}" );
       }
       finally
       {
-        // Always dispose and clear reference
-        try
-        {
-          _Port.Dispose ( );
-        }
-        catch { /* Force cleanup even if dispose fails */ }
-
-        _Port = null;
+        Cleanup_Connections ( );
         Connection_Changed?.Invoke ( this, false );
       }
     }
 
+    private void Cleanup_Connections ( )
+    {
+      try
+      {
+        _Port?.Dispose ( );
+      }
+      catch { }
+      try
+      {
+        _Tcp_Stream?.Dispose ( );
+      }
+      catch { }
+      try
+      {
+        _Tcp_Client?.Dispose ( );
+      }
+      catch { }
+      _Port = null;
+      _Tcp_Stream = null;
+      _Tcp_Client = null;
+    }
+
+    // =========================================================
+    // PROLOGIX CONFIGURATION
+    // =========================================================
     private void Configure_Prologix ( )
     {
-      // Set controller mode first
-      Send_Prologix_Command ( "++mode 1" );
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
+      // Always send these - safe to repeat, critical for correct operation
+      Raw_Write ( "++mode 1" );
+      Thread.Sleep ( 50 );
+      Raw_Write ( $"++auto {( _Settings.Prologix_Auto_Read ? 1 : 0 )}" );
+      Thread.Sleep ( 50 );
+      Raw_Write ( $"++addr {GPIB_Address}" );
+      Thread.Sleep ( 50 );
+      Raw_Write ( $"++read_tmo_ms {_Settings.Prologix_Read_Tmo_Ms}" );
+      Thread.Sleep ( 50 );
+      Raw_Write ( $"++eos {(int) EOS_Mode}" );
       Thread.Sleep ( 50 );
 
-      // Set auto-read from configuration
-      // auto 0: only read when we explicitly send ++read eoi
-      // auto 1: Prologix reads after every command (can cause
-      //         errors on commands like *CLS that have no response)
-      Send_Prologix_Command ( $"++auto {( Auto_Read ? 1 : 0 )}" );
-      Thread.Sleep ( 50 );
 
-      // Prevent Prologix from saving config to EEPROM
-      // so stale settings don't cause issues on next connect
-      Send_Prologix_Command ( "++savecfg 0" );
-      Thread.Sleep ( 50 );
+      
+     
 
-      // Reset the GPIB bus to a known state
-      Send_Prologix_Command ( "++ifc" );
-      Thread.Sleep ( 100 );
 
-      // Set GPIB address
-      Send_Prologix_Command ( $"++addr {GPIB_Address}" );
-      Thread.Sleep ( 50 );
+      Capture_Trace.Write ( "Prologix basic config sent" );
 
-      // Set EOI assertion
-      Send_Prologix_Command (
-        $"++eoi {( EOI_Enabled ? 1 : 0 )}" );
-      Thread.Sleep ( 50 );
+      // Only do bus reset on first connect, not on address changes
+      if ( _Is_First_Connect )
+      {
+        Raw_Write ( "++ifc" );
+        Thread.Sleep ( 100 );
+        Raw_Write ( "++savecfg 0" );
+        Thread.Sleep ( 50 );
+        _Is_First_Connect = false;
 
-      // Set EOS mode (line terminator for GPIB)
-      Send_Prologix_Command (
-        $"++eos {(int) EOS_Mode}" );
-      Thread.Sleep ( 50 );
-
-      // Send device clear to the addressed instrument
-      Send_Prologix_Command ( "++clr" );
-      Thread.Sleep ( 100 );
-
-      // Confirm auto-read setting
-      Send_Prologix_Command ( $"++auto {( Auto_Read ? 1 : 0 )}" );
-      Thread.Sleep ( 50 );
+        Capture_Trace.Write ( "Prologix first-connect reset done" );
+      }
     }
 
+
+
+    // =========================================================
+    // LOW-LEVEL WRITE  (works for both serial and ethernet)
+    // =========================================================
+    private void Raw_Write ( string Command )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
+      Capture_Trace.Write ( $"{Command}" );
+
+      byte [ ] Bytes = Encoding.ASCII.GetBytes ( Command + "\r\n" );
+
+      if ( Mode == Connection_Mode.Prologix_Ethernet )
+      {
+        if ( _Tcp_Stream == null )
+          throw new InvalidOperationException ( "Not connected." );
+        _Tcp_Stream.Write ( Bytes, 0, Bytes.Length );
+        _Tcp_Stream.Flush ( );
+      }
+      else
+      {
+        if ( _Port == null || !_Port.IsOpen )
+          throw new InvalidOperationException ( "Not connected." );
+        _Port.Write ( Bytes, 0, Bytes.Length );
+      }
+    }
+
+    // =========================================================
+    // PUBLIC SEND METHODS
+    // =========================================================
     public void Send_Prologix_Command ( string Command )
     {
+      using var Block = Trace_Block.Start_If_Enabled ( );
       if ( Mode == Connection_Mode.Direct_Serial )
-      {
         return;
-      }
-
-      if ( _Port == null || !_Port.IsOpen )
-      {
-        throw new InvalidOperationException ( "Not connected." );
-      }
-
-      try
-      {
-        _Port.WriteLine ( Command );
-      }
-      catch ( TimeoutException )
-      {
-        // Let caller handle timeout
-        throw;
-      }
-      catch ( Exception Ex )
-      {
-        throw;
-      }
+      Raw_Write_Prologix ( Command );
     }
 
-    // Check if instrument has data ready using serial poll
-    // Returns true if MAV (Message Available) bit is set
-    // Note: May return false if instrument is in talk mode
-    public bool Is_Data_Available ( )
+    public void Raw_Write_Prologix ( string Command )
     {
-      if ( _Port == null || !_Port.IsOpen )
-      {
-        return false;
-      }
-
-      try
-      {
-        _Port.DiscardInBuffer ( );
-
-        if ( Mode == Connection_Mode.Prologix_GPIB )
-        {
-          // Use Prologix serial poll command
-          _Port.WriteLine ( "++spoll" );
-        }
-        else
-        {
-          // Direct RS-232: Query instrument status byte
-          _Port.WriteLine ( "*STB?" );
-        }
-
-        // Wait briefly for response (reduced for responsiveness)
-        Thread.Sleep ( 50 );
-
-        if ( _Port.BytesToRead > 0 )
-        {
-          string Response = _Port.ReadLine ( ).Trim ( );
-
-          if ( int.TryParse ( Response, out int Status_Byte ) )
-          {
-            // Bit 4 (value 16) is MAV (Message Available)
-            bool MAV = ( Status_Byte & 0x10 ) != 0;
-            return MAV;
-          }
-        }
-
-        return false;
-      }
-      catch ( TimeoutException )
-      {
-        // Timeout likely means instrument is in talk mode
-        // Return true to trigger a read attempt
-        return true;
-      }
-      catch ( Exception Ex )
-      {
-        Raise_Error ( $"Status poll failed: {Ex.Message}" );
-        return false;
-      }
+      using var Block = Trace_Block.Start_If_Enabled ( );
+      byte [ ] Bytes = Encoding.ASCII.GetBytes ( Command + "\r\n" );
+      Write_Bytes ( Bytes );
     }
-
-
-
-
-
-
 
     public void Send_Instrument_Command ( string Command )
     {
-      if ( _Port == null || !_Port.IsOpen )
-        throw new InvalidOperationException ( "Not connected." );
-
-      // Build the exact string that will be sent
-      string New_Line = _Port.NewLine ?? "";
-      string Full_Command = Command + New_Line;
-
-      // Debug display with escaped control chars
-      string Visible = Full_Command
-        .Replace ( "\r", "\\r" )
-        .Replace ( "\n", "\\n" );
-
-      // Debug.WriteLine ( $"TX [{Visible}]" );
+      using var Block = Trace_Block.Start_If_Enabled ( );
+      Raw_Write_Instrument ( Command.Trim ( ), Connected_Meter );
+    }
 
 
-      Command = Command.Trim ( );
+   
 
-      try
+    private void Raw_Write_Instrument ( string Command, Meter_Type Meter )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
+      // 3458A wants LF only, others want CR+LF
+      string Terminator = Meter == Meter_Type.HP3458A ? "\n" : "\r\n";
+
+      Capture_Trace.Write ( $"Command        : [{Command}]" );
+      Capture_Trace.Write ( $"terminator hex : [{BitConverter.ToString ( Encoding.ASCII.GetBytes ( Terminator ) )}]" );
+      Capture_Trace.Write ( $"Meter          : [{Meter}]" );
+
+
+      byte [ ] Bytes = Encoding.ASCII.GetBytes ( Command + Terminator );
+      Write_Bytes ( Bytes );
+    }
+
+    private void Write_Bytes ( byte [ ] Bytes )
+    {
+      if ( Mode == Connection_Mode.Prologix_Ethernet )
       {
-        _Port.DiscardInBuffer ( );
-        _Port.WriteLine ( Command );
-
+        if ( _Tcp_Stream == null )
+          throw new InvalidOperationException ( "Not connected." );
+        _Tcp_Stream.Write ( Bytes, 0, Bytes.Length );
+        _Tcp_Stream.Flush ( );
       }
-      catch ( TimeoutException )
+      else
       {
-        throw;
+        if ( _Port == null || !_Port.IsOpen )
+          throw new InvalidOperationException ( "Not connected." );
+        _Port.Write ( Bytes, 0, Bytes.Length );
       }
     }
 
-    public string Query_Instrument ( string Command )
+
+
+
+
+
+
+
+
+
+
+    // =========================================================
+    // QUERY  overloads
+    // =========================================================
+   
+    public string Query_Instrument ( string Command ) =>
+    Query_Instrument ( Command, Instrument_Settle_Ms, CancellationToken.None );
+
+    
+    public string Query_Instrument ( string Command, CancellationToken Token ) =>
+        Query_Instrument ( Command, Instrument_Settle_Ms, Token );
+
+
+    public string Query_Instrument ( string Command, int Settle_Ms, CancellationToken Token )
     {
-      return Query_Instrument ( Command,
-        CancellationToken.None );
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
+      Capture_Trace.Write ( $"Query Command        : [{Command}]" );
+      Capture_Trace.Write ( $"Instrument Settle Ms : [{Instrument_Settle_Ms}]" );
+      Capture_Trace.Write ( $"Prologic Fetch MS    : [{Prologix_Fetch_Ms}]" );
+
+
+      Send_Instrument_Command ( Command );
+      Thread.Sleep ( Settle_Ms );
+
+      Raw_Write_Prologix ( "++read eoi" );
+      Thread.Sleep ( Prologix_Fetch_Ms );
+
+      return Read_Instrument ( Token ) ?? "";
+
+
+      
     }
 
-    public string Query_Instrument ( string Command,
-      CancellationToken Token )
+    public string old_Query_Instrument ( string Command, CancellationToken Token )
     {
-      if ( _Port == null || !_Port.IsOpen )
-      {
-        Raise_Error ( "Not connected." );
-        return "";
-      }
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
+      Capture_Trace.Write ( $"Command : [{Command}]" );
+      Capture_Trace.Write ( $"hex     : [{BitConverter.ToString ( Encoding.ASCII.GetBytes ( Command ) )}]" );
 
       try
       {
-
-        // Debug.WriteLine ( $"Querying: {Command}" );
-        // Send the query
         Send_Instrument_Command ( Command );
-
-        // Use Read_Instrument with cancellation support
-        return Read_Instrument ( Token );
+        Thread.Sleep ( Instrument_Settle_Ms );
+        Raw_Write_Prologix ( "++read eoi" );
+        Thread.Sleep ( Prologix_Fetch_Ms );
+        return Read_Instrument ( Token ) ?? "";
       }
-      catch ( OperationCanceledException )
-      {
-        throw; // Propagate cancellation
-      }
+      catch ( OperationCanceledException ) { throw; }
       catch ( TimeoutException )
       {
-        Raise_Error (
-          $"Timeout waiting for response to: {Command}" );
+        Raise_Error ( $"Timeout waiting for response to: {Command}" );
         return "";
       }
       catch ( Exception Ex )
@@ -404,185 +491,20 @@ namespace Multimeter_Controller
       }
     }
 
-    public string Verify_GPIB_Address ( int Address )
-    {
-      if ( Mode == Connection_Mode.Direct_Serial )
-      {
-        // In direct serial mode, just query the instrument
-        return Query_Instrument ( "*IDN?" );
-      }
-
-      if ( _Port == null || !_Port.IsOpen )
-      {
-        return "";
-      }
-
-      int Original_Address = GPIB_Address;
-      int Original_Timeout = _Port.ReadTimeout;
-      bool Original_Auto = Auto_Read;
-
-      try
-      {
-        _Port.ReadTimeout = Prologix_Read_Timeout_Ms;
-
-        // Disable auto-read for manual query
-        _Port.WriteLine ( "++auto 0" );
-        Thread.Sleep ( 50 );
-
-        // Switch to the target address
-        _Port.WriteLine ( $"++addr {Address}" );
-        Thread.Sleep ( 50 );
-
-        // Try *IDN? first (SCPI standard)
-        string Response = Try_Query ( "*IDN?" );
-
-        // If no SCPI response, try ID? (older HP format)
-        if ( string.IsNullOrEmpty ( Response ) )
-        {
-          Response = Try_Query ( "ID?" );
-        }
-
-        return Response;
-      }
-      catch ( Exception )
-      {
-        return "";
-      }
-      finally
-      {
-        // Restore original settings
-        _Port.ReadTimeout = Original_Timeout;
-
-        _Port.WriteLine ( $"++addr {Original_Address}" );
-        Thread.Sleep ( 50 );
-
-        _Port.WriteLine (
-          $"++auto {( Original_Auto ? 1 : 0 )}" );
-        Thread.Sleep ( 50 );
-
-        GPIB_Address = Original_Address;
-      }
-    }
-
-    public void Change_GPIB_Address ( int New_Address )
-    {
-      if ( Mode == Connection_Mode.Direct_Serial )
-      {
-        return;
-      }
-
-      if ( New_Address < 0 || New_Address > 30 )
-      {
-        Raise_Error (
-          "GPIB address must be 0-30." );
-        return;
-      }
-
-      GPIB_Address = New_Address;
-
-      if ( Is_Connected )
-      {
-        Send_Prologix_Command ( $"++addr {GPIB_Address}" );
-        Thread.Sleep ( 50 );
-      }
-    }
-
+    // =========================================================
+    // READ
+    // =========================================================
     public string? Read_Instrument ( CancellationToken Token = default )
     {
-      if ( _Port == null || !_Port.IsOpen )
-      {
-        Raise_Error ( "Not connected." );
-        return "";
-      }
+      using var Block = Trace_Block.Start_If_Enabled ( );
 
       try
       {
-
-
-        if ( Mode == Connection_Mode.Prologix_GPIB )
-        {
-          // GPIB: Send ++read eoi
-          bool Read_Sent = false;
-          int Retry_Count = 0;
-          const int Max_Retries = 3;
-
-          while ( !Read_Sent && Retry_Count < Max_Retries )
-          {
-            Token.ThrowIfCancellationRequested ( );
-
-            try
-            {
-              _Port.WriteLine ( "++read eoi" );
-              Read_Sent = true;
-            }
-            catch ( TimeoutException )
-            {
-              Retry_Count++;
-              if ( Retry_Count < Max_Retries )
-                Thread.Sleep ( 100 );
-            }
-          }
-
-          if ( !Read_Sent && _Port.BytesToRead == 0 )
-          {
-            Raise_Error ( "Failed to send ++read eoi after retries." );
-            return "";
-          }
-
-          // Wait for response
-          int Buffer_Wait = 0;
-          while ( _Port.BytesToRead == 0 )
-          {
-            Token.ThrowIfCancellationRequested ( );
-            Thread.Sleep ( 10 );
-            Buffer_Wait += 10;
-            if ( Buffer_Wait >= Read_Timeout_Ms )
-            {
-              Raise_Error ( "Timeout waiting for GPIB buffer." );
-              return "";
-            }
-          }
-
-          // Read whatever is in the buffer
-          return Read_Response ( );
-        }
-        else
-        {
-          // RS-232 branch
-          int Elapsed = 0;
-          while ( _Port.BytesToRead == 0 )
-          {
-            Token.ThrowIfCancellationRequested ( );
-            Thread.Sleep ( 20 );
-            Elapsed += 20;
-            if ( Elapsed >= Read_Timeout_Ms )
-            {
-              Raise_Error ( "Timeout waiting for RS-232 response." );
-              return "";
-            }
-          }
-
-          Thread.Sleep ( 100 ); // allow remaining bytes
-          try
-          {
-            return Read_Response ( );
-          }
-          catch ( TimeoutException Tex )
-          {
-            Console.WriteLine ( $"Serial timeout: {Tex.Message}" );
-            return null;
-          }
-          catch ( Exception Ex )
-          {
-            Console.WriteLine ( $"Serial read error: {Ex.Message}" );
-            return null;
-          }
-        }
+        return Mode == Connection_Mode.Prologix_Ethernet
+            ? Read_Ethernet ( Token )
+            : Read_Serial ( Token );
       }
-      catch ( OperationCanceledException )
-      {
-        throw;
-      }
+      catch ( OperationCanceledException ) { throw; }
       catch ( Exception Ex )
       {
         Raise_Error ( $"Read failed: {Ex.Message}" );
@@ -590,226 +512,236 @@ namespace Multimeter_Controller
       }
     }
 
-
-
-
-    public string Read_Response ( int Timeout_Ms = 2000 )
+    private string Read_Serial ( CancellationToken Token )
     {
+
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
       if ( _Port == null || !_Port.IsOpen )
-        throw new InvalidOperationException ( "Port not open." );
+      {
+        Raise_Error ( "Not connected." );
+        return "";
+      }
+
+      Capture_Trace.Write ( $"BytesToRead on entry: {_Port.BytesToRead}" );
 
       int Elapsed = 0;
-      int Poll_Interval = 20;
-
-      // wait for at least 1 byte
       while ( _Port.BytesToRead == 0 )
       {
-        Thread.Sleep ( Poll_Interval );
-        Elapsed += Poll_Interval;
-        if ( Elapsed >= Timeout_Ms )
+        Token.ThrowIfCancellationRequested ( );
+        Thread.Sleep ( 10 );
+        Elapsed += 10;
+        if ( Elapsed >= Read_Timeout_Ms )
         {
-          throw new TimeoutException ( "Timeout waiting for serial data." );
+          Raise_Error ( $"Timeout waiting for response after {Elapsed}ms." );
+          return "";
         }
       }
 
-      // wait for the complete response by reading until no new data arrives
-      StringBuilder Response_Builder = new StringBuilder ( );
+      Capture_Trace.Write ( $"Got {_Port.BytesToRead} bytes after {Elapsed}ms" );
+      return Read_Response_Serial ( );
+    }
+
+    private string Read_Ethernet ( CancellationToken Token )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
+      if ( _Tcp_Stream == null )
+      {
+        Raise_Error ( "Not connected." );
+        return "";
+      }
+
+      var Buffer = new StringBuilder ( );
+      byte [ ] Byte_Buf = new byte [ 1024 ];
+      int Elapsed = 0;
+
       while ( true )
       {
-        string Chunk = _Port.ReadExisting ( );
-        if ( Chunk.Length > 0 )
-        {
-          Response_Builder.Append ( Chunk );
+        Token.ThrowIfCancellationRequested ( );
 
-          // check if we received a line terminator indicating end of response
+        if ( _Tcp_Stream.DataAvailable )
+        {
+          int Count = _Tcp_Stream.Read ( Byte_Buf, 0, Byte_Buf.Length );
+          string Chunk = Encoding.ASCII.GetString ( Byte_Buf, 0, Count );
+          Buffer.Append ( Chunk );
+
           if ( Chunk.Contains ( '\n' ) || Chunk.Contains ( '\r' ) )
             break;
         }
+        else
+        {
+          if ( Buffer.Length > 0 )
+            break;  // got data, no more arriving
 
-        // wait briefly for more data to arrive
-        Thread.Sleep ( 50 );
-
-        // if no more data and we already have some, we're done
-        if ( _Port.BytesToRead == 0 && Response_Builder.Length > 0 )
-          break;
-
-        Elapsed += 50;
-        if ( Elapsed >= Timeout_Ms )
-          break;
+          Thread.Sleep ( 10 );
+          Elapsed += 10;
+          if ( Elapsed >= Read_Timeout_Ms )
+          {
+            Raise_Error ( "Timeout waiting for Ethernet response." );
+            return "";
+          }
+        }
       }
 
-      string Response = Response_Builder.ToString ( ).Trim ( );
+      string Response = Buffer.ToString ( ).Trim ( );
+      Data_Received?.Invoke ( this, Response );
+      return Response;
+    }
 
+    private string Read_Response_Serial ( )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
+      if ( _Port == null || !_Port.IsOpen )
+        throw new InvalidOperationException ( "Port not open." );
+
+      var Buffer = new StringBuilder ( );
+      int Elapsed = 0;
+
+      while ( Elapsed < Read_Timeout_Ms )
+      {
+        if ( _Port.BytesToRead > 0 )
+        {
+          Buffer.Append ( _Port.ReadExisting ( ) );
+          // Check for terminator
+          if ( Buffer.ToString ( ).Contains ( '\n' ) )
+            break;
+          // Reset elapsed when data arrives - keep waiting for more
+          Elapsed = 0;
+        }
+        else
+        {
+          Thread.Sleep ( 10 );
+          Elapsed += 10;
+          // If we have data and nothing arrived for 50ms, response is complete
+          if ( Buffer.Length > 0 && Elapsed >= 50 )
+            break;
+        }
+      }
+
+      string Response = Buffer.ToString ( ).Trim ( );
+      //  if ( Response.Length <= 2 )
+      //    Capture_Trace.Write ( $"Read_Response_Serial - Short: [{Response}] " +
+      //        $"hex:[{BitConverter.ToString ( Encoding.ASCII.GetBytes ( Response ) )}]" );
       Data_Received?.Invoke ( this, Response );
       return Response;
     }
 
 
 
+    // =========================================================
+    // UTILITY
+    // =========================================================
+    public void Change_GPIB_Address ( int New_Address )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
 
+      if ( Mode == Connection_Mode.Direct_Serial )
+        return;
+
+      if ( New_Address < 0 || New_Address > 30 )
+      {
+        Raise_Error ( "GPIB address must be 0-30." );
+        return;
+      }
+
+      GPIB_Address = New_Address;
+      if ( Is_Connected )
+      {
+        Send_Prologix_Command ( $"++addr {GPIB_Address}" );
+        Thread.Sleep ( 50 );
+      }
+    }
 
     public string Query_Prologix_Version ( )
     {
-      if ( Mode == Connection_Mode.Direct_Serial )
-      {
-        return "[Direct Serial - no Prologix adapter]";
-      }
+      using var Block = Trace_Block.Start_If_Enabled ( );
 
-      if ( _Port == null || !_Port.IsOpen )
-      {
+      if ( Mode == Connection_Mode.Direct_Serial )
+        return "[Direct Serial - no Prologix adapter]";
+
+      if ( !Is_Connected )
         return "";
-      }
 
       try
       {
-        _Port.DiscardInBuffer ( );
-        _Port.WriteLine ( "++ver" );
-        return _Port.ReadLine ( ).Trim ( );
+        Raw_Write ( "++ver" );
+        Thread.Sleep ( 100 );
+        return Mode == Connection_Mode.Prologix_Ethernet
+            ? Read_Ethernet ( CancellationToken.None )
+            : Read_Response_Serial ( );
       }
-      catch
-      {
-        return "";
-      }
+      catch { return ""; }
     }
 
-    public string Raw_Diagnostic ( string Command )
+    public bool Is_Data_Available ( )
     {
-      if ( _Port == null || !_Port.IsOpen )
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
+      if ( !Is_Connected )
+        return false;
+
+      try
       {
-        return "[Port not open]";
+        Raw_Write ( "++spoll" );
+        Thread.Sleep ( 50 );
+
+        string Response = Mode == Connection_Mode.Prologix_Ethernet
+            ? Read_Ethernet ( CancellationToken.None )
+            : Read_Response_Serial ( );
+
+        if ( int.TryParse ( Response, out int Status_Byte ) )
+          return ( Status_Byte & 0x10 ) != 0;  // MAV bit
+
+        return false;
       }
-
-      var Result = new System.Text.StringBuilder ( );
-
-      Result.AppendLine ( "" );
-      Result.AppendLine ( "" );
-      Result.AppendLine ( $"  Mode      -> {Mode}" );
-      Result.AppendLine ( $"  Port      -> {_Port.PortName}" );
-      Result.AppendLine ( $"  Baud Rate -> {_Port.BaudRate}" );
-      Result.AppendLine ( $"  DTR       -> {_Port.DtrEnable}" );
-      Result.AppendLine ( $"  RTS       -> {_Port.RtsEnable}" );
-      Result.AppendLine ( $"  Handshake -> {_Port.Handshake}" );
-      Result.AppendLine ( $"  CTS       -> {_Port.CtsHolding}" );
-      Result.AppendLine ( $"  DSR       -> {_Port.DsrHolding}" );
-      Result.AppendLine ( $"  CD        -> {_Port.CDHolding}" );
-      Result.AppendLine ( "" );
-
-      // Try three terminator styles
-      string [ ] Terminators = { "\r\n", "\n", "\r", "" };
-      string [ ] Terminator_Names = { "CR+LF", "LF", "CR", "None" };
-
-      for ( int I = 0; I < Terminators.Length; I++ )
+      catch ( TimeoutException ) { return true; }
+      catch ( Exception Ex )
       {
-        try
-        {
-          _Port.DiscardInBuffer ( );
-          _Port.DiscardOutBuffer ( );
-          Thread.Sleep ( 50 );
-
-          byte [ ] Out_Bytes = System.Text.Encoding.ASCII
-            .GetBytes ( Command + Terminators [ I ] );
-          _Port.BaseStream.Write ( Out_Bytes, 0,
-            Out_Bytes.Length );
-          _Port.BaseStream.Flush ( );
-
-          // Wait up to 2 seconds for any bytes
-          int Elapsed = 0;
-          while ( _Port.BytesToRead == 0 && Elapsed < 2000 )
-          {
-            Thread.Sleep ( 50 );
-            Elapsed += 50;
-          }
-
-          if ( _Port.BytesToRead == 0 )
-          {
-            Result.AppendLine (
-              $"[{Terminator_Names [ I ]}] No response" );
-            continue;
-          }
-
-          // Let remaining bytes arrive
-          Thread.Sleep ( 200 );
-
-          byte [ ] Raw = new byte [ _Port.BytesToRead ];
-          _Port.Read ( Raw, 0, Raw.Length );
-
-          string Text =
-            System.Text.Encoding.ASCII.GetString ( Raw );
-          string Hex = BitConverter.ToString ( Raw );
-
-          Result.AppendLine (
-            $"[{Terminator_Names [ I ]}] " +
-            $"\"{Text.Replace ( "\r", "\\r" )
-              .Replace ( "\n", "\\n" )}\"" );
-
-          Result.AppendLine ( $"  Hex: {Hex}" );
-
-          // If we got a response, no need to try other
-          // terminators
-          break;
-        }
-        catch ( Exception Ex )
-        {
-          Result.AppendLine (
-            $"[{Terminator_Names [ I ]}] Error: {Ex.Message}" );
-        }
+        Raise_Error ( $"Status poll failed: {Ex.Message}" );
+        return false;
       }
-
-      Result.AppendLine ( "" );
-
-      return Result.ToString ( ).TrimEnd ( );
     }
 
     public List<Scan_Result> Scan_GPIB_Bus (
-      IProgress<string>? Progress = null,
-      CancellationToken Token = default )
+        IProgress<string>? Progress = null,
+        CancellationToken Token = default )
     {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
       var Results = new List<Scan_Result> ( );
 
       if ( Mode == Connection_Mode.Direct_Serial )
       {
-        Raise_Error (
-          "Bus scanning is not available in Direct Serial mode." );
+        Raise_Error ( "Bus scanning is not available in Direct Serial mode." );
         return Results;
       }
 
-      if ( _Port == null || !_Port.IsOpen )
+      if ( !Is_Connected )
       {
         Raise_Error ( "Not connected." );
         return Results;
       }
 
       int Original_Address = GPIB_Address;
-      int Original_Timeout = _Port.ReadTimeout;
-      bool Original_Auto = Auto_Read;
 
       try
       {
-        // Use short timeout for scanning empty addresses
-        _Port.ReadTimeout = 200;
-
-        // Disable auto-read during scan
-        _Port.WriteLine ( "++auto 0" );
+        Raw_Write ( "++auto 0" );
         Thread.Sleep ( 50 );
 
         for ( int Addr = 0; Addr <= 30; Addr++ )
         {
           Token.ThrowIfCancellationRequested ( );
-
           Progress?.Report ( $"Scanning GPIB address {Addr}..." );
 
-          // Switch to this address
-          _Port.WriteLine ( $"++addr {Addr}" );
+          Raw_Write ( $"++addr {Addr}" );
           Thread.Sleep ( 40 );
 
-          // Try *IDN? first (SCPI standard)
           string Response = Try_Query ( "*IDN?" );
-
-          // If no SCPI response, try ID? (older HP format)
           if ( string.IsNullOrEmpty ( Response ) )
-          {
             Response = Try_Query ( "ID?" );
-          }
 
           if ( !string.IsNullOrEmpty ( Response ) )
           {
@@ -817,17 +749,11 @@ namespace Multimeter_Controller
             string Upper = Response.ToUpperInvariant ( );
 
             if ( Upper.Contains ( "3458" ) )
-            {
-              Detected = Meter_Type.Keysight_3458A;
-            }
+              Detected = Meter_Type.HP3458A;
             else if ( Upper.Contains ( "34401" ) )
-            {
-              Detected = Meter_Type.HP_34401A;
-            }
+              Detected = Meter_Type.HP34401A;
             else if ( Upper.Contains ( "33120" ) )
-            {
-              Detected = Meter_Type.HP_33120A;
-            }
+              Detected = Meter_Type.HP33120A;
 
             Results.Add ( new Scan_Result
             {
@@ -836,8 +762,7 @@ namespace Multimeter_Controller
               Detected_Type = Detected
             } );
 
-            Progress?.Report (
-              $"  Found at {Addr}: {Response}" );
+            Progress?.Report ( $"  Found at {Addr}: {Response}" );
           }
         }
       }
@@ -851,62 +776,133 @@ namespace Multimeter_Controller
       }
       finally
       {
-        // Restore original settings
-        _Port.ReadTimeout = Original_Timeout;
-
-        _Port.WriteLine ( $"++addr {Original_Address}" );
+        Raw_Write ( $"++addr {Original_Address}" );
         Thread.Sleep ( 50 );
-
-        _Port.WriteLine (
-          $"++auto {( Original_Auto ? 1 : 0 )}" );
+        Raw_Write ( $"++auto {( Auto_Read ? 1 : 0 )}" );
         Thread.Sleep ( 50 );
-
         GPIB_Address = Original_Address;
       }
 
-      Progress?.Report (
-        $"Scan complete. Found {Results.Count} instrument(s)." );
-
+      Progress?.Report ( $"Scan complete. Found {Results.Count} instrument(s)." );
       return Results;
+    }
+
+    public string Raw_Diagnostic ( string Command )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
+      if ( !Is_Connected )
+        return "[Not connected]";
+
+      var Result = new StringBuilder ( );
+      Result.AppendLine ( $"  Mode -> {Mode}" );
+
+      if ( Mode == Connection_Mode.Prologix_Ethernet )
+      {
+        Result.AppendLine ( $"  Host -> {Ethernet_Host}:{Ethernet_Port}" );
+      }
+      else if ( _Port != null )
+      {
+        Result.AppendLine ( $"  Port      -> {_Port.PortName}" );
+        Result.AppendLine ( $"  Baud Rate -> {_Port.BaudRate}" );
+        Result.AppendLine ( $"  CTS       -> {_Port.CtsHolding}" );
+        Result.AppendLine ( $"  DSR       -> {_Port.DsrHolding}" );
+        Result.AppendLine ( $"  CD        -> {_Port.CDHolding}" );
+      }
+
+      string [ ] Terminators = { "\r\n", "\n", "\r", "" };
+      string [ ] Terminator_Names = { "CR+LF", "LF", "CR", "None" };
+
+      for ( int I = 0; I < Terminators.Length; I++ )
+      {
+        try
+        {
+          if ( _Port != null )
+          {
+            _Port.DiscardInBuffer ( );
+            _Port.DiscardOutBuffer ( );
+          }
+          Thread.Sleep ( 50 );
+
+          byte [ ] Out_Bytes = Encoding.ASCII.GetBytes ( Command + Terminators [ I ] );
+
+          if ( Mode == Connection_Mode.Prologix_Ethernet )
+          {
+            _Tcp_Stream?.Write ( Out_Bytes, 0, Out_Bytes.Length );
+            _Tcp_Stream?.Flush ( );
+          }
+          else
+          {
+            _Port?.BaseStream.Write ( Out_Bytes, 0, Out_Bytes.Length );
+            _Port?.BaseStream.Flush ( );
+          }
+
+          int Elapsed = 0;
+          bool Has_Data = false;
+
+          while ( Elapsed < 2000 )
+          {
+            Thread.Sleep ( 50 );
+            Elapsed += 50;
+
+            Has_Data = Mode == Connection_Mode.Prologix_Ethernet
+                ? _Tcp_Stream?.DataAvailable == true
+                : _Port?.BytesToRead > 0;
+
+            if ( Has_Data )
+              break;
+          }
+
+          if ( !Has_Data )
+          {
+            Result.AppendLine ( $"[{Terminator_Names [ I ]}] No response" );
+            continue;
+          }
+
+          Thread.Sleep ( 200 );
+
+          string Text = Mode == Connection_Mode.Prologix_Ethernet
+              ? Read_Ethernet ( CancellationToken.None )
+              : Read_Response_Serial ( );
+
+          Result.AppendLine ( $"[{Terminator_Names [ I ]}] \"{Text.Replace ( "\r", "\\r" ).Replace ( "\n", "\\n" )}\"" );
+          break;
+        }
+        catch ( Exception Ex )
+        {
+          Result.AppendLine ( $"[{Terminator_Names [ I ]}] Error: {Ex.Message}" );
+        }
+      }
+
+      return Result.ToString ( ).TrimEnd ( );
     }
 
     private string Try_Query ( string Command )
     {
-      if ( _Port == null || !_Port.IsOpen )
-      {
-        return "";
-      }
+      using var Block = Trace_Block.Start_If_Enabled ( );
 
       try
       {
-        _Port.DiscardInBuffer ( );
-        _Port.WriteLine ( Command );
+        Raw_Write ( Command );
         Thread.Sleep ( 50 );
-
-        if ( Mode == Connection_Mode.Prologix_GPIB )
-        {
-          _Port.WriteLine ( "++read eoi" );
-        }
-
-        return Read_Response ( Prologix_Read_Timeout_Ms );
+        Raw_Write ( "++read eoi" );
+        return Mode == Connection_Mode.Prologix_Ethernet
+            ? Read_Ethernet ( CancellationToken.None )
+            : Read_Response_Serial ( );
       }
-      catch ( TimeoutException )
-      {
-        return "";
-      }
-      catch
-      {
-        return "";
-      }
+      catch ( TimeoutException ) { return ""; }
+      catch { return ""; }
     }
 
     private void Raise_Error ( string Message )
     {
+      using var Block = Trace_Block.Start_If_Enabled ( );
       Error_Occurred?.Invoke ( this, Message );
     }
 
     public void Dispose ( )
     {
+      using var Block = Trace_Block.Start_If_Enabled ( );
       if ( !_Disposed )
       {
         Disconnect ( );
@@ -914,5 +910,80 @@ namespace Multimeter_Controller
       }
       GC.SuppressFinalize ( this );
     }
+
+
+    public string Verify_GPIB_Address ( int Address, bool Try_Legacy_ID = false )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+      if ( !Is_Connected )
+        return "";
+      if ( Mode == Connection_Mode.Direct_Serial )
+      {
+        string Serial_Response = Try_Legacy_ID
+            ? Try_Query ( "ID?" )
+            : Try_Query ( "*IDN?" );
+        return Serial_Response;
+      }
+      int Original_Address = GPIB_Address;
+      try
+      {
+        // Switch to address
+        Raw_Write ( $"++addr {Address}" );
+        GPIB_Address = Address;
+        Thread.Sleep ( 50 );
+        // Stop auto-read
+        Raw_Write ( "++auto 0" );
+        Thread.Sleep ( 50 );
+        // For 3458A - stop trigger and flush buffer without clearing config
+        if ( Try_Legacy_ID )
+        {
+          Raw_Write ( "TRIG HOLD" );
+          Thread.Sleep ( 100 );
+          // Flush any pending readings by reading until timeout
+          try
+          {
+            Raw_Write ( "++read eoi" );
+            Thread.Sleep ( 50 );
+            if ( Mode == Connection_Mode.Prologix_Ethernet )
+              Read_Ethernet ( CancellationToken.None );
+            else
+              Read_Response_Serial ( );
+          }
+          catch { }
+        }
+        string Response = Try_Legacy_ID
+            ? Try_Query ( "ID?" )
+            : Try_Query ( "*IDN?" );
+        return Response;
+      }
+      catch ( Exception )
+      {
+        return "";
+      }
+      finally
+      {
+        if ( GPIB_Address != Original_Address )
+        {
+          Raw_Write ( $"++addr {Original_Address}" );
+          Thread.Sleep ( 50 );
+        }
+        GPIB_Address = Original_Address;
+      }
+    }
+
+
+
+
+
+
+    private static bool Is_Measurement ( string Response )
+    {
+      // Measurements are numeric — ID strings contain letters/commas
+      return double.TryParse ( Response.Trim ( ),
+          System.Globalization.NumberStyles.Float,
+          System.Globalization.CultureInfo.InvariantCulture,
+          out _ );
+    }
+
   }
 }

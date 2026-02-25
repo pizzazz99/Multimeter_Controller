@@ -1,6 +1,6 @@
-# Keysight 3458A Multimeter Controller
+# HP 3458A Multimeter Controller
 
-A Windows Forms desktop application for controlling **test instruments** via **Prologix GPIB-USB-HS** adapter or **direct RS-232 serial** connection. Originally built for the Keysight (HP/Agilent) 3458A 8.5-Digit Digital Multimeter, it now supports multiple instrument types and two connection modes.
+A Windows Forms desktop application for controlling **test instruments** via **Prologix GPIB-USB-HS** adapter or **direct RS-232 serial** connection. Originally built for the HP (HP/Agilent) 3458A 8.5-Digit Digital Multimeter, it now supports multiple instrument types and two connection modes.
 
 ## Overview
 
@@ -10,9 +10,9 @@ The 3458A is one of the highest-precision digital multimeters ever produced, cap
 
 | Instrument | Type | Command Dictionary |
 |-----------|------|-------------------|
-| **Keysight / HP / Agilent 3458A** | 8.5-Digit DMM | 70+ commands across 9 categories |
-| **HP 34401A** | 6.5-Digit DMM | Full command set |
-| **HP 33120A** | Function Generator | Full command set |
+| **HP / HP / Agilent 3458A** | 8.5-Digit DMM | 70+ commands across 9 categories |
+| **HP34401A** | 6.5-Digit DMM | Full command set |
+| **HP33120A** | Function Generator | Full command set |
 
 ## Features
 
@@ -88,7 +88,7 @@ The 3458A is one of the highest-precision digital multimeters ever produced, cap
 
 | Component | Details |
 |-----------|---------|
-| **Instruments** | Keysight 3458A, HP 34401A, HP 33120A (or any SCPI/GPIB instrument) |
+| **Instruments** | HP 3458A, HP34401A, HP33120A (or any SCPI/GPIB instrument) |
 | **GPIB Adapter** | Prologix GPIB-USB-HS Controller (for GPIB mode) |
 | **RS-232 Adapter** | Any USB-to-serial adapter (for Direct Serial mode) |
 | **Connection** | USB to GPIB via Prologix, or USB to RS-232 via serial adapter |
@@ -130,9 +130,9 @@ Multimeter_Controller/
 ├── Multi_Poll_Form.cs / .Designer      # Multi-instrument poller with subplots
 ├── Theme_Settings_Form.cs / .Designer  # Chart theme customization dialog
 ├── Chart_Theme.cs                     # Shared theme data + JSON persistence
-├── Command_Dictionary_Class.cs             # Keysight 3458A command reference
-├── HP_34401A_Command_Dictionary_Class.cs    # HP 34401A command reference
-├── HP_33120A_Command_Dictionary_Class.cs    # HP 33120A command reference
+├── Command_Dictionary_Class.cs             # HP 3458A command reference
+├── HP34401A_Command_Dictionary_Class.cs    # HP34401A command reference
+├── HP33120A_Command_Dictionary_Class.cs    # HP33120A command reference
 ├── Dictionary_Form.cs / .Designer     # Searchable command dictionary dialog
 ├── Instrument_Comm.cs                # Serial/GPIB communication layer
 ├── Graph_Captures/                    # Recorded measurement data (CSV files)
@@ -154,7 +154,7 @@ Multimeter_Controller/
 
 - **Theme_Settings_Form.cs** - Modal dialog for customizing chart colors. Presents clickable color swatches that open the system ColorDialog, with preset buttons for quick theme switching.
 
-- **Command_Dictionary_Class.cs / HP_34401A_Command_Dictionary_Class.cs / HP_33120A_Command_Dictionary_Class.cs** - Static command references for each supported instrument type. Each entry includes syntax, parameter descriptions, query form, default value, and usage example.
+- **Command_Dictionary_Class.cs / HP34401A_Command_Dictionary_Class.cs / HP33120A_Command_Dictionary_Class.cs** - Static command references for each supported instrument type. Each entry includes syntax, parameter descriptions, query form, default value, and usage example.
 
 - **Dictionary_Form.cs** - Modal dialog presenting the full command dictionary in a DataGridView with real-time search filtering and category-based filtering.
 
