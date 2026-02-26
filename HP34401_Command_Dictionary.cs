@@ -1,8 +1,8 @@
 // ============================================================================
-// File:        HP_34401A_Command_Dictionary_Class.cs
-// Project:     Keysight 3458A Multimeter Controller
-// Description: Command reference dictionary for the HP / Agilent / Keysight
-//              34401A 6.5-digit digital multimeter. Uses standard SCPI
+// File:        HP34401_Command_Dictionary_Class.cs
+// Project:     HP3458 Multimeter Controller
+// Description: Command reference dictionary for the HP / Agilent / HP
+//              34401 6.5-digit digital multimeter. Uses standard SCPI
 //              command syntax.
 //
 // Author:       Mike
@@ -11,7 +11,7 @@
 
 namespace Multimeter_Controller
 {
-  public static class HP_34401A_Command_Dictionary_Class
+  public static class HP34401_Command_Dictionary_Class
   {
     public static List<Command_Entry> Get_All_Commands ( )
     {

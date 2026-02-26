@@ -1,8 +1,8 @@
 // ============================================================================
 // File:        Command_Dictionary_Class.cs
-// Project:     Keysight 3458A Multimeter Controller
-// Description: Complete command reference dictionary for the Keysight (HP)
-//              3458A 8.5-digit digital multimeter. Contains every supported
+// Project:     HP3458 Multimeter Controller
+// Description: Complete command reference dictionary for the HP (HP)
+//              3458 8.5-digit digital multimeter. Contains every supported
 //              GPIB command with its syntax, parameters, query form, default
 //              value, and usage example.
 //
@@ -51,7 +51,7 @@
 //     callers receive an independent copy.
 //
 // Data Source:
-//   Command definitions are based on the Keysight / HP 3458A User's Guide
+//   Command definitions are based on the HP / HP3458 User's Guide
 //   and Programming Reference (HP part number 03458-90014). Parameters,
 //   ranges, defaults, and syntax follow the instrument's GPIB command set.
 //
@@ -69,9 +69,10 @@ namespace Multimeter_Controller
 {
   public enum Meter_Type
   {
-    Keysight_3458A,
-    HP_34401A,
-    HP_33120A
+    HP3458,
+    HP34401,
+    HP33120,
+    Generic_GPIB
   }
 
   public enum Command_Category
@@ -131,12 +132,12 @@ namespace Multimeter_Controller
     {
       get
       {
-        string baseToken = GetBaseToken ( Command );
+        string Base_Token = GetBaseToken ( Command );
 
-        if ( baseToken.EndsWith ( "?" ) )
-          return baseToken;
+        if ( Base_Token.EndsWith ( "?" ) )
+          return Base_Token;
 
-        return baseToken + "?";
+        return Base_Token + "?";
       }
     }
 
@@ -144,12 +145,12 @@ namespace Multimeter_Controller
     {
       get
       {
-        string baseToken = GetBaseToken ( Command );
+        string Base_Token = GetBaseToken ( Command );
 
-        if ( baseToken.EndsWith ( "?" ) )
-          return baseToken.TrimEnd ( '?' );
+        if ( Base_Token.EndsWith ( "?" ) )
+          return Base_Token.TrimEnd ( '?' );
 
-        return baseToken;
+        return Base_Token;
       }
     }
 
@@ -235,17 +236,17 @@ namespace Multimeter_Controller
       return Command ?? Query_Form ?? "<unknown>";
     }
 
-    private string GetBaseToken ( string input )
+    private string GetBaseToken ( string Input )
     {
-      if ( string.IsNullOrWhiteSpace ( input ) )
+      if ( string.IsNullOrWhiteSpace ( Input ) )
         return string.Empty;
 
-      string trimmed = input.Trim ( );
+      string Trimmed = Input.Trim ( );
 
-      int spaceIndex = trimmed.IndexOf ( ' ' );
-      return spaceIndex > 0
-          ? trimmed.Substring ( 0, spaceIndex )
-          : trimmed;
+      int Space_Index = Trimmed.IndexOf ( ' ' );
+      return Space_Index > 0
+          ? Trimmed.Substring ( 0, Space_Index )
+          : Trimmed;
     }
 
     public bool Is_Query_Only ( )
@@ -372,18 +373,18 @@ namespace Multimeter_Controller
   public static class Command_Dictionary_Class
   {
     public static List<Command_Entry> Get_All_Commands (
-      Meter_Type Meter = Meter_Type.Keysight_3458A )
+      Meter_Type Meter = Meter_Type.HP3458 )
     {
       switch ( Meter )
       {
-        case Meter_Type.HP_34401A:
-          return HP_34401A_Command_Dictionary_Class.Get_All_Commands ( );
+        case Meter_Type.HP34401:
+          return HP34401_Command_Dictionary_Class.Get_All_Commands ( );
 
-        case Meter_Type.HP_33120A:
-          return HP_33120A_Command_Dictionary_Class.Get_All_Commands ( );
+        case Meter_Type.HP33120:
+          return HP33120_Command_Dictionary_Class.Get_All_Commands ( );
 
-        case Meter_Type.Keysight_3458A:
-          return Keysight_3458A_Command_Dictionary_Class.Get_All_Commands ( );
+        case Meter_Type.HP3458:
+          return HP3458_Command_Dictionary_Class.Get_All_Commands ( );
 
         default:
           throw new ArgumentOutOfRangeException (

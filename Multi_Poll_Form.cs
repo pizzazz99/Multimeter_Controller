@@ -15,8 +15,8 @@ namespace Multimeter_Controller
 
     private Chart_Theme _Theme = Chart_Theme.Load ( );
 
-    private static readonly (string Label, string Cmd_3458A,
-      string Cmd_34401A, string Unit) [ ] _Measurements =
+    private static readonly (string Label, string Cmd_3458,
+      string Cmd_34401, string Unit) [ ] _Measurements =
     {
       ( "DC Voltage",    "DCV",    "CONF:VOLT:DC",  "V" ),
       ( "AC Voltage",    "ACV",    "CONF:VOLT:AC",  "V" ),
@@ -79,9 +79,9 @@ namespace Multimeter_Controller
 
         foreach ( var Inst in _Series )
         {
-          string Cmd = Inst.Type == Meter_Type.HP_34401A
-            ? Measurement.Cmd_34401A
-            : Measurement.Cmd_3458A;
+          string Cmd = Inst.Type == Meter_Type.HP34401
+            ? Measurement.Cmd_34401
+            : Measurement.Cmd_3458;
 
           if ( string.IsNullOrEmpty ( Cmd ) )
           {
@@ -126,9 +126,9 @@ namespace Multimeter_Controller
       {
         if ( _Measurements [ I ].Label == Selected )
         {
-          // Use 3458A command by default
+          // Use 3458 command by default
           // (will be translated per-instrument in polling loop)
-          Query_Text.Text = _Measurements [ I ].Cmd_3458A;
+          Query_Text.Text = _Measurements [ I ].Cmd_3458;
           break;
         }
       }
@@ -207,7 +207,7 @@ namespace Multimeter_Controller
       string NPLC_Value = NPLC_Combo.SelectedItem?.ToString ( )
         ?? "10";
 
-      // Pre-configure HP 34401A instruments on first cycle
+      // Pre-configure HP 34401 instruments on first cycle
       bool [ ] Configured = new bool [ _Series.Count ];
 
       try
@@ -238,7 +238,7 @@ namespace Multimeter_Controller
           await Task.Delay ( 100, Token );
 
           // Send NPLC command based on meter type
-          string NPLC_Cmd = S.Type == Meter_Type.HP_34401A
+          string NPLC_Cmd = S.Type == Meter_Type.HP34401
             ? $"VOLT:DC:NPLC {NPLC_Value}"
             : $"NPLC {NPLC_Value}";
 
@@ -273,12 +273,12 @@ namespace Multimeter_Controller
 
             await Task.Delay ( 50, Token );
 
-            // Configure HP 34401A on first cycle
+            // Configure HP 34401 on first cycle
             if ( !Configured [ I ] &&
-              S.Type == Meter_Type.HP_34401A )
+              S.Type == Meter_Type.HP34401 )
             {
               string Config_Cmd =
-                Get_Config_Command_For_34401A ( Command );
+                Get_Config_Command_For_34401 ( Command );
               if ( !string.IsNullOrEmpty ( Config_Cmd ) &&
                 !Config_Cmd.EndsWith ( "?" ) )
               {
@@ -380,16 +380,16 @@ namespace Multimeter_Controller
       // Find the measurement that matches the base command
       foreach ( var Measurement in _Measurements )
       {
-        if ( Measurement.Cmd_3458A == Base_Command )
+        if ( Measurement.Cmd_3458 == Base_Command )
         {
           // Translate to the appropriate command for
           // this meter type
-          if ( Meter == Meter_Type.HP_34401A )
+          if ( Meter == Meter_Type.HP34401 )
           {
-            string Cmd = Measurement.Cmd_34401A;
+            string Cmd = Measurement.Cmd_34401;
             if ( !string.IsNullOrEmpty ( Cmd ) )
             {
-              // 34401A needs READ? for configured
+              // 34401 needs READ? for configured
               // measurements
               if ( !Cmd.EndsWith ( "?" ) )
               {
@@ -399,7 +399,7 @@ namespace Multimeter_Controller
             }
           }
 
-          // Default to 3458A command
+          // Default to 3458 command
           return Base_Command;
         }
       }
@@ -409,15 +409,15 @@ namespace Multimeter_Controller
       return Base_Command;
     }
 
-    private string Get_Config_Command_For_34401A (
+    private string Get_Config_Command_For_34401 (
       string Base_Command )
     {
       // Find the measurement that matches the base command
       foreach ( var Measurement in _Measurements )
       {
-        if ( Measurement.Cmd_3458A == Base_Command )
+        if ( Measurement.Cmd_3458 == Base_Command )
         {
-          return Measurement.Cmd_34401A;
+          return Measurement.Cmd_34401;
         }
       }
 
@@ -663,7 +663,7 @@ namespace Multimeter_Controller
         {
           Name = Headers [ I + 1 ].Trim ( ),
           Address = 0,
-          Type = Meter_Type.Keysight_3458A,
+          Type = Meter_Type.HP3458,
           Points =
             new List<(DateTime Time, double Value)> ( ),
           Line_Color = _Theme.Line_Colors [

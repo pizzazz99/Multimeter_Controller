@@ -26,7 +26,7 @@ namespace Multimeter_Controller
     private List<int> _Filtered_Indices = new List<int> ( );
 
     private static readonly (string Label, string Cmd_3458A,
-      string Cmd_34401A, string Unit) [ ] _Functions =
+      string Cmd_34401, string Unit) [ ] _Functions =
     {
       ( "DC Voltage",    "DCV",    "CONF:VOLT:DC",  "V" ),
       ( "AC Voltage",    "ACV",    "CONF:VOLT:AC",  "V" ),
@@ -61,9 +61,9 @@ namespace Multimeter_Controller
 
       string Meter_Name = Meter switch
       {
-        Meter_Type.HP_34401A => "HP 34401A",
-        Meter_Type.HP_33120A => "HP 33120A",
-        _ => "Keysight 3458A"
+        Meter_Type.HP34401 => "HP34401",
+        Meter_Type.HP33120 => "HP33120",
+        _ => "HP3458"
       };
 
       Text = $"{Meter_Name} - Voltage Reader";
@@ -89,8 +89,8 @@ namespace Multimeter_Controller
 
       for ( int I = 0; I < _Functions.Length; I++ )
       {
-        string Cmd = _Meter == Meter_Type.HP_34401A
-          ? _Functions [ I ].Cmd_34401A
+        string Cmd = _Meter == Meter_Type.HP34401
+          ? _Functions [ I ].Cmd_34401
           : _Functions [ I ].Cmd_3458A;
 
         if ( !string.IsNullOrEmpty ( Cmd ) )
@@ -223,8 +223,8 @@ namespace Multimeter_Controller
 
       int Func_Index = _Filtered_Indices [ Combo_Index ];
       var Selected = _Functions [ Func_Index ];
-      string Configure_Cmd = _Meter == Meter_Type.HP_34401A
-        ? Selected.Cmd_34401A
+      string Configure_Cmd = _Meter == Meter_Type.HP34401
+        ? Selected.Cmd_34401
         : Selected.Cmd_3458A;
       string Unit = Selected.Unit;
 
@@ -279,9 +279,9 @@ namespace Multimeter_Controller
               _Comm.Query_Instrument ( Configure_Cmd ),
               Token );
           }
-          else if ( _Meter == Meter_Type.HP_34401A )
+          else if ( _Meter == Meter_Type.HP34401 )
           {
-            // 34401A needs explicit READ? to trigger
+            // 34401 needs explicit READ? to trigger
             // and return a measurement
             Response = await Task.Run ( ( ) =>
               _Comm.Query_Instrument ( "READ?" ),

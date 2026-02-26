@@ -41,7 +41,7 @@ namespace Multimeter_Controller
       Title_Label.Location = new System.Drawing.Point ( 12, 8 );
       Title_Label.Name = "Title_Label";
       Title_Label.Size = new System.Drawing.Size ( 450, 25 );
-      Title_Label.Text = "Keysight 3458A Command Dictionary";
+      Title_Label.Text = "HP3458 Command Dictionary";
 
       // Search_Label
       Search_Label.AutoSize = true;
@@ -141,7 +141,7 @@ namespace Multimeter_Controller
       Controls.Add ( Command_Grid );
       Controls.Add ( Top_Panel );
       Name = "Dictionary_Form";
-      Text = "Keysight 3458A - Command Dictionary";
+      Text = "HP3458 - Command Dictionary";
       StartPosition =
         System.Windows.Forms.FormStartPosition.CenterParent;
 
