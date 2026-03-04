@@ -59,14 +59,20 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Remove="Class1.cs" />
+    <Compile Remove="Info_Popup.cs" />
+    <Compile Remove="Info_Popup.Designer.cs" />
     <Compile Remove="Keysight_3458_Command_Dictionary.cs" />
+    <Compile Remove="Multi_Poll_Form.cs" />
+    <Compile Remove="Multi_Poll_Form.Designer.cs" />
+    <Compile Remove="Theme_Editor_Dialog_class.cs" />
     <Compile Remove="Trace_Window.cs" />
     <Compile Remove="Voltage_Reader_Form.cs" />
     <Compile Remove="Voltage_Reader_Form.Designer.cs" />
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Remove="Info_Popup.resx" />
+    <EmbeddedResource Remove="Multi_Poll_Form.resx" />
     <EmbeddedResource Remove="Voltage_Reader_Form.resx" />
   </ItemGroup>
 

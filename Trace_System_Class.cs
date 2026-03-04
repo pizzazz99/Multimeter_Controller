@@ -242,7 +242,7 @@ namespace Trace_Execution_Namespace
 
    
 
-    public static void Start ( )
+    public static void old_Start ( )
     {
       if ( IsRunning )
         return;
@@ -253,6 +253,24 @@ namespace Trace_Execution_Namespace
       TraceWindow.Instance.Show ( );
       TraceWindow.Instance.BringToFront ( );
     }
+
+
+    public static void Start ( )
+    {
+      if ( IsRunning )
+        return;
+
+      Execution_Logger.Enabled = true;
+      Execution_Logger.Enable_UI_Logging ( true );
+
+      if ( TraceWindow.HasInstance )
+      {
+        var Win = TraceWindow.Instance;
+        Win.Invoke ( ( ) => { Win.Show ( ); Win.BringToFront ( ); } );
+      }
+      // NOTE: no Create_Window_If_Needed here - window was created at startup
+    }
+
 
 
     public static Trace_Block? Start_If_Enabled ( [CallerMemberName] string Caller = "" )
@@ -275,8 +293,20 @@ namespace Trace_Execution_Namespace
 
       Execution_Logger.Enabled = false;
       Execution_Logger.Enable_UI_Logging ( false );
+
       if ( TraceWindow.HasInstance )
-        TraceWindow.Instance.Hide ( );
+      {
+        TraceWindow.Instance.BringToFront ( );
+
+        var Win = TraceWindow.Instance;
+        if ( Win.InvokeRequired )
+          Win.Invoke ( ( ) => { Win.Hide ( ); Win.SendToBack ( ); } );
+        else
+        {
+          Win.Hide ( );
+          Win.SendToBack ( );
+        }
+      }
     }
 
     public static void Toggle ( )
@@ -568,39 +598,38 @@ namespace Trace_Execution_Namespace
     {
       get
       {
-        if ( _Instance == null || _Instance.IsDisposed )
-          throw new InvalidOperationException ( "Trace window not initialized yet" );
+        if ( _Instance == null )
+          throw new InvalidOperationException ( "Trace window was never created. Call Trace_Execution.Initialize() in Main() before Application.Run()." );
+        if ( _Instance.IsDisposed )
+          throw new InvalidOperationException ( "Trace window was disposed unexpectedly." );
         return _Instance;
       }
     }
-
     internal static void Create_Window_If_Needed ( )
     {
       lock ( _Lock )
       {
-        if ( _Instance == null || _Instance.IsDisposed )
+        if ( _Instance != null && !_Instance.IsDisposed )
+          return;  // already exists
+
+        _Window_Ready.Reset ( );
+
+        if ( Application.MessageLoop )
         {
-          _Window_Ready.Reset ( );
-
-          void create ( )
-          {
-            _Instance = new TraceWindow ( );
-            _Window_Ready.Set ( );
-          }
-
+          // Message loop is running - create directly on UI thread
           if ( Application.OpenForms.Count > 0 )
-            Application.OpenForms [ 0 ].Invoke ( create );
-          else
-          {
-            Application.Idle += OnAppIdle;
-
-            void OnAppIdle ( object? Sender, EventArgs E )
+            Application.OpenForms [ 0 ].Invoke ( ( ) =>
             {
-              Application.Idle -= OnAppIdle;
               _Instance = new TraceWindow ( );
               _Window_Ready.Set ( );
-            }
-          }
+            } );
+        }
+        else
+        {
+          // Called from Main() before Application.Run - create directly,
+          // the STA thread is already correct
+          _Instance = new TraceWindow ( );
+          _Window_Ready.Set ( );
         }
       }
     }
@@ -733,7 +762,8 @@ namespace Trace_Execution_Namespace
     {
       VerboseMode = !VerboseMode;
       _VerboseBtn.Text = VerboseMode ? "Verbose" : "Simple";
-      Execution_Logger.Write ( VerboseMode ? "=== VERBOSE MODE ENABLED ===" : "=== SIMPLE MODE ENABLED ===" );
+      string Msg = VerboseMode ? "=== VERBOSE MODE ENABLED ===" : "=== SIMPLE MODE ENABLED ===";
+      Append_Text_Safe ( $"{DateTime.Now:HH:mm:ss.fff} - {Msg}" );
     }
 
     private void Button_Exit_Click ( object? Sender, EventArgs E ) => Hide ( );

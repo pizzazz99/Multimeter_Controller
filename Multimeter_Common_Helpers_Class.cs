@@ -6,6 +6,7 @@ using System;
 // ============================================================================
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -110,9 +111,13 @@ namespace Multimeter_Controller
     public static string Format_Value (
       double Value,
       string Unit,
-      Meter_Type Meter = Meter_Type.HP34401 )
+      Meter_Type Meter = Meter_Type.HP34401,
+      int Digits = 6 )
     {
       double Abs = Math.Abs ( Value );
+
+
+
       bool Is_HP = Meter == Meter_Type.HP3458;
 
       if ( Unit == "Hz" )
@@ -123,7 +128,6 @@ namespace Multimeter_Controller
           return $"{Value / 1e3:F3} kHz";
         return $"{Value:F2} Hz";
       }
-
       if ( Unit == "s" )
       {
         if ( Abs < 1e-6 )
@@ -134,7 +138,6 @@ namespace Multimeter_Controller
           return $"{Value * 1e3:F3} ms";
         return $"{Value:F4} s";
       }
-
       if ( Unit == "Ohm" )
       {
         if ( Abs >= 1e6 )
@@ -143,27 +146,23 @@ namespace Multimeter_Controller
           return $"{Value / 1e3:F3} kOhm";
         return $"{Value:F2} Ohm";
       }
-
       if ( Unit == "\u00b0C" )
         return $"{Value:F2} \u00b0C";
 
-      // V or A
+      // V or A — use Digits to drive precision
+      int D = Digits;
+      int D2 = Math.Max ( 0, Digits - 2 );  // millirange loses 2 integer digits
+      int D3 = Math.Max ( 0, Digits - 3 );  // microrange loses 3
+      int D4 = Math.Max ( 0, Digits - 4 );  // nanorange loses 4
+
       if ( Abs >= 1.0 )
-        return Is_HP
-            ? $"{Value:F10} {Unit}"
-            : $"{Value:F8} {Unit}";
+        return $"{Value.ToString ( $"F{D}" )} {Unit}";
       if ( Abs >= 0.001 )
-        return Is_HP
-            ? $"{Value * 1000:F8} m{Unit}"
-            : $"{Value * 1000:F6} m{Unit}";
+        return $"{( Value * 1000 ).ToString ( $"F{D2}" )} m{Unit}";
       if ( Abs >= 0.000001 )
-        return Is_HP
-            ? $"{Value * 1e6:F6} u{Unit}"
-            : $"{Value * 1e6:F5} u{Unit}";
+        return $"{( Value * 1e6 ).ToString ( $"F{D3}" )} u{Unit}";
       if ( Abs >= 0.000000001 )
-        return Is_HP
-            ? $"{Value * 1e9:F4} n{Unit}"
-            : $"{Value * 1e9:F3} n{Unit}";
+        return $"{( Value * 1e9 ).ToString ( $"F{D4}" )} n{Unit}";
 
       return $"{Value:E2} {Unit}";
     }
@@ -251,11 +250,11 @@ namespace Multimeter_Controller
     // ========================================================================
 
     public static void Check_Memory_Limit (
-      Application_Settings Settings,
-      Func<int> Get_Point_Count,
-      Action Stop_Recording,
-      Action<int, int> Show_Warning,
-      ref bool Warning_Shown )
+    Application_Settings Settings,
+    Func<int> Get_Point_Count,
+    Action Stop_Recording,
+    Action<int, int> Show_Warning,
+    ref bool Warning_Shown )
     {
       int Current = Get_Point_Count ( );
       int Max = Settings.Max_Data_Points_In_Memory;
@@ -269,7 +268,6 @@ namespace Multimeter_Controller
       if ( Settings.Warn_At_Threshold && !Warning_Shown )
       {
         int Threshold = ( Max * Settings.Warning_Threshold_Percent ) / 100;
-
         if ( Current >= Threshold )
         {
           Show_Warning ( Current, Max );
@@ -860,84 +858,104 @@ namespace Multimeter_Controller
 
 
     public static async Task<List<string>> Scan_For_Prologix (
-     string Subnet,
-     int Timeout_Ms = 200,
-     IProgress<(int Current, int Total)>? Progress = null,
-     Action<string>? Trace = null )
+    string Subnet,
+    int Timeout_Ms = 500,
+    IProgress<(int Current, int Total)>? Progress = null,
+    Action<string>? Trace = null )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
       Trace?.Invoke ( $"Scanning subnet {Subnet}.1-254 timeout={Timeout_Ms}ms" );
 
-      var Results = new System.Collections.Concurrent.ConcurrentBag<string> ( );
+      var Results = new ConcurrentBag<string> ( );
       int Total = 254;
       int Completed = 0;
+      var Semaphore = new SemaphoreSlim ( 50 );
 
-      var Semaphore = new SemaphoreSlim ( 20 ); // limit concurrency
       var Tasks = Enumerable.Range ( 1, 254 ).Select ( async I =>
       {
         await Semaphore.WaitAsync ( );
         try
         {
           string IP = $"{Subnet}.{I}";
+
+          // Step 1: quick ping to skip dead hosts
           using var Ping = new Ping ( );
-          var Reply = await Ping.SendPingAsync ( IP, Timeout_Ms );
+          var Reply = await Ping.SendPingAsync ( IP, Timeout_Ms / 2 );
+          if ( Reply.Status != IPStatus.Success )
+            return;
 
-          if ( Reply.Status == IPStatus.Success )
+          // Step 2: try to connect and identify as Prologix
+          if ( await Is_Prologix ( IP, 1234, Timeout_Ms, Trace ) )
           {
-            bool Found_By_DNS = false;
-            bool Found_By_TCP = false;
-
-            try
-            {
-              var Host_Entry = await Dns.GetHostEntryAsync ( IP );
-              string Host_Name = Host_Entry.HostName.ToLower ( );
-
-              if ( Host_Name.Contains ( "prologix" ) )
-                Found_By_DNS = true;
-            }
-            catch { }
-
-            if ( !Found_By_DNS )
-            {
-              try
-              {
-                using var TCP = new TcpClient ( );
-                var Connect_Task = TCP.ConnectAsync ( IP, 1234 );
-
-                if ( await Task.WhenAny ( Connect_Task, Task.Delay ( Timeout_Ms ) ) == Connect_Task &&
-                    TCP.Connected )
-                {
-                  Found_By_TCP = true;
-                }
-              }
-              catch { }
-            }
-
-            if ( Found_By_DNS || Found_By_TCP )
-              Results.Add ( IP );
+            Trace?.Invoke ( $"  ✓ Confirmed Prologix at {IP}" );
+            Results.Add ( IP );
           }
         }
+        catch { }
         finally
         {
           Semaphore.Release ( );
-          int Done = Interlocked.Increment ( ref Completed );
-          Progress?.Report ( (Done, Total) );
+          Progress?.Report ( (Interlocked.Increment ( ref Completed ), Total) );
         }
       } );
 
       await Task.WhenAll ( Tasks );
 
-      var Found = Results.OrderBy ( IP =>
-      {
-        int Last_Octet = int.Parse ( IP.Split ( '.' ).Last ( ) );
-        return Last_Octet;
-      } ).ToList ( );
+      var Found = Results
+        .OrderBy ( IP => int.Parse ( IP.Split ( '.' ).Last ( ) ) )
+        .ToList ( );
 
-      Trace?.Invoke ( $"Scan complete. Found {Found.Count} Prologix device(s): {string.Join ( ", ", Found )}" );
+      Trace?.Invoke ( $"Scan complete. Found {Found.Count} device(s): {string.Join ( ", ", Found )}" );
       return Found;
     }
 
+    private static async Task<bool> Is_Prologix (
+        string IP, int Port, int Timeout_Ms,
+        Action<string>? Trace = null )
+    {
+      try
+      {
+        using var TCP = new TcpClient ( );
+        using var CTS = new CancellationTokenSource ( Timeout_Ms );
 
+        try
+        {
+          await TCP.ConnectAsync ( IP, Port, CTS.Token );
+        }
+        catch { return false; }
+
+        if ( !TCP.Connected )
+          return false;
+
+        using var Stream = TCP.GetStream ( );
+        Stream.ReadTimeout = Timeout_Ms;
+        Stream.WriteTimeout = Timeout_Ms;
+
+        // Flush anything pending
+        byte [ ] Flush_Buf = new byte [ 256 ];
+        while ( Stream.DataAvailable )
+          await Stream.ReadAsync ( Flush_Buf, 0, Flush_Buf.Length );
+
+        // Send ++ver
+        byte [ ] Cmd = Encoding.ASCII.GetBytes ( "++ver\n" );
+        await Stream.WriteAsync ( Cmd, 0, Cmd.Length );
+
+        // Read response safely
+        byte [ ] Buf = new byte [ 256 ];
+        var Read_Task = Stream.ReadAsync ( Buf, 0, Buf.Length );
+        if ( await Task.WhenAny ( Read_Task, Task.Delay ( Timeout_Ms ) ) != Read_Task )
+          return false;
+
+        int Bytes = Read_Task.Result;
+        string Response = Encoding.ASCII.GetString ( Buf, 0, Bytes ).Trim ( );
+        Trace?.Invoke ( $"  {IP} ver response: '{Response}'" );
+        return Response.Contains ( "Prologix", StringComparison.OrdinalIgnoreCase );
+      }
+      catch
+      {
+        return false;
+      }
+    }
 
 
 

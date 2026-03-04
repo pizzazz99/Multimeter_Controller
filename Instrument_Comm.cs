@@ -1,6 +1,7 @@
 using System.CodeDom;
 using System.Diagnostics;
 using System.IO.Ports;
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using Trace_Execution_Namespace;
@@ -66,7 +67,7 @@ namespace Multimeter_Controller
     // =========================================================
     public Connection_Mode Mode { get; set; } = Connection_Mode.Prologix_GPIB;
     public string Port_Name { get; set; } = "";
-    public int Baud_Rate { get; set; } = 115200;
+    public int Baud_Rate { get; set; } = 9600;
     public int Data_Bits { get; set; } = 8;
     public Parity Parity { get; set; } = Parity.None;
     public StopBits Stop_Bits { get; set; } = StopBits.One;
@@ -86,7 +87,7 @@ namespace Multimeter_Controller
     public Prologix_Eos_Mode EOS_Mode { get; set; } = Prologix_Eos_Mode.LF;
 
     // Timeouts
-    public int Read_Timeout_Ms { get; set; } = 15000;
+    public int Read_Timeout_Ms { get; set; } = 3000;
     public int Write_Timeout_Ms { get; set; } = 5000;
     public int Prologix_Read_Timeout_Ms { get; set; } = 3000;
 
@@ -112,6 +113,8 @@ namespace Multimeter_Controller
     // =========================================================
     private readonly HashSet<int> _Verified_Addresses = new ( );
 
+    private readonly Dictionary<int, Scan_Result> _Verified_Cache = new ( );
+
     public bool Is_Address_Verified ( int address )
     {
       return _Verified_Addresses.Contains ( address );
@@ -136,6 +139,15 @@ namespace Multimeter_Controller
     public static int [ ] Get_Available_Baud_Rates ( ) =>
         new [ ] { 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600 };
     public static int [ ] Get_Available_Data_Bits ( ) => new [ ] { 7, 8 };
+
+
+    public static int [ ] Get_Available_Read_Timeouts () => new [ ] { 1000, 2000, 3000 };
+
+
+  
+
+
+
 
     // =========================================================
     // CONNECT / DISCONNECT
@@ -183,6 +195,21 @@ namespace Multimeter_Controller
       _Port.DiscardInBuffer ( );
     }
 
+    public void Discard_Output_Buffer ( )
+    {
+      if ( _Port == null || !_Port.IsOpen )
+        return;
+      _Port.DiscardOutBuffer ( );
+    }
+
+    public void Discard_IO_Buffers ( )
+    {
+      if ( _Port == null || !_Port.IsOpen )
+        return;
+
+      Discard_Input_Buffer ( );
+      Discard_Output_Buffer ( );
+    }
 
     public void Flush_Buffers ( )
     {
@@ -284,6 +311,8 @@ namespace Multimeter_Controller
 
         _Tcp_Stream?.Close ( );
         _Tcp_Client?.Close ( );
+
+        _Verified_Cache.Clear ( );
       }
       catch ( Exception Ex )
       {
@@ -373,7 +402,7 @@ namespace Multimeter_Controller
       }
     }
 
-    public void Configure_Prologix_TransportOnly ( )
+    public void Configure_Prologix_Transport_Only ( )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
 
@@ -392,8 +421,8 @@ namespace Multimeter_Controller
       // First connect reset if needed
       if ( _Is_First_Connect )
       {
-        Raw_Write ( "++ifc" );
-        Thread.Sleep ( 100 );
+      //  Raw_Write ( "++ifc" );
+      //  Thread.Sleep ( 100 );
         Raw_Write ( "++savecfg 0" );
         Thread.Sleep ( 50 );
         _Is_First_Connect = false;
@@ -481,6 +510,8 @@ namespace Multimeter_Controller
     public void Raw_Write_Prologix ( string Command )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
+      Capture_Trace.Write ( $"Prologix Command -> {Command}" );
+
       byte [ ] Bytes = Encoding.ASCII.GetBytes ( Command + "\r\n" );
       Write_Bytes ( Bytes );
     }
@@ -583,38 +614,12 @@ namespace Multimeter_Controller
       
     }
 
-    public string old_Query_Instrument ( string Command, CancellationToken Token )
-    {
-      using var Block = Trace_Block.Start_If_Enabled ( );
 
-      Capture_Trace.Write ( $"Command : [{Command}]" );
-      Capture_Trace.Write ( $"hex     : [{BitConverter.ToString ( Encoding.ASCII.GetBytes ( Command ) )}]" );
-
-      try
-      {
-        Send_Instrument_Command ( Command );
-        Thread.Sleep ( Instrument_Settle_Ms );
-        Raw_Write_Prologix ( "++read eoi" );
-        Thread.Sleep ( Prologix_Fetch_Ms );
-        return Read_Instrument ( Token ) ?? "";
-      }
-      catch ( OperationCanceledException ) { throw; }
-      catch ( TimeoutException )
-      {
-        Raise_Error ( $"Timeout waiting for response to: {Command}" );
-        return "";
-      }
-      catch ( Exception Ex )
-      {
-        Raise_Error ( $"Query failed: {Ex.Message}" );
-        return "";
-      }
-    }
 
     // =========================================================
     // READ
     // =========================================================
-    public string? Read_Instrument ( CancellationToken Token = default )
+    public string? old_Read_Instrument ( CancellationToken Token = default )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
 
@@ -631,6 +636,28 @@ namespace Multimeter_Controller
         return "";
       }
     }
+
+
+
+    public string? Read_Instrument ( CancellationToken Token = default )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+      try
+      {
+        return Mode == Connection_Mode.Prologix_Ethernet
+            ? Read_Ethernet ( Token )
+            : Read_Serial ( Token );
+      }
+      catch ( OperationCanceledException ) { throw; }
+      catch ( TimeoutException ) { throw; }
+      catch ( InvalidOperationException ) { throw; }
+      catch ( Exception Ex )
+      {
+        Raise_Error ( $"Read failed: {Ex.Message}" );
+        return "";
+      }
+    }
+
 
     private string Read_Serial ( CancellationToken Token )
     {
@@ -846,83 +873,165 @@ namespace Multimeter_Controller
     private Task<string> Try_QueryAsync ( string cmd, CancellationToken token ) =>
         Task.Run ( ( ) => Try_Query ( cmd ), token );
 
+    private Task<string> Try_Query_Short_Async ( string cmd, CancellationToken token, int Timeout_Ms = 3000 ) =>
+    Task.Run ( ( ) => Try_Query_Short ( cmd, Timeout_Ms ), token );
+
+
 
     public async Task<List<Scan_Result>> Scan_GPIB_BusAsync (
-      IProgress<string>? Progress = null,
-      CancellationToken Token = default )
+     IProgress<string>? Progress = null,
+     CancellationToken Token = default )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
-
       var Results = new List<Scan_Result> ( );
-
       if ( Mode == Connection_Mode.Direct_Serial )
       {
         Raise_Error ( "Bus scanning is not available in Direct Serial mode." );
         return Results;
       }
-
       if ( !Is_Connected )
       {
         Raise_Error ( "Not connected." );
         return Results;
       }
-
       int Original_Address = GPIB_Address;
-
+      var Retry_Addresses = new List<int> ( );  // declared here so second pass can see it
+      var Legacy_Addresses = new List<int> ( );  // showed readings -- need TRIG HOLD
+      var All_Retry = new List<int> ( );  // all non-responding addresses -- get ID? in second pass
+      var Needs_Drain = new HashSet<int> ( );  // were spewing readings -- also need TRIG HOLD
       try
       {
         await Raw_WriteAsync ( "++auto 0" );
-        await Task.Delay ( 50, Token );
+        await Task.Delay ( 200, Token );
 
         for ( int Addr = 0; Addr <= 30; Addr++ )
         {
           Token.ThrowIfCancellationRequested ( );
-
           Capture_Trace.Write ( $"Scanning address {Addr}..." );
           Progress?.Report ( $"Scanning GPIB address {Addr}..." );
-
           await Raw_WriteAsync ( $"++addr {Addr}" );
-          await Task.Delay ( 40, Token );
+          await Task.Delay ( 200, Token );
+          await Task.Delay ( 50, Token );
 
-          string Response = await Try_QueryAsync ( "*IDN?", Token );
-          if ( string.IsNullOrEmpty ( Response ) )
-            Response = await Try_QueryAsync ( "ID?", Token );
+          string Response = await Try_Query_Short_Async ( "*IDN?", Token, Timeout_Ms: 500 );
 
-          if ( !string.IsNullOrEmpty ( Response ) )
+          if ( Response.Contains ( "Unrecognized command" ) || Response.Contains ( "Prologix" ) )
           {
-            Meter_Type? Detected = null;
-            string Upper = Response.ToUpperInvariant ( );
-
-            if ( Upper.Contains ( "3458" ) )
-              Detected = Meter_Type.HP3458;
-            else if ( Upper.Contains ( "34401" ) )
-              Detected = Meter_Type.HP34401;
-            else if ( Upper.Contains ( "33120" ) )
-              Detected = Meter_Type.HP33120;
-
-            Results.Add ( new Scan_Result
-            {
-              Address = Addr,
-              ID_String = Response,
-              Detected_Type = Detected
-            } );
-
-            Progress?.Report ( $"  Found at {Addr}: {Response}" );
+            Retry_Addresses.Add ( Addr );
+            continue;
           }
 
-          // Let the UI update after each address
+          bool Looks_Like_Reading = !string.IsNullOrEmpty ( Response ) && double.TryParse (
+              Response.Split ( '\n' ) [ 0 ].Trim ( ),
+              System.Globalization.NumberStyles.Float,
+              System.Globalization.CultureInfo.InvariantCulture,
+              out _ );
+
+          if ( Looks_Like_Reading )
+          {
+            Raw_Write ( "TRIG HOLD" );
+            await Task.Delay ( 200, Token );
+            Drain_Buffer ( );
+            All_Retry.Add ( Addr );
+            Needs_Drain.Add ( Addr );
+          }
+          else if ( string.IsNullOrEmpty ( Response ) ||
+                    Response.Contains ( "Unrecognized command" ) ||
+                    Response.Contains ( "Prologix" ) )
+          {
+            All_Retry.Add ( Addr );
+          }
+
           await Task.Yield ( );
         }
+        Capture_Trace.Write ( $"First pass complete. Legacy addresses: {string.Join ( ", ", Legacy_Addresses )}" );
       }
       catch ( OperationCanceledException )
       {
+        Capture_Trace.Write ( "Scan cancelled." );
         Progress?.Report ( "Scan cancelled." );
       }
       catch ( Exception ex )
       {
         Raise_Error ( $"Scan error: {ex.Message}" );
       }
-      finally
+
+      // Second pass -- always runs regardless of cancellation
+      if ( All_Retry.Count > 0 )
+      {
+        Progress?.Report ( "Second pass -- checking for legacy instruments..." );
+        Capture_Trace.Write ( "Second pass for legacy instruments..." );
+
+        foreach ( int Addr in All_Retry )
+        {
+          if ( !Is_Connected )
+          {
+            Capture_Trace.Write ( "Connection lost during second pass -- stopping." );
+            break;
+          }
+          if ( Addr == 0 )
+            continue;
+          if ( Results.Any ( r => r.Address == Addr ) )
+            continue;
+
+          Capture_Trace.Write ( $"Legacy scan at address {Addr}..." );
+          Progress?.Report ( $"Legacy scan at address {Addr}..." );
+
+          try
+          {
+            await Raw_WriteAsync ( $"++addr {Addr}" );
+            await Task.Delay ( 300, CancellationToken.None );
+
+            if ( Needs_Drain.Contains ( Addr ) )
+            {
+              Raw_Write ( "TRIG HOLD" );
+              await Task.Delay ( 200, CancellationToken.None );
+              Drain_Buffer ( );
+              Flush_Device_Buffer ( );
+              await Task.Delay ( 50, CancellationToken.None );
+            }
+
+            string Response = await Try_Query_Short_Async ( "ID?", CancellationToken.None );
+            if ( string.IsNullOrEmpty ( Response ) )
+            {
+              Flush_Device_Buffer ( );
+              await Task.Delay ( 100, CancellationToken.None );
+              Response = await Try_Query_Short_Async ( "*IDN?", CancellationToken.None );
+            }
+
+            Capture_Trace.Write ( $"Legacy pass address {Addr} raw response: '{Response}'" );
+
+            if ( !string.IsNullOrEmpty ( Response ) )
+            {
+              Meter_Type? Detected = null;
+              string Upper = Response.ToUpperInvariant ( );
+              if ( Upper.Contains ( "3458" ) )
+                Detected = Meter_Type.HP3458;
+              else if ( Upper.Contains ( "34401" ) )
+                Detected = Meter_Type.HP34401;
+              else if ( Upper.Contains ( "33120" ) )
+                Detected = Meter_Type.HP33120;
+              var Result = new Scan_Result
+              {
+                Address = Addr,
+                ID_String = Response,
+                Detected_Type = Detected
+              };
+              Results.Add ( Result );
+              _Verified_Cache [ Addr ] = Result;
+              Capture_Trace.Write ( $"  Found at {Addr}: {Response}" );
+              Progress?.Report ( $"  Found legacy at {Addr}: {Response}" );
+            }
+          }
+          catch ( Exception Ex )
+          {
+            Capture_Trace.Write ( $"Legacy scan error at address {Addr}: {Ex.Message}" );
+          }
+          await Task.Yield ( );
+        }
+      }
+      // Cleanup
+      try
       {
         await Raw_WriteAsync ( $"++addr {Original_Address}" );
         await Task.Delay ( 50, CancellationToken.None );
@@ -930,10 +1039,23 @@ namespace Multimeter_Controller
         await Task.Delay ( 50, CancellationToken.None );
         GPIB_Address = Original_Address;
       }
+      catch { }
 
+      Capture_Trace.Write ( $"Scan complete. Found {Results.Count} instrument(s)." );
       Progress?.Report ( $"Scan complete. Found {Results.Count} instrument(s)." );
       return Results;
     }
+
+
+
+
+
+
+
+
+
+
+
 
     public string Raw_Diagnostic ( string Command )
     {
@@ -1061,20 +1183,22 @@ namespace Multimeter_Controller
 
     // Drain any stale response from the bus with a short timeout so a
     // silent instrument doesn't add seconds to the verification time.
-    private void Drain_Buffer ( int Timeout_Ms = 500 )
+    private void Drain_Buffer ( int Timeout_Ms = 500, int Max_Iterations = 50 )
     {
       using var Cts = new CancellationTokenSource ( Timeout_Ms );
       try
       {
-        Raw_Write ( "++read eoi" );
-        Thread.Sleep ( 50 );
-        if ( Mode == Connection_Mode.Prologix_Ethernet )
+        for ( int i = 0; i < Max_Iterations; i++ )
         {
-          Read_Ethernet ( Cts.Token );
-        }
-        else
-        {
-          Read_Serial ( Cts.Token );
+          using var Iter_Cts = new CancellationTokenSource ( Timeout_Ms );
+          Raw_Write ( "++read eoi" );
+          Thread.Sleep ( 50 );
+          string Response = Mode == Connection_Mode.Prologix_Ethernet
+              ? Read_Ethernet ( Iter_Cts.Token )
+              : Read_Serial ( Iter_Cts.Token );
+          // Empty response means buffer is clear
+          if ( string.IsNullOrWhiteSpace ( Response ) )
+            break;
         }
       }
       catch { }
@@ -1083,6 +1207,8 @@ namespace Multimeter_Controller
     private void Raise_Error ( string Message )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
+
+      Capture_Trace.Write ( $"Error: {Message}" );
       Error_Occurred?.Invoke ( this, Message );
     }
 
@@ -1098,18 +1224,27 @@ namespace Multimeter_Controller
     }
 
 
-    public string Verify_GPIB_Address ( int Address, bool Try_Legacy_ID = false )
+    public string Verify_GPIB_Address ( int Address, bool Try_Legacy_ID = false, bool Restore_Address = true )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
 
       if ( !Is_Connected )
         return "";
 
+
+      // Check cache first
+      if ( _Verified_Cache.TryGetValue ( Address, out var Cached ) )
+      {
+        Capture_Trace.Write ( $"Cache hit for address {Address}: {Cached.ID_String}" );
+        return Cached.ID_String;
+      }
+
+
       if ( Mode == Connection_Mode.Direct_Serial )
       {
         return Try_Legacy_ID
-            ? Try_Query ( "ID?" )
-            : Try_Query ( "*IDN?" );
+            ? Try_Query_Short ( "ID?" )
+            : Try_Query_Short ( "*IDN?" );
       }
 
       int Original_Address = GPIB_Address;
@@ -1119,11 +1254,11 @@ namespace Multimeter_Controller
         // Switch to target address
         Raw_Write ( $"++addr {Address}" );
         GPIB_Address = Address;
-        Thread.Sleep ( 100 );   // was 50 -- give bus time to settle
+        Thread.Sleep ( 200 );   // was 50 -- give bus time to settle
 
         // Stop auto-read
         Raw_Write ( "++auto 0" );
-        Thread.Sleep ( 100 );   // was 50
+        Thread.Sleep ( 200 );   // was 50
 
         // Flush any stale data on THIS address before querying
         Flush_Device_Buffer ( );
@@ -1133,16 +1268,35 @@ namespace Multimeter_Controller
         {
           Raw_Write ( "TRIG HOLD" );
           Thread.Sleep ( 200 );
-
-          // Two drain passes with short timeout -- 3458 sometimes has
-          // buffered readings in flight; we don't want to wait 15 s each.
-          Drain_Buffer ( );
-          Drain_Buffer ( );
+          Drain_Buffer ( );   // now loops until empty
+          Flush_Device_Buffer ( );
         }
 
         string Response = Try_Legacy_ID
             ? Try_Query_Short ( "ID?" )
             : Try_Query_Short ( "*IDN?" );
+
+
+        if ( !string.IsNullOrEmpty ( Response ) )
+        {
+          Meter_Type? Detected = null;
+          string Upper = Response.ToUpperInvariant ( );
+          if ( Upper.Contains ( "3458" ) )
+            Detected = Meter_Type.HP3458;
+          else if ( Upper.Contains ( "34401" ) )
+            Detected = Meter_Type.HP34401;
+          else if ( Upper.Contains ( "33120" ) )
+            Detected = Meter_Type.HP33120;
+
+          _Verified_Cache [ Address ] = new Scan_Result
+          {
+            Address = Address,
+            ID_String = Response,
+            Detected_Type = Detected
+          };
+        }
+
+
 
         return Response;
       }
@@ -1153,10 +1307,12 @@ namespace Multimeter_Controller
       }
       finally
       {
-        // Always restore original address
-        Raw_Write ( $"++addr {Original_Address}" );
-        Thread.Sleep ( 100 );   // give bus time before next operation
-        GPIB_Address = Original_Address;
+        if ( Restore_Address )
+        {
+          Raw_Write ( $"++addr {Original_Address}" );
+          Thread.Sleep ( 100 );
+          GPIB_Address = Original_Address;
+        }
       }
     }
 

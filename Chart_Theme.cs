@@ -89,6 +89,78 @@ namespace Multimeter_Controller
       };
     }
 
+
+    public static Chart_Theme Brown_Preset ( )
+    {
+      return new Chart_Theme
+      {
+        Background = Color.FromArgb ( 45, 35, 25 ),
+        Grid = Color.FromArgb ( 90, 70, 50 ),
+        Labels = Color.BurlyWood,
+        Separator = Color.SaddleBrown,
+        Line_Colors = new [ ]
+        {
+      Color.Peru,
+      Color.Chocolate,
+      Color.Tan,
+      Color.SandyBrown
+    }
+      };
+    }
+
+    public static Chart_Theme Grey_Preset ( )
+    {
+      return new Chart_Theme
+      {
+        Background = Color.FromArgb ( 40, 40, 40 ),
+        Grid = Color.DimGray,
+        Labels = Color.Gainsboro,
+        Separator = Color.Gray,
+        Line_Colors = new [ ]
+        {
+      Color.LightGray,
+      Color.Silver,
+      Color.DarkGray,
+      Color.WhiteSmoke
+    }
+      };
+    }
+
+    public static Chart_Theme Golden_Preset ( )
+    {
+      return new Chart_Theme
+      {
+        Background = Color.FromArgb ( 30, 25, 10 ),
+        Grid = Color.Goldenrod,
+        Labels = Color.Khaki,
+        Separator = Color.DarkGoldenrod,
+        Line_Colors = new [ ]
+        {
+      Color.Gold,
+      Color.Orange,
+      Color.Yellow,
+      Color.Khaki
+    }
+      };
+    }
+
+    public static Chart_Theme Light_Yellow_Preset ( )
+    {
+      return new Chart_Theme
+      {
+        Background = Color.LightYellow,
+        Grid = Color.Goldenrod,
+        Labels = Color.Black,
+        Separator = Color.DarkKhaki,
+        Line_Colors = new [ ]
+        {
+      Color.Orange,
+      Color.Goldenrod,
+      Color.OliveDrab,
+      Color.DarkOrange
+    }
+      };
+    }
     public void Save ( )
     {
       try

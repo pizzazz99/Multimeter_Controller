@@ -61,6 +61,7 @@
 // ============================================================================
 
 
+
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO.Ports;
@@ -93,8 +94,6 @@ namespace Multimeter_Controller
     private const int _Max_History_Size = 50;
 
 
-
-
     // Multi-instrument list (for launching multi-poll)
 
     private BindingList<Instrument> _Instruments = new BindingList<Instrument> ( );
@@ -102,6 +101,10 @@ namespace Multimeter_Controller
     private Application_Settings _Settings = Application_Settings.Load ( );
     private Chart_Theme _Theme = Chart_Theme.Dark_Preset ( );
 
+    private int _Instrument_Count = 0;
+    public bool Is_GPIB = false;
+    public bool Is_Serial = false;
+    public bool Is_Ethernet = false;
 
     public Form1 ( )
     {
@@ -109,6 +112,8 @@ namespace Multimeter_Controller
       using var Block = Trace_Block.Start_If_Enabled ( );
 
       InitializeComponent ( );
+
+      
 
       Instruments_List.DataSource = _Instruments;
       Instruments_List.DisplayMember = "Name";
@@ -128,7 +133,7 @@ namespace Multimeter_Controller
       Instrument_Type_Combo.SelectedIndex = 1;
       Connected_Instrument_Textbox.Text = "";
 
-
+      NPLC_Combo.SelectedItem = _Settings.Default_NPLC;
 
       // Apply to launcher window
       if ( !string.IsNullOrWhiteSpace ( _Settings.Default_Window_Title ) )
@@ -137,15 +142,13 @@ namespace Multimeter_Controller
       }
 
       Subnet_Textbox.Text = _Settings.Network_Scan_Subnet;
-      Block?.Trace ( $"Subnet set to: [{_Settings.Network_Scan_Subnet}] Control name: [{Subnet_Textbox.Name}]" );
+      Capture_Trace.Write ( $"Subnet set to: [{_Settings.Network_Scan_Subnet}] Control name: [{Subnet_Textbox.Name}]" );
+
+      Set_Button_State ( );
+
     }
 
 
-    private void Theme_Button_Click ( object sender, EventArgs e )
-    {
-      var Next_Theme = Multimeter_Common_Helpers_Class.Get_Next_Theme ( _Theme );
-      _Settings.Set_Theme ( Next_Theme );
-    }
 
 
     private void Settings_Button_Click ( object Sender, EventArgs E )
@@ -205,8 +208,8 @@ namespace Multimeter_Controller
       Subnet_Textbox.Text = _Settings.Network_Scan_Subnet;
       IP_Address_Text.Text = _Settings.Default_IP_Address;
 
-      Block?.Trace ( $"Subnet set to: [{_Settings.Network_Scan_Subnet}] Control name: [{Subnet_Textbox.Name}]" );
-      Block?.Trace ( "Settings applied successfully" );
+      Capture_Trace.Write ( $"Subnet set to: [{_Settings.Network_Scan_Subnet}] Control name: [{Subnet_Textbox.Name}]" );
+      Capture_Trace.Write ( "Settings applied successfully" );
     }
 
 
@@ -215,10 +218,7 @@ namespace Multimeter_Controller
     protected override void OnLoad ( EventArgs E )
     {
       base.OnLoad ( E );
-
-      Trace_Execution.Initialize ( true );  // start visible
-
-
+   
     }
 
 
@@ -297,40 +297,7 @@ namespace Multimeter_Controller
 
     private void Update_Trace_Button_State ( bool Trace_Visible )
     {
-      /******************************************************************************
-       * Update_Trace_Button_State - Updates the execution trace toggle button UI
-       *
-       * PURPOSE:
-       *   Updates the text and background color of the "Show Execution Trace"
-       *   button based on the current visibility state of the trace window.
-       *   Ensures UI updates occur on the main thread.
-       *
-       * OPERATIONS:
-       *   1. Logs entry into the method for debugging using Trace
-       *   2. Checks if invocation is required (UI thread)
-       *      - If so, uses BeginInvoke to marshal the call to the UI thread
-       *   3. Sets button text to "Trace OFF" if Trace_Visible is true, otherwise "Trace ON"
-       *   4. Sets button background color to Yellow when trace is visible, default otherwise
-       *
-       * PARAMETERS:
-       *   Trace_Visible - Boolean indicating whether the trace window is currently visible
-       *
-       * RETURNS:
-       *   void
-       *
-       * SIDE EFFECTS:
-       *   - Updates buttonShowExecutionTrace.Text
-       *   - Updates buttonShowExecutionTrace.BackColor
-       *   - May queue a BeginInvoke action if called from a non-UI thread
-       *
-       * THREAD SAFETY:
-       *   Ensures thread-safe updates of UI controls using BeginInvoke when necessary
-       *
-       * NOTES:
-       *   BeginInvoke is used instead of Invoke to avoid blocking the calling thread
-       *   and to prevent potential deadlocks during cross-thread UI updates.
-       ******************************************************************************/
-
+      
 
       using var Block = Trace_Block.Start_If_Enabled ( );
 
@@ -350,31 +317,7 @@ namespace Multimeter_Controller
 
     private void Trace_Window_Trace_Visibility_Changed ( bool Visible )
     {
-      /******************************************************************************
-       * Trace_Window_TraceVisibilityChanged - Update button state on trace visibility
-       *
-       * PURPOSE:
-       *   Updates the trace toggle button state when the visibility of the Trace window changes.
-       *
-       * OPERATIONS:
-       *   1. Calls Update_Trace_Button_State with the current visibility
-       *
-       * PARAMETERS:
-       *   sender  - object raising the event
-       *   visible - bool indicating if Trace window is visible
-       *
-       * RETURNS:
-       *   void
-       *
-       * SIDE EFFECTS:
-       *   - Updates UI button state
-       *
-       * THREAD SAFETY:
-       *   Must be called from UI thread
-       *
-       * NOTES:
-       *   Typically invoked by Trace window itself when its visibility changes.
-       ******************************************************************************/
+     
 
 
       if ( InvokeRequired )
@@ -390,50 +333,10 @@ namespace Multimeter_Controller
 
     private void Button_Show_Execution_Trace_Click ( object? Sender, EventArgs Args )
     {
-      /******************************************************************************
-       * buttonShowExecutionTrace_Click - Handle Trace Window Toggle Button
-       *
-       * PURPOSE:
-       *   Event handler for the "Show Execution Trace" button click. Toggles the
-       *   visibility of the Trace_Window debug output panel, allowing users to
-       *   show or hide real-time execution tracing during motor operations.
-       *
-       * OPERATIONS:
-       *   1. Starts a trace block for this method invocation
-       *   2. Delegates to Toggle_Trace_Window() for actual visibility toggle
-       *   3. Ends trace block with blank line separator
-       *
-       * PARAMETERS:
-       *   sender - The button control that raised the click event
-       *   e      - Event arguments (unused)
-       *
-       * RETURNS:
-       *   void
-       *
-       * SIDE EFFECTS:
-       *   - Toggles Trace_Window visibility (show/hide)
-       *   - Updates Capture_Trace flag
-       *   - Changes button appearance (color, text)
-       *   - Enables or disables UI logging via Execution_Logger_Class
-       *
-       * THREAD SAFETY:
-       *   Must be called on UI thread (standard button click handler)
-       *
-       * NOTES:
-       *   This is a thin wrapper that delegates to Toggle_Trace_Window() which
-       *   contains the actual implementation logic. The wrapper pattern allows
-       *   Toggle_Trace_Window() to be called programmatically from other locations.
-       ******************************************************************************/
-
-      using var Block = Trace_Block.Start_If_Enabled ( );
-
-
-      if ( Trace_Execution.IsRunning )
-        Trace_Execution.Stop ( );
-      else
-        Trace_Execution.Start ( );
+      Trace_Execution.Toggle ( );
+      Button_Show_Execution_Trace.Text = Trace_Execution.IsRunning ? "Trace OFF" : "Trace ON";
+      Button_Show_Execution_Trace.BackColor = Trace_Execution.IsRunning ? Color.Yellow : SystemColors.Control;
     }
-
 
 
     private Command_Entry _Selected_Command
@@ -541,31 +444,50 @@ namespace Multimeter_Controller
 
     }
 
+ 
+
     private void Multi_Poll_Button_Click ( object sender, EventArgs e )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
-
       if ( _Instruments.Count == 0 )
       {
         MessageBox.Show (
-          "No instruments configured. Please scan for instruments first.",
-          "No Instruments",
-          MessageBoxButtons.OK,
-          MessageBoxIcon.Warning );
+            "No instruments configured. Please scan for instruments first.",
+            "No Instruments",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Warning );
         return;
       }
 
-      // Make names unique if there are duplicates
-      var Unique_Instruments = new List<(string Name, int Address, Meter_Type Type)> ( );
+      // Make names unique by patching them in place (or clone if you don't want to modify originals)
       foreach ( var Inst in _Instruments )
       {
-        string Unique_Name = $"{Inst.Name} @ {Inst.Address}";
-        Unique_Instruments.Add ( (Unique_Name, Inst.Address, Inst.Type) );
+
+        Inst.Name = $"{Inst.Name} @ {Inst.Address} @ {Inst.Type}";
       }
 
-      var Form = new Multi_Instrument_Poll_Form ( _Comm, Unique_Instruments, _Settings, _Selected_Meter );
+
+      var Form = new Multi_Instrument_Poll_Form ( _Comm, _Instruments.ToList ( ), _Settings, _Selected_Meter );
+
+
       Form.Show ( );
     }
+
+
+   
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     // ===== Instrument List =====
 
@@ -576,17 +498,13 @@ namespace Multimeter_Controller
 
       _Updating_Controls = true;
       Capture_Trace.Write ( "Adding Instrument" );
-      Instrument_Type_Combo.Enabled = true;
-      Instrument_Type_Label.Enabled = true;
+    //  Instrument_Type_Combo.Enabled = true;
+    //  Instrument_Type_Label.Enabled = true;
 
       int Address = (int) Instrument_Address_Numeric.Value;
-      Meter_Type Type = Instrument_Type_Combo.SelectedIndex switch
-      {
-        1 => Meter_Type.HP34401,
-        2 => Meter_Type.HP33120,
-        _ => Meter_Type.HP3458
-      };
+      Meter_Type Type = Get_Selected_Meter_Type ( );
       string Name = Instrument_Name_Text.Text.Trim ( );
+
       if ( string.IsNullOrEmpty ( Name ) )
         Name = Get_Meter_Name ( Type );
 
@@ -617,22 +535,13 @@ namespace Multimeter_Controller
             Append_Response ( $"[Verifying GPIB address {Address}...]" );
 
             string ID_Response = await Task.Run ( ( ) =>
-                _Comm.Verify_GPIB_Address ( Address, Is_Legacy_HP ( Type ) ) );
+                _Comm.Verify_GPIB_Address ( Address, Is_Legacy_HP ( Type ), Restore_Address: false ) );
 
             if ( string.IsNullOrEmpty ( ID_Response ) )
             {
-              var Result = MessageBox.Show (
-                  $"No instrument responded at GPIB address {Address}.\n\nAdd it anyway?",
-                  "Verification Failed",
-                  MessageBoxButtons.YesNo,
-                  MessageBoxIcon.Warning );
-
-              if ( Result != DialogResult.Yes )
-              {
                 Append_Response ( $"[No instrument at address {Address} - not added]" );
                 return;
-              }
-              Append_Response ( $"[No response at address {Address} - added anyway]" );
+            
             }
             else
             {
@@ -641,6 +550,8 @@ namespace Multimeter_Controller
 
               if ( Name == Get_Meter_Name ( Type ) )
                 Name = ID_Response.Length > 40 ? ID_Response.Substring ( 0, 40 ) : ID_Response;
+
+            
             }
           }
         }
@@ -661,7 +572,8 @@ namespace Multimeter_Controller
         Address = Address,
         Type = Type,
         Verified = true,
-        Visible = true
+        Visible = true,
+       
       };
       _Instruments.Add ( inst );
 
@@ -675,10 +587,13 @@ namespace Multimeter_Controller
         Capture_Trace.Write ( $"Failed to initialize instrument at address {Address}: {Ex.Message}" );
         Append_Response ( $"[Warning: initialization failed for address {Address}: {Ex.Message}]" );
       }
-
-      // --- Optional UI updates ---
-      Refresh_Instrument_Display ( );
-      Populate_Command_List ( );
+      finally
+      {
+        // --- Optional UI updates ---
+        Refresh_Instrument_List ( );
+        Set_Button_State ( );
+        Populate_Command_List ( );
+      }
     }
 
 
@@ -739,13 +654,37 @@ namespace Multimeter_Controller
       {
         case Meter_Type.HP33120:
         case Meter_Type.HP34401:
+          // Switch to correct address first
+          await _Comm.Send_Prologix_CommandAsync ( $"++addr {inst.Address}" );
+          await Task.Delay ( 50 );
+          await _Comm.Send_Prologix_CommandAsync ( "++auto 0" );
+          await Task.Delay ( 50 );
+
+          // Suppress beep before going remote
+          await _Comm.Send_Instrument_CommandAsync ( inst.Address, "SYSTEM:BEEPER:STATE OFF" );
+          await Task.Delay ( 100 );
+
           Capture_Trace.Write ( "Clearing..." );
           await _Comm.Send_Instrument_CommandAsync ( inst.Address, "*CLS" );
+          await Task.Delay ( 200 );   // ← give it time to clear
           Append_Response ( "> *CLS" );
 
-          Capture_Trace.Write ( "Setting HP to remote mode..." );
+          Capture_Trace.Write ( "Setting HP34401 to remote mode..." );
           await _Comm.Send_Instrument_CommandAsync ( inst.Address, "SYSTEM:REMOTE" );
+          await Task.Delay ( 200 );
           Append_Response ( "> SYSTEM:REMOTE" );
+
+          // turn on beeps
+          await _Comm.Send_Instrument_CommandAsync ( inst.Address, "SYSTEM:BEEPER:STATE ON" );
+          await Task.Delay ( 100 );
+
+
+          Capture_Trace.Write ( "Clearing..." );
+          await _Comm.Send_Instrument_CommandAsync ( inst.Address, "*CLS" );
+          await Task.Delay ( 200 );   // ← give it time to clear
+          Append_Response ( "> *CLS" );
+
+
           break;
 
         case Meter_Type.HP3458:
@@ -790,77 +729,6 @@ namespace Multimeter_Controller
     }
 
 
-    private async Task old_Initialize_Remote_For_Instrument ( Instrument inst )
-    {
-      using var Block = Trace_Block.Start_If_Enabled ( );
-
-      if ( !_Comm.Is_Connected )
-        return;
-
-      if ( _Comm.Mode == Connection_Mode.Prologix_GPIB ||
-          _Comm.Mode == Connection_Mode.Prologix_Ethernet )
-      {
-        _Comm.Flush_Buffers ( );
-
-        string ver = _Comm.Query_Prologix_Version ( );
-        Append_Response ( $"> Prologix version: {ver}" );
-        Capture_Trace.Write ( $"> Prologix version: {ver}" );
-      }
-
-      Capture_Trace.Write ( $"Setting {inst.Type} at address {inst.Address} to remote mode..." );
-
-      switch ( inst.Type )
-      {
-        case Meter_Type.HP33120:
-        case Meter_Type.HP34401:
-          Capture_Trace.Write ( "Clearing..." );
-          _Comm.Send_Instrument_Command ( inst.Address, "*CLS" );
-          Append_Response ( "> *CLS" );
-
-          Capture_Trace.Write ( "Setting HP to remote mode..." );
-          _Comm.Send_Instrument_Command ( inst.Address, "SYSTEM:REMOTE" );
-          Append_Response ( "> SYSTEM:REMOTE" );
-          break;
-
-        case Meter_Type.HP3458:
-          if ( _Settings.Send_Reset_On_Connect_3458 )
-          {
-            _Comm.Send_Instrument_Command ( inst.Address, "RESET" );
-            await Task.Delay ( 3000 );
-            _Comm.Send_Prologix_Command ( $"++addr {inst.Address}" );
-            await Task.Delay ( 50 );
-          }
-          if ( _Settings.Send_End_Always_3458 )
-          {
-            _Comm.Send_Instrument_Command ( inst.Address, "END ALWAYS" );
-            await Task.Delay ( 200 );
-          }
-
-          _Comm.Send_Instrument_Command ( inst.Address, "TRIG AUTO" );
-          await Task.Delay ( 200 );
-
-          _Comm.Send_Instrument_Command ( inst.Address, $"GPIB {inst.Address}" );
-          await Task.Delay ( 100 );
-
-          _Comm.Send_Prologix_Command ( $"++addr {inst.Address}" );
-          await Task.Delay ( 50 );
-
-          _Comm.Send_Instrument_Command ( inst.Address, $"NPLC {_Settings.Default_NPLC_3458}" );
-          await Task.Delay ( _Settings.NPLC_Apply_Delay_Ms );
-
-          Append_Response ( "> Connected to 3458" );
-          break;
-
-        default:
-          Capture_Trace.Write ( $"No specific init for meter type: {inst.Type}" );
-          Append_Response ( $"> Connected to {inst.Type}" );
-          break;
-      }
-
-      // Update instrument-specific UI
-      Connected_Instrument_Textbox.Text = inst.Name;
-    }
-
 
 
 
@@ -888,7 +756,7 @@ namespace Multimeter_Controller
         _Instruments.Remove ( Backing );
       }
 
-      Refresh_Instrument_Display ( );
+      Refresh_Instrument_List ( );
     }
 
 
@@ -900,22 +768,28 @@ namespace Multimeter_Controller
 
       using var Block = Trace_Block.Start_If_Enabled ( );
 
-      GPIB_Address_Numeric.Enabled = State;
+
       Select_Instrument_Button.Enabled = State;
       Instrument_Address_Label.Enabled = State;
       Instrument_Address_Numeric.Enabled = State;
-      // Add_Instrument_Button.Enabled = State;
+
       Remove_Instrument_Button.Enabled = State;
       Scan_Bus_Button.Enabled = State;
       Saved_Instruments_Label.Enabled = State;
       Instruments_List.Enabled = State;
-      Instrument_Type_Combo.Enabled = true;
-      Instrument_Type_Label.Enabled = true;
 
 
     }
 
-
+    private Meter_Type Get_Selected_Meter_Type ( )
+    {
+      return Instrument_Type_Combo.SelectedIndex switch
+      {
+        1 => Meter_Type.HP34401,
+        2 => Meter_Type.HP33120,
+        _ => Meter_Type.HP3458
+      };
+    }
     private void Instrument_Type_Combo_SelectedIndexChanged (
       object Sender, EventArgs E )
     {
@@ -926,12 +800,7 @@ namespace Multimeter_Controller
         return;
 
 
-      Meter_Type Type = Instrument_Type_Combo.SelectedIndex switch
-      {
-        1 => Meter_Type.HP34401,
-        2 => Meter_Type.HP33120,
-        _ => Meter_Type.HP3458
-      };
+      Meter_Type Type = Get_Selected_Meter_Type ( );
 
 
 
@@ -987,7 +856,7 @@ namespace Multimeter_Controller
 
       // Switch GPIB address
       _Comm.Change_GPIB_Address ( Instrument.Address );
-      GPIB_Address_Numeric.Value = Instrument.Address;
+      //  GPIB_Address_Numeric.Value = Instrument.Address;
       _Selected_Meter = Instrument.Name.ToString ( ).Contains ( "34401" )
         ? Meter_Type.HP34401
         : Instrument.Name.ToString ( ).Contains ( "33120A" )
@@ -1062,7 +931,7 @@ namespace Multimeter_Controller
 
       foreach ( var result in Results )
       {
-        Token.ThrowIfCancellationRequested ( );
+
 
         Meter_Type type = result.Detected_Type ?? Meter_Type.HP3458;
         string name = result.ID_String.Length > 40 ? result.ID_String.Substring ( 0, 40 ) : result.ID_String;
@@ -1090,10 +959,13 @@ namespace Multimeter_Controller
         }
       }
 
-      Refresh_Instrument_Display ( );
+      Refresh_Instrument_List ( );
 
       if ( Results.Count == 0 )
         Append_Response ( "No instruments found on the GPIB bus." );
+
+    
+      
     }
 
 
@@ -1258,11 +1130,8 @@ namespace Multimeter_Controller
     private void Empty_Windows ( )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
-
-      // Clear the BindingList, ListBox updates automatically
       _Instruments.Clear ( );
-
-      // Other controls that are not bound can be cleared normally
+      Refresh_Instrument_List ( );   // ← rebind after clear
       Command_List.Items.Clear ( );
       Send_Command_Text_Box.Clear ( );
       Command_History_List_Box.Items.Clear ( );
@@ -1413,13 +1282,24 @@ namespace Multimeter_Controller
       }
       Flow_Control_Combo.SelectedItem = Handshake.None;
 
+
+      Read_Timeout_Combo_Box.Items.Clear ( );
+      foreach ( int Timeout in
+        Instrument_Comm.Get_Available_Read_Timeouts ( ) )
+      {
+        Read_Timeout_Combo_Box.Items.Add ( Timeout );
+      }
+      Read_Timeout_Combo_Box.SelectedItem = 3000;
+
+
+
       // GPIB address (0-30) - stays editable while
       // connected so the user can switch instruments
-      GPIB_Address_Numeric.Minimum = 0;
-      GPIB_Address_Numeric.Maximum = 30;
-      GPIB_Address_Numeric.Value = 22;
-      GPIB_Address_Numeric.ValueChanged +=
-        GPIB_Address_Numeric_ValueChanged;
+      //   GPIB_Address_Numeric.Minimum = 0;
+      //  GPIB_Address_Numeric.Maximum = 30;
+      //   GPIB_Address_Numeric.Value = 22;
+      //   GPIB_Address_Numeric.ValueChanged +=
+      //     GPIB_Address_Numeric_ValueChanged;
 
       IP_Address_Text.Text = _Settings.Default_IP_Address;
       //   IP_Port_Numeric.Minimum = 1;
@@ -1500,6 +1380,7 @@ namespace Multimeter_Controller
         Parity_Combo.SelectedItem = Parity.None;
         Stop_Bits_Combo.SelectedItem = StopBits.One;
         Flow_Control_Combo.SelectedItem = Handshake.None;
+        Read_Timeout_Combo_Box.SelectedItem = 3000;
 
         Connected_Instrument_Textbox.Text = "";
         _Selected_Address = 0;
@@ -1510,7 +1391,7 @@ namespace Multimeter_Controller
         Capture_Trace.Write ( "Setting defaults for Ethernet connection" );
         IP_Address_Text.Text = "192.168.1.100";  // matches Ethernet_Host default in your class
                                                  //  IP_Port_Numeric.Value = 1234;             // matches Ethernet_Port default in your class
-        GPIB_Address_Numeric.Value = 22;
+                                                 // GPIB_Address_Numeric.Value = 22;
         _Selected_Address = 22;
         Set_GPID_Controls ( State: true );
       }
@@ -1522,10 +1403,12 @@ namespace Multimeter_Controller
         Data_Bits_Combo.SelectedItem = 8;
         Parity_Combo.SelectedItem = Parity.None;
         Stop_Bits_Combo.SelectedItem = StopBits.Two;
-        Flow_Control_Combo.SelectedItem = Handshake.None;
-        GPIB_Address_Numeric.Value = 22;
-        Instrument_Address_Numeric.Value = GPIB_Address_Numeric.Value;
-        _Selected_Address = (int) GPIB_Address_Numeric.Value;
+        Flow_Control_Combo.SelectedItem = Handshake.RequestToSend;
+        Read_Timeout_Combo_Box.SelectedItem = 3000;
+
+        //    GPIB_Address_Numeric.Value = 22;
+        Instrument_Address_Numeric.Value = 22;
+        _Selected_Address = (int) Instrument_Address_Numeric.Value;
 
         Set_GPID_Controls ( State: true );
       }
@@ -1551,11 +1434,16 @@ namespace Multimeter_Controller
             _Comm.Disconnect ( );
           } );
 
+
+
+          Set_Button_State ( );
+
           Capture_Trace.Write ( "Clearing Windows" );
           Empty_Windows ( );
 
-          Capture_Trace.Write ( "Clearing out Instrument list" );
-          _Instruments.Clear ( );
+
+
+
         }
         finally
         {
@@ -1565,8 +1453,8 @@ namespace Multimeter_Controller
       }
 
       // --- Setup transport only ---
-      bool Is_Ethernet = Connection_Mode_Combo.SelectedIndex == 2;
-
+      Is_Ethernet = Connection_Mode_Combo.SelectedIndex == 2;
+      Capture_Trace.Write ( $"Selected connection mode: {( Is_Ethernet ? "Ethernet" : Connection_Mode_Combo.SelectedItem )}" );
       if ( Is_Ethernet )
       {
         _Comm.Mode = Connection_Mode.Prologix_Ethernet;
@@ -1599,10 +1487,19 @@ namespace Multimeter_Controller
         _Comm.Parity = (Parity) Parity_Combo.SelectedItem!;
         _Comm.Stop_Bits = (StopBits) Stop_Bits_Combo.SelectedItem!;
         _Comm.Flow_Control = (Handshake) Flow_Control_Combo.SelectedItem!;
+        _Comm.Read_Timeout_Ms = (int) Read_Timeout_Combo_Box.SelectedItem!;
 
-        Capture_Trace.Write ( $"Comm Mode -> {_Comm.Mode}" );
-        Capture_Trace.Write ( $"Port      -> {_Comm.Port_Name}" );
-        Capture_Trace.Write ( $"Baud      -> {_Comm.Baud_Rate}" );
+
+        Capture_Trace.Write ( $"Comm Mode       -> {_Comm.Mode}" );
+        Capture_Trace.Write ( $"Port            -> {_Comm.Port_Name}" );
+        Capture_Trace.Write ( $"Baud            -> {_Comm.Baud_Rate}" );
+        Capture_Trace.Write ( $"Data Bits       -> {_Comm.Data_Bits}" );
+        Capture_Trace.Write ( $"Parity          -> {_Comm.Parity.ToString ( )}" );
+        Capture_Trace.Write ( $"Stop Bits       -> {_Comm.Stop_Bits}" );
+        Capture_Trace.Write ( $"Flow Control    -> {_Comm.Flow_Control.ToString ( )}" );
+        Capture_Trace.Write ( $"Read Timeout MS -> {_Comm.Read_Timeout_Ms}" );
+
+
       }
 
       // --- Connect ---
@@ -1616,13 +1513,17 @@ namespace Multimeter_Controller
         if ( _Comm.Mode == Connection_Mode.Prologix_GPIB ||
              _Comm.Mode == Connection_Mode.Prologix_Ethernet )
         {
-          _Comm.Configure_Prologix_TransportOnly ( );
+          _Comm.Configure_Prologix_Transport_Only ( );
         }
         // Direct Serial: transport is open, wait for user to add instruments
       }
       finally
       {
+        NPLC_Combo.SelectedItem = _Settings.Default_NPLC;
         Connect_Button.Enabled = true;
+        
+
+        Set_Button_State ( );
       }
     }
 
@@ -1630,112 +1531,7 @@ namespace Multimeter_Controller
 
 
 
-    private async void old_Connect_Button_Click ( object Sender, EventArgs E )
-    {
-      using var Block = Trace_Block.Start_If_Enabled ( );
 
-      if ( _Comm.Is_Connected )
-      {
-        Connect_Button.Enabled = false;
-        try
-        {
-          Capture_Trace.Write ( "Disconnecting..." );
-
-          // Run disconnect off the UI thread, same as connect
-          await Task.Run ( ( ) =>
-          {
-            _Comm.Abort_Pending_Operations ( );   // cancel reads/writes first
-            System.Threading.Thread.Sleep ( 100 ); // let them drain
-            _Comm.Disconnect ( );
-          } );
-
-          Capture_Trace.Write ( "Clearing Windows" );
-          Empty_Windows ( );
-          Capture_Trace.Write ( "Clearing out Instrument list" );
-          _Instruments.Clear ( );
-        }
-        finally
-        {
-
-
-          Connect_Button.Enabled = true;
-        }
-        return;
-      }
-
-
-      // Resolve meter type first so it can drive other settings
-      Meter_Type Type = Instrument_Type_Combo.SelectedIndex switch
-      {
-        1 => Meter_Type.HP34401,
-        2 => Meter_Type.HP33120,
-        _ => Meter_Type.HP3458
-      };
-
-      bool Is_Ethernet = Connection_Mode_Combo.SelectedIndex == 2;
-
-      if ( Is_Ethernet )
-      {
-        _Comm.Mode = Connection_Mode.Prologix_Ethernet;
-        _Comm.Ethernet_Host = IP_Address_Text.Text.Trim ( );
-
-        //        _Comm.Ethernet_Port = (int) IP_Port_Numeric.Value;
-        _Comm.Ethernet_Port = (int) _Settings.Default_Prologic_Port;
-
-        _Comm.GPIB_Address = (int) GPIB_Address_Numeric.Value;
-        _Selected_Address = (int) GPIB_Address_Numeric.Value;
-        _Comm.EOS_Mode = Get_EOS_Mode ( Type );
-
-        Capture_Trace.Write ( $"Comm Mode    -> {_Comm.Mode}" );
-        Capture_Trace.Write ( $"Host         -> {_Comm.Ethernet_Host}" );
-        Capture_Trace.Write ( $"Port         -> {_Comm.Ethernet_Port}" );
-        Capture_Trace.Write ( $"GPIB Address -> {_Comm.GPIB_Address}" );
-        Capture_Trace.Write ( $"EOS Mode     -> {_Comm.EOS_Mode}" );
-
-      }
-      else
-      {
-        if ( COM_Port_Combo.SelectedItem == null )
-        {
-          MessageBox.Show (
-              "Please select a COM port.",
-              "Connection Error",
-              MessageBoxButtons.OK,
-              MessageBoxIcon.Warning );
-          return;
-        }
-        _Comm.Mode = Connection_Mode_Combo.SelectedIndex == 0
-          ? Connection_Mode.Prologix_GPIB
-          : Connection_Mode.Direct_Serial;
-        _Comm.Port_Name = COM_Port_Combo.SelectedItem.ToString ( )!;
-        _Comm.Baud_Rate = (int) Baud_Rate_Combo.SelectedItem!;
-        _Comm.Data_Bits = (int) Data_Bits_Combo.SelectedItem!;
-        _Comm.Parity = (Parity) Parity_Combo.SelectedItem!;
-        _Comm.Stop_Bits = (StopBits) Stop_Bits_Combo.SelectedItem!;
-        _Comm.Flow_Control = (Handshake) Flow_Control_Combo.SelectedItem!;
-        _Comm.GPIB_Address = (int) GPIB_Address_Numeric.Value;
-        _Selected_Address = (int) GPIB_Address_Numeric.Value;
-        _Comm.EOS_Mode = Get_EOS_Mode ( Type );
-      }
-
-
-      Connect_Button.Enabled = false;
-
-      try
-      {
-        await Task.Run ( ( ) =>
-        {
-          _Comm.Connect ( );
-        } );
-
-        Populate_Command_List ( );
-        Initialize_Remote_Connection ( );
-      }
-      finally
-      {
-        Connect_Button.Enabled = true;
-      }
-    }
 
     private void Update_Connection_Status ( bool Connected )
     {
@@ -1758,8 +1554,7 @@ namespace Multimeter_Controller
         Flow_Control_Combo.Enabled = false;
         Refresh_Ports_Button.Enabled = false;
         Defaults_Button.Enabled = false;
-        Instrument_Type_Combo.Enabled = false;
-        Instrument_Type_Label.Enabled = false;
+     
 
         //   Initialize_Remote_Connection ( );
 
@@ -1781,8 +1576,8 @@ namespace Multimeter_Controller
         Flow_Control_Combo.Enabled = true;
         Refresh_Ports_Button.Enabled = true;
         Defaults_Button.Enabled = true;
-        Instrument_Type_Combo.Enabled = true;
-        Instrument_Type_Label.Enabled = true;
+
+     
 
         // Disable scan while disconnected
         Scan_Bus_Button.Enabled = false;
@@ -1794,30 +1589,30 @@ namespace Multimeter_Controller
     private void Connection_Mode_Combo_SelectedIndexChanged ( object Sender, EventArgs E )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
-      bool Is_GPIB = Connection_Mode_Combo.SelectedIndex == 0;
-      bool Is_Serial = Connection_Mode_Combo.SelectedIndex == 1;
-      bool Is_Ethernet = Connection_Mode_Combo.SelectedIndex == 2;
+       Is_GPIB = Connection_Mode_Combo.SelectedIndex == 0;
+       Is_Serial = Connection_Mode_Combo.SelectedIndex == 1;
+       Is_Ethernet = Connection_Mode_Combo.SelectedIndex == 2;
 
       // Serial controls only relevant for serial/GPIB-USB
       // COM port needed for both GPIB-USB and Direct Serial
       COM_Port_Combo.Enabled = Is_GPIB || Is_Serial;
       COM_Port_Label.Enabled = Is_GPIB || Is_Serial;
-
+      Scan_Bus_Button.Enabled = Is_GPIB || Is_Ethernet;
 
       // RS-232 settings only relevant for Direct Serial
       // (Prologix GPIB-USB uses fixed settings, Ethernet has none)
-      Baud_Rate_Combo.Enabled = Is_Serial;
-      Baud_Rate_Label.Enabled = Is_Serial;
-      Data_Bits_Combo.Enabled = Is_Serial;
-      Data_Bits_Label.Enabled = Is_Serial;
-      Parity_Combo.Enabled = Is_Serial;
-      Parity_Label.Enabled = Is_Serial;
-      Stop_Bits_Combo.Enabled = Is_Serial;
-      Stop_Bits_Label.Enabled = Is_Serial;
-      Flow_Control_Combo.Enabled = Is_Serial;
-      Flow_Control_Label.Enabled = Is_Serial;
-      GPIB_Address_Numeric.Enabled = Is_Serial;
-      GPIB_Address_Label.Enabled = Is_Serial;
+      Baud_Rate_Combo.Enabled = Is_GPIB || Is_Serial;
+      Baud_Rate_Label.Enabled = Is_GPIB || Is_Serial;
+      Data_Bits_Combo.Enabled = Is_GPIB || Is_Serial;
+      Data_Bits_Label.Enabled = Is_GPIB || Is_Serial;
+      Parity_Combo.Enabled = Is_GPIB || Is_Serial;
+      Parity_Label.Enabled = Is_GPIB || Is_Serial;
+      Stop_Bits_Combo.Enabled = Is_GPIB || Is_Serial;
+      Stop_Bits_Label.Enabled = Is_GPIB || Is_Serial;
+      Flow_Control_Combo.Enabled = Is_GPIB || Is_Serial;
+      Flow_Control_Label.Enabled = Is_GPIB || Is_Serial;
+      Read_Timeout_Combo_Box.Enabled = Is_GPIB || Is_Serial;
+      Read_Timeout_Label.Enabled = Is_GPIB || Is_Serial;
 
       // Ethernet controls
       Find_Prologic_Button.Enabled = Is_Ethernet;
@@ -1825,58 +1620,56 @@ namespace Multimeter_Controller
       Selected_IP_Address_Label.Enabled = Is_Ethernet;
       Subnet_Textbox.Enabled = Is_Ethernet;
 
-
-
-      Scan_Bus_Button.Enabled = Is_GPIB || Is_Ethernet;
-
-
-
-      //   IP_Port_Numeric.Enabled = Is_Ethernet;
-      //    IP_Port_Label.Enabled = Is_Ethernet;
-
-      // GPIB address only relevant for GPIB modes
       Set_GPID_Controls ( State: Is_GPIB || Is_Ethernet );
+
+      Set_Button_State ( );
+
+     
     }
 
 
-
-
-
-    private void old_Connection_Mode_Combo_SelectedIndexChanged (
-      object? Sender, EventArgs E )
+    private void Set_Button_State ( )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
 
-      bool Is_GPIB = Connection_Mode_Combo.SelectedIndex == 0;
+      // Elements that are active if instruments are present
 
-      Set_GPID_Controls ( State: Is_GPIB );
+      Multi_Poll_Button.Enabled = _Instruments.Count > 0;
+      Info_Popup_Button.Enabled = _Instruments.Count > 0;
 
-      // Show/hide Prologix-specific controls
-      Prologix_Header_Label.Visible = Is_GPIB;
-      GPIB_Address_Label.Visible = Is_GPIB;
-      GPIB_Address_Numeric.Visible = Is_GPIB;
+      Open_Dictionary_Button.Enabled = _Instruments.Count > 0;
+      Diag_Button.Enabled = _Instruments.Count > 0;
+      Execute_Button.Enabled = _Instruments.Count > 0;
+      Remove_Instrument_Button.Enabled = _Instruments.Count > 0;
+      NPLC_Combo.Enabled = _Instruments.Count > 0;
+      Instrument_Name_Label.Enabled = _Instruments.Count > 0;
+      Instrument_Name_Text.Enabled = _Instruments.Count > 0;
+      Command_List.Enabled = _Instruments.Count > 0;
+      Command_History_List_Box.Enabled = _Instruments.Count > 0;
+      Detail_Text_Box.Enabled = _Instruments.Count > 0;
+      Send_Command_Text_Box.Enabled = _Instruments.Count > 0;
+      History_Label.Enabled = _Instruments.Count > 0;
+      Send_Command_Label.Enabled = _Instruments.Count > 0;
+      Response_Label.Enabled = _Instruments.Count > 0;
+      NPLC_Label.Enabled = _Instruments.Count > 0;
 
-      Add_Instrument_Button.Enabled = Is_GPIB;
-      Remove_Instrument_Button.Enabled = Is_GPIB;
-      Select_Instrument_Button.Enabled = Is_GPIB;
-      Saved_Instruments_Label.Enabled = Is_GPIB;
-      Instruments_List.Enabled = Is_GPIB;
 
-      //EOS_Mode_Label.Visible = Is_GPIB;
-      //EOS_Mode_Combo.Visible = Is_GPIB;
-      //   Auto_Read_Check.Visible = Is_GPIB;
-      //    EOI_Check.Visible = Is_GPIB;
+      // Elements that are active if connection has been made
+      Instrument_Type_Combo.Enabled = _Comm.Is_Connected;
+      Instrument_Type_Label.Enabled = _Comm.Is_Connected;
+      Instrument_Address_Numeric.Enabled = _Comm.Is_Connected && ( Is_GPIB || Is_Ethernet );
+      Instrument_Address_Label.Enabled = _Comm.Is_Connected && ( Is_GPIB || Is_Ethernet );
+      Add_Instrument_Button.Enabled = _Comm.Is_Connected && ( Is_GPIB || Is_Ethernet );
 
-      // Update instrument group title
-      Instruments_Group.Text = Is_GPIB
-        ? "GPIB Instruments"
-        : "Instruments";
+      Select_Instrument_Button.Enabled = _Instruments.Count > 0;
 
-      // Hide scan bus in direct serial mode
-      Scan_Bus_Button.Visible = Is_GPIB;
+
+      Scan_Bus_Button.Enabled = _Comm.Is_Connected && ( Is_GPIB || Is_Ethernet );
     }
 
-    // ===== Event Handlers =====
+
+
+
 
     private void Comm_Connection_Changed (
       object? Sender, bool Connected )
@@ -1926,12 +1719,12 @@ namespace Multimeter_Controller
       _Updating_Controls = true;
 
       // Always keep UI controls in sync
-      Instrument_Address_Numeric.Value = GPIB_Address_Numeric.Value;
+      //    Instrument_Address_Numeric.Value = GPIB_Address_Numeric.Value;
 
       // Only update hardware if connected
       if ( _Comm.Is_Connected )
       {
-        _Comm.Change_GPIB_Address ( (int) GPIB_Address_Numeric.Value );
+        _Comm.Change_GPIB_Address ( (int) Instrument_Address_Numeric.Value );
       }
 
       _Updating_Controls = false;
@@ -1951,102 +1744,7 @@ namespace Multimeter_Controller
     }
 
 
-    public void Initialize_Remote_Connection ( )
-    {
-
-      using var Block = Trace_Block.Start_If_Enabled ( );
-
-      // If we are talking to an HP meter, we MUST establish remote communication
-      if ( _Comm.Is_Connected )
-      {
-
-
-
-        if ( _Comm.Mode == Connection_Mode.Prologix_GPIB ||
-             _Comm.Mode == Connection_Mode.Prologix_Ethernet )
-        {
-
-          /*
-          Capture_Trace.Write ( "Setting Prologix adapter to ++mode 1" );
-          _Comm.Send_Prologix_Command ( "++mode 1" );
-
-
-          Capture_Trace.Write ( "Setting Prologix adapter to ++auto 0" );
-          _Comm.Send_Prologix_Command ( "++auto 0" );
-
-
-          Capture_Trace.Write ( "Setting Prologix adapter to ++eos 2" );
-          _Comm.Send_Prologix_Command ( "++eos 2" );
-
-
-          Capture_Trace.Write ( "Setting Prologix adapter to ++read_tmo_ms 5000" );
-          _Comm.Send_Prologix_Command ( "++read_tmo_ms 5000" );
-          */
-
-          _Comm.Flush_Buffers ( );
-
-          string Ver = _Comm.Query_Prologix_Version ( );
-          Append_Response ( $"> Prologix version: {Ver}" );
-          Capture_Trace.Write ( $"> Prologix version: {Ver}" );
-
-
-        }
-
-
-        Capture_Trace.Write ( "Setting Meters to remote mode..." );
-
-        switch ( _Selected_Meter )
-        {
-          case Meter_Type.HP33120:
-          case Meter_Type.HP34401:
-
-            Capture_Trace.Write ( "Clearing..." );
-            _Comm.Send_Instrument_Command ( "*CLS" );
-            Append_Response ( "> *CLS" );
-
-            Capture_Trace.Write ( "Setting HP to remote mode..." );
-            _Comm.Send_Instrument_Command ( "SYSTEM:REMOTE" );
-            Append_Response ( "> SYSTEM:REMOTE" );
-
-
-
-
-            break;
-
-          case Meter_Type.HP3458:
-            if ( _Settings.Send_Reset_On_Connect_3458 )
-            {
-              _Comm.Send_Instrument_Command ( "RESET" );
-              Thread.Sleep ( 3000 );
-              _Comm.Send_Prologix_Command ( $"++addr  {_Selected_Address}" );
-              Thread.Sleep ( 50 );
-            }
-            if ( _Settings.Send_End_Always_3458 )
-            {
-              _Comm.Send_Instrument_Command ( "END ALWAYS" );
-              Thread.Sleep ( 200 );
-            }
-            _Comm.Send_Instrument_Command ( "TRIG AUTO" );  // ← always HOLD, never AUTO
-            Thread.Sleep ( 200 );
-            _Comm.Send_Instrument_Command ( $"GPIB {_Selected_Address}" );
-            Thread.Sleep ( 100 );
-            _Comm.Send_Prologix_Command ( $"++addr {_Selected_Address}" );
-            Thread.Sleep ( 50 );
-            _Comm.Send_Instrument_Command ( $"NPLC {_Settings.Default_NPLC_3458}" );
-            Thread.Sleep ( _Settings.NPLC_Apply_Delay_Ms );
-            Append_Response ( "> Connected to 3458" );
-            break;
-
-          default:
-            Capture_Trace.Write ( $"No specific init for meter type: {_Selected_Meter}" );
-            Append_Response ( $"> Connected to {_Selected_Meter}" );
-            break;
-        }
-
-        Connected_Instrument_Textbox.Text = _Selected_Meter.ToString ( );
-        Command_History_List_Box.ClearSelected ( );
-      }
-    }
+  
 
 
     private void Add_Command_To_History ( string Command )
@@ -2167,14 +1865,7 @@ namespace Multimeter_Controller
     private void Button_Info_Click ( object Sender, EventArgs E )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
-
-      string [ ] Query_Commands = _All_Commands
-        .Where ( C => C.Command.EndsWith ( "?" ) )
-        .Select ( C => C.Command )
-        .ToArray ( );
-
-      Info_Popup Popup = new Info_Popup ( _Comm, Query_Commands, _Selected_Meter );
-      Popup.Show ( );
+      Show_Session_Info ( );
     }
 
     private void NPLC_Combo_SelectedIndexChanged ( object Sender, EventArgs E )
@@ -2183,111 +1874,71 @@ namespace Multimeter_Controller
       _Settings.Default_NPLC = NPLC_Combo.SelectedItem?.ToString ( ) ?? "10";
     }
 
-
-
-
-    private async Task<string> Find_Prologix_IP ( string OUI = null )
+    private void Show_Session_Info ( )
     {
-      using var Block = Trace_Block.Start_If_Enabled ( );
 
-      string Prologix_OUI = OUI ?? _Settings.Prologic_MAC_Address;
+      var SB = new System.Text.StringBuilder ( );
 
-      // Step 1: Get local subnet
-      string Local_IP = Get_Local_IP ( );
-      if ( string.IsNullOrEmpty ( Local_IP ) )
-      {
-        Block?.Trace ( "Could not determine local IP" );
-        return null;
-      }
+      SB.AppendLine ( "╔══════════════════════════════════════════╗" );
+      SB.AppendLine ( "║         SESSION CONFIGURATION            ║" );
+      SB.AppendLine ( "╚══════════════════════════════════════════╝" );
+      SB.AppendLine ( );
 
-      Block?.Trace ( $"Local IP: {Local_IP}, scanning for OUI: {Prologix_OUI}" );
+      // Instruments
+      SB.AppendLine ( "── Instruments ──────────────────────────────" );
+      foreach ( var I in _Instruments )
+        SB.AppendLine ( $"  {I.Name}  GPIB:{I.Address}  Type:{I.Type}" );
+      SB.AppendLine ( );
 
-      // Step 2: Ping sweep to populate ARP cache
-      string Subnet = Local_IP.Substring ( 0, Local_IP.LastIndexOf ( '.' ) + 1 );
-      Block?.Trace ( $"Scanning subnet: {Subnet}0/24" );
+      // Connection
+      SB.AppendLine ( "── Connection ───────────────────────────────" );
+      SB.AppendLine ( $"  Prologix  : {_Settings.Default_IP_Address}:{_Settings.Default_Prologic_Port}" );
+      SB.AppendLine ( $"  Connected : {( _Comm?.Is_Connected == true ? "YES" : "No" )}" );
+      SB.AppendLine ( $"  Timeout   : {_Settings.Default_GPIB_Timeout_Ms} ms" );
+      SB.AppendLine ( );
 
-      var Ping_Tasks = new List<Task> ( );
-      for ( int I = 1; I <= 254; I++ )
-      {
-        string Target = Subnet + I;
-        Ping_Tasks.Add ( Task.Run ( async ( ) =>
-        {
-          try
-          {
-            using var P = new System.Net.NetworkInformation.Ping ( );
-            await P.SendPingAsync ( Target, 100 );
-          }
-          catch { }
-        } ) );
-      }
+      // Measurement
+      SB.AppendLine ( "── Measurement ──────────────────────────────" );
+      SB.AppendLine ( $"  Default   : {_Settings.Default_Measurement_Type}" );
+      SB.AppendLine ( $"  NPLC      : {_Settings.Default_NPLC}" );
+      SB.AppendLine ( $"  Digits    : {_Settings.Display_Digits}" );
+      SB.AppendLine ( );
 
-      await Task.WhenAll ( Ping_Tasks );
-      await Task.Delay ( 500 );
+      // Polling
+      SB.AppendLine ( "── Polling ───────────────────────────────────" );
+      SB.AppendLine ( $"  Mode      : {( _Settings.Default_Continuous_Poll ? "Continuous" : "Fixed cycles" )}" );
+      SB.AppendLine ( $"  Delay     : {_Settings.Default_Poll_Delay_Ms} ms" );
+      SB.AppendLine ( $"  Max Points: {_Settings.Max_Display_Points:N0}" );
+      SB.AppendLine ( $"  At Max    : {( _Settings.Stop_Polling_At_Max_Display_Points ? "Stop" : "Roll" )}" );
+      SB.AppendLine ( );
 
-      // Step 3: Read ARP table and find Prologix OUI
-      try
-      {
-        var Proc = Process.Start ( new ProcessStartInfo
-        {
-          FileName = "arp",
-          Arguments = "-a",
-          RedirectStandardOutput = true,
-          UseShellExecute = false,
-          CreateNoWindow = true
-        } );
+      // Data Freshness
+      SB.AppendLine ( "── Data Freshness ───────────────────────────" );
+      SB.AppendLine ( $"  Skew Warn : {_Settings.Skew_Warning_Threshold_Seconds:F1}s  (orange)" );
+      SB.AppendLine ( $"  Stale     : {_Settings.Stale_Data_Threshold_Seconds:F1}s  (red)" );
+      SB.AppendLine ( );
 
-        string Output = await Proc.StandardOutput.ReadToEndAsync ( );
-        await Proc.WaitForExitAsync ( );
+      // Memory
+      SB.AppendLine ( "── Memory ───────────────────────────────────" );
+      SB.AppendLine ( $"  Max Memory: {_Settings.Max_Data_Points_In_Memory:N0}" );
+      SB.AppendLine ( $"  Warn At   : {_Settings.Warning_Threshold_Percent}%" );
+      SB.AppendLine ( );
 
-        Block?.Trace ( $"ARP output:\n{Output}" );
+      // HP3458 
+      SB.AppendLine ( "── HP3458A ───────────────────────────────────" );
+      SB.AppendLine ( $"  NPLC      : {_Settings.Default_NPLC_3458}" );
+      SB.AppendLine ( $"  Trig Mode : {_Settings.Default_Trig_Mode_3458}" );
+      SB.AppendLine ( $"  Digits    : {_Settings.Display_Digits}" );
+      SB.AppendLine ( $"  Reset     : {( _Settings.Send_Reset_On_Connect_3458 ? "Yes" : "No" )}" );
 
-        foreach ( string Line in Output.Split ( '\n' ) )
-        {
-          if ( Line.Contains ( Prologix_OUI, StringComparison.OrdinalIgnoreCase ) )
-          {
-            Block?.Trace ( $"Found Prologix line: {Line.Trim ( )}" );
-
-            string [ ] Parts = Line.Trim ( ).Split (
-              new char [ ] { ' ', '\t' },
-              StringSplitOptions.RemoveEmptyEntries );
-
-            if ( Parts.Length >= 2 &&
-                 System.Net.IPAddress.TryParse ( Parts [ 0 ], out _ ) )
-            {
-              Block?.Trace ( $"Prologix found at: {Parts [ 0 ]}  MAC: {Parts [ 1 ]}" );
-              return Parts [ 0 ];
-            }
-          }
-        }
-      }
-      catch ( Exception Ex )
-      {
-        Block?.Trace ( $"ARP scan error: {Ex.Message}" );
-      }
-
-      return null;
+      MessageBox.Show ( SB.ToString ( ),
+        "Session Configuration",
+        MessageBoxButtons.OK,
+        MessageBoxIcon.Information );
     }
 
 
-    private string Get_Local_IP ( )
-    {
-      using var Block = Trace_Block.Start_If_Enabled ( );
 
-      try
-      {
-        // Connect to a public address to determine which local interface is active
-        using var Socket = new System.Net.Sockets.UdpClient ( );
-        Socket.Connect ( "8.8.8.8", 80 );
-        string IP = ( (System.Net.IPEndPoint) Socket.Client.LocalEndPoint ).Address.ToString ( );
-        Block?.Trace ( $"Local IP: {IP}" );
-        return IP;
-      }
-      catch ( Exception Ex )
-      {
-        Block?.Trace ( $"Get_Local_IP error: {Ex.Message}" );
-        return null;
-      }
-    }
 
     private async void Find_Prologix_Button_Click ( object sender, EventArgs e )
     {
@@ -2379,108 +2030,7 @@ namespace Multimeter_Controller
 
 
 
-    private async void old_Find_Prologix_Button_Click ( object Sender, EventArgs E )
-    {
-      using var Block = Trace_Block.Start_If_Enabled ( );
 
-      Find_Prologic_Button.Enabled = false;
-      Find_Prologic_Button.Text = "Scanning...";
-
-
-      // Build a temporary settings snapshot from current UI values
-      // so Find uses whatever the user has typed, not the saved settings
-      string MAC_Address = _Settings.Prologic_MAC_Address;
-
-      var IP = await Find_Prologix_IP ( MAC_Address );
-
-      Find_Prologic_Button.Enabled = true;
-      Find_Prologic_Button.Text = "Find Prologix on Network";
-
-      if ( IP != null )
-      {
-        IP_Address_Text.Text = IP;
-
-      }
-      else
-      {
-
-        IP_Address_Text.Text = "Not found on network";
-      }
-    }
-
-
-
-
-
-
-    private async Task<string> Find_Prologix_IP_Local ( string OUI = null )
-    {
-      string Prologix_OUI = string.IsNullOrWhiteSpace ( OUI )
-        ? _Settings.Prologic_MAC_Address
-        : OUI;
-
-      // Get local IP
-      string Local_IP = null;
-      try
-      {
-        using var Socket = new System.Net.Sockets.UdpClient ( );
-        Socket.Connect ( "8.8.8.8", 80 );
-        Local_IP = ( (System.Net.IPEndPoint) Socket.Client.LocalEndPoint ).Address.ToString ( );
-      }
-      catch { return null; }
-
-      // Ping sweep to populate ARP cache
-      string Subnet = Local_IP.Substring ( 0, Local_IP.LastIndexOf ( '.' ) + 1 );
-      var Ping_Tasks = new List<Task> ( );
-      for ( int I = 1; I <= 254; I++ )
-      {
-        string Target = Subnet + I;
-        Ping_Tasks.Add ( Task.Run ( async ( ) =>
-        {
-          try
-          {
-            using var P = new System.Net.NetworkInformation.Ping ( );
-            await P.SendPingAsync ( Target, 100 );
-          }
-          catch { }
-        } ) );
-      }
-      await Task.WhenAll ( Ping_Tasks );
-      await Task.Delay ( 500 );
-
-      // Read ARP table
-      try
-      {
-        var Proc = System.Diagnostics.Process.Start ( new System.Diagnostics.ProcessStartInfo
-        {
-          FileName = "arp",
-          Arguments = "-a",
-          RedirectStandardOutput = true,
-          UseShellExecute = false,
-          CreateNoWindow = true
-        } );
-
-        string Output = await Proc.StandardOutput.ReadToEndAsync ( );
-        await Proc.WaitForExitAsync ( );
-
-        foreach ( string Line in Output.Split ( '\n' ) )
-        {
-          if ( Line.Contains ( Prologix_OUI, StringComparison.OrdinalIgnoreCase ) )
-          {
-            string [ ] Parts = Line.Trim ( ).Split (
-              new char [ ] { ' ', '\t' },
-              StringSplitOptions.RemoveEmptyEntries );
-
-            if ( Parts.Length >= 2 &&
-                 System.Net.IPAddress.TryParse ( Parts [ 0 ], out _ ) )
-              return Parts [ 0 ];
-          }
-        }
-      }
-      catch { }
-
-      return null;
-    }
 
     private void Reset_Defaults_Button_Click ( object sender, EventArgs e )
     {
@@ -2563,11 +2113,16 @@ namespace Multimeter_Controller
       catch ( Exception ex )
       {
         Capture_Trace.Write ( $"Failed to detect local subnet: {ex.Message}" );
+        return _Settings.Network_Scan_Subnet;
       }
+      finally
+      {
 
-      // Fallback default
-      Capture_Trace.Write ( "No IPv4 address found, defaulting to 192.168.1" );
-      return "192.168.1";
+        // Fallback default
+        Capture_Trace.Write ( $"No IPv4 address found, defaulting to {_Settings.Network_Scan_Subnet}" );
+     
+        }
+      return _Settings.Network_Scan_Subnet;
     }
 
 
@@ -2590,7 +2145,7 @@ namespace Multimeter_Controller
     }
 
 
-    private void Refresh_Instrument_Display ( )
+    private void Refresh_Instrument_List ( )
     {
 
       using var Block = Trace_Block.Start_If_Enabled ( );
@@ -2602,5 +2157,6 @@ namespace Multimeter_Controller
       Instruments_List.DisplayMember = "Display";
     }
 
+    
   }
 }

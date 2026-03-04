@@ -30,12 +30,16 @@ namespace Multimeter_Controller
       Detail_Text_Box = new TextBox ( );
       Open_Dictionary_Button = new Button ( );
       Connection_Group = new GroupBox ( );
+      Read_Timeout_Label = new Label ( );
+      Read_Timeout_Combo_Box = new ComboBox ( );
+      label2 = new Label ( );
+      Subnet_Textbox = new TextBox ( );
       Find_Prologic_Button = new Button ( );
       Connection_Mode_Label = new Label ( );
       Connection_Mode_Combo = new ComboBox ( );
       Selected_IP_Address_Label = new Label ( );
       IP_Address_Text = new TextBox ( );
-      Button_Info = new Button ( );
+      Scan_Bus_Button = new Button ( );
       Connected_Instrument_Textbox = new TextBox ( );
       label1 = new Label ( );
       COM_Port_Label = new Label ( );
@@ -52,11 +56,10 @@ namespace Multimeter_Controller
       Flow_Control_Label = new Label ( );
       Flow_Control_Combo = new ComboBox ( );
       Prologix_Header_Label = new Label ( );
-      GPIB_Address_Label = new Label ( );
-      GPIB_Address_Numeric = new NumericUpDown ( );
       Defaults_Button = new Button ( );
       Connect_Button = new Button ( );
       Connection_Status_Label = new Label ( );
+      Info_Popup_Button = new Button ( );
       Instrument_Address_Numeric = new NumericUpDown ( );
       Send_Command_Label = new Label ( );
       Send_Command_Text_Box = new TextBox ( );
@@ -66,29 +69,24 @@ namespace Multimeter_Controller
       Response_Text_Box = new TextBox ( );
       Instruments_Group = new GroupBox ( );
       Instrument_Name_Label = new Label ( );
+      NPLC_Label = new Label ( );
       Instrument_Name_Text = new TextBox ( );
+      NPLC_Combo = new ComboBox ( );
       Instrument_Address_Label = new Label ( );
       Instrument_Type_Label = new Label ( );
       Instrument_Type_Combo = new ComboBox ( );
       Add_Instrument_Button = new Button ( );
       Remove_Instrument_Button = new Button ( );
       Saved_Instruments_Label = new Label ( );
-      Scan_Bus_Button = new Button ( );
       Instruments_List = new ListBox ( );
       Select_Instrument_Button = new Button ( );
-      Voltage_Reader_Button = new Button ( );
       Multi_Poll_Button = new Button ( );
       Command_History_List_Box = new ListBox ( );
       History_Label = new Label ( );
       Button_Show_Execution_Trace = new Button ( );
       Settings_Button = new Button ( );
-      NPLC_Label = new Label ( );
-      NPLC_Combo = new ComboBox ( );
       Reset_Defaults_Button = new Button ( );
-      label2 = new Label ( );
-      Subnet_Textbox = new TextBox ( );
       Connection_Group.SuspendLayout ( );
-      ( (System.ComponentModel.ISupportInitialize) GPIB_Address_Numeric ).BeginInit ( );
       ( (System.ComponentModel.ISupportInitialize) Instrument_Address_Numeric ).BeginInit ( );
       Instruments_Group.SuspendLayout ( );
       SuspendLayout ( );
@@ -118,7 +116,7 @@ namespace Multimeter_Controller
       Command_List.HorizontalScrollbar = true;
       Command_List.Location = new Point ( 12, 32 );
       Command_List.Name = "Command_List";
-      Command_List.Size = new Size ( 184, 334 );
+      Command_List.Size = new Size ( 184, 199 );
       Command_List.TabIndex = 2;
       Command_List.SelectedIndexChanged +=  Command_List_Selected_Index_Changed ;
       // 
@@ -137,17 +135,19 @@ namespace Multimeter_Controller
       // Open_Dictionary_Button
       // 
       Open_Dictionary_Button.Anchor =   AnchorStyles.Bottom  |  AnchorStyles.Left ;
-      Open_Dictionary_Button.Location = new Point ( 12, 372 );
+      Open_Dictionary_Button.Location = new Point ( 40, 239 );
       Open_Dictionary_Button.Name = "Open_Dictionary_Button";
-      Open_Dictionary_Button.Size = new Size ( 72, 35 );
+      Open_Dictionary_Button.Size = new Size ( 129, 35 );
       Open_Dictionary_Button.TabIndex = 11;
-      Open_Dictionary_Button.Text = "Dictionary";
+      Open_Dictionary_Button.Text = "Display Dictionary";
       Open_Dictionary_Button.UseVisualStyleBackColor = true;
       Open_Dictionary_Button.Click +=  Open_Dictionary_Button_Click ;
       // 
       // Connection_Group
       // 
       Connection_Group.Anchor =    AnchorStyles.Top  |  AnchorStyles.Bottom   |  AnchorStyles.Right ;
+      Connection_Group.Controls.Add ( Read_Timeout_Label );
+      Connection_Group.Controls.Add ( Read_Timeout_Combo_Box );
       Connection_Group.Controls.Add ( label2 );
       Connection_Group.Controls.Add ( Subnet_Textbox );
       Connection_Group.Controls.Add ( Find_Prologic_Button );
@@ -155,7 +155,7 @@ namespace Multimeter_Controller
       Connection_Group.Controls.Add ( Connection_Mode_Combo );
       Connection_Group.Controls.Add ( Selected_IP_Address_Label );
       Connection_Group.Controls.Add ( IP_Address_Text );
-      Connection_Group.Controls.Add ( Button_Info );
+      Connection_Group.Controls.Add ( Scan_Bus_Button );
       Connection_Group.Controls.Add ( Connected_Instrument_Textbox );
       Connection_Group.Controls.Add ( label1 );
       Connection_Group.Controls.Add ( COM_Port_Label );
@@ -172,8 +172,6 @@ namespace Multimeter_Controller
       Connection_Group.Controls.Add ( Flow_Control_Label );
       Connection_Group.Controls.Add ( Flow_Control_Combo );
       Connection_Group.Controls.Add ( Prologix_Header_Label );
-      Connection_Group.Controls.Add ( GPIB_Address_Label );
-      Connection_Group.Controls.Add ( GPIB_Address_Numeric );
       Connection_Group.Controls.Add ( Defaults_Button );
       Connection_Group.Controls.Add ( Connect_Button );
       Connection_Group.Controls.Add ( Connection_Status_Label );
@@ -184,11 +182,45 @@ namespace Multimeter_Controller
       Connection_Group.TabStop = false;
       Connection_Group.Text = "Connection Settings";
       // 
+      // Read_Timeout_Label
+      // 
+      Read_Timeout_Label.AutoSize = true;
+      Read_Timeout_Label.Location = new Point ( 22, 235 );
+      Read_Timeout_Label.Name = "Read_Timeout_Label";
+      Read_Timeout_Label.Size = new Size ( 84, 15 );
+      Read_Timeout_Label.TabIndex = 35;
+      Read_Timeout_Label.Text = "Read Timeout:";
+      // 
+      // Read_Timeout_Combo_Box
+      // 
+      Read_Timeout_Combo_Box.DropDownStyle = ComboBoxStyle.DropDownList;
+      Read_Timeout_Combo_Box.Location = new Point ( 110, 232 );
+      Read_Timeout_Combo_Box.Name = "Read_Timeout_Combo_Box";
+      Read_Timeout_Combo_Box.Size = new Size ( 130, 23 );
+      Read_Timeout_Combo_Box.TabIndex = 36;
+      // 
+      // label2
+      // 
+      label2.AutoSize = true;
+      label2.Location = new Point ( 33, 300 );
+      label2.Name = "label2";
+      label2.Size = new Size ( 47, 15 );
+      label2.TabIndex = 34;
+      label2.Text = "Subnet:";
+      // 
+      // Subnet_Textbox
+      // 
+      Subnet_Textbox.Location = new Point ( 108, 295 );
+      Subnet_Textbox.Name = "Subnet_Textbox";
+      Subnet_Textbox.Size = new Size ( 129, 23 );
+      Subnet_Textbox.TabIndex = 33;
+      Subnet_Textbox.TextChanged +=  Subnet_Textbox_TextChanged ;
+      // 
       // Find_Prologic_Button
       // 
-      Find_Prologic_Button.Location = new Point ( 9, 360 );
+      Find_Prologic_Button.Location = new Point ( 9, 382 );
       Find_Prologic_Button.Name = "Find_Prologic_Button";
-      Find_Prologic_Button.Size = new Size ( 110, 23 );
+      Find_Prologic_Button.Size = new Size ( 110, 31 );
       Find_Prologic_Button.TabIndex = 32;
       Find_Prologic_Button.Text = "Find Prologic IP";
       Find_Prologic_Button.UseVisualStyleBackColor = true;
@@ -215,7 +247,7 @@ namespace Multimeter_Controller
       // Selected_IP_Address_Label
       // 
       Selected_IP_Address_Label.AutoSize = true;
-      Selected_IP_Address_Label.Location = new Point ( 35, 241 );
+      Selected_IP_Address_Label.Location = new Point ( 34, 266 );
       Selected_IP_Address_Label.Name = "Selected_IP_Address_Label";
       Selected_IP_Address_Label.Size = new Size ( 65, 15 );
       Selected_IP_Address_Label.TabIndex = 29;
@@ -223,25 +255,26 @@ namespace Multimeter_Controller
       // 
       // IP_Address_Text
       // 
-      IP_Address_Text.Location = new Point ( 110, 236 );
+      IP_Address_Text.Location = new Point ( 109, 261 );
       IP_Address_Text.Name = "IP_Address_Text";
       IP_Address_Text.Size = new Size ( 129, 23 );
       IP_Address_Text.TabIndex = 28;
       IP_Address_Text.TextChanged +=  IP_Address_Text_TextChanged ;
       // 
-      // Button_Info
+      // Scan_Bus_Button
       // 
-      Button_Info.Location = new Point ( 13, 420 );
-      Button_Info.Name = "Button_Info";
-      Button_Info.Size = new Size ( 75, 23 );
-      Button_Info.TabIndex = 27;
-      Button_Info.Text = "Info";
-      Button_Info.UseVisualStyleBackColor = true;
-      Button_Info.Click +=  Button_Info_Click ;
+      Scan_Bus_Button.Enabled = false;
+      Scan_Bus_Button.Location = new Point ( 9, 419 );
+      Scan_Bus_Button.Name = "Scan_Bus_Button";
+      Scan_Bus_Button.Size = new Size ( 109, 28 );
+      Scan_Bus_Button.TabIndex = 9;
+      Scan_Bus_Button.Text = "Scan Bus";
+      Scan_Bus_Button.UseVisualStyleBackColor = true;
+      Scan_Bus_Button.Click +=  Scan_Bus_Button_Click ;
       // 
       // Connected_Instrument_Textbox
       // 
-      Connected_Instrument_Textbox.Location = new Point ( 110, 299 );
+      Connected_Instrument_Textbox.Location = new Point ( 109, 324 );
       Connected_Instrument_Textbox.Name = "Connected_Instrument_Textbox";
       Connected_Instrument_Textbox.Size = new Size ( 129, 23 );
       Connected_Instrument_Textbox.TabIndex = 26;
@@ -249,7 +282,7 @@ namespace Multimeter_Controller
       // label1
       // 
       label1.AutoSize = true;
-      label1.Location = new Point ( 9, 302 );
+      label1.Location = new Point ( 8, 327 );
       label1.Name = "label1";
       label1.Size = new Size ( 84, 15 );
       label1.TabIndex = 25;
@@ -371,33 +404,17 @@ namespace Multimeter_Controller
       // 
       Prologix_Header_Label.AutoSize = true;
       Prologix_Header_Label.Font = new System.Drawing.Font ( "Segoe UI", 9F, FontStyle.Bold );
-      Prologix_Header_Label.Location = new Point ( 9, 342 );
+      Prologix_Header_Label.Location = new Point ( 9, 364 );
       Prologix_Header_Label.Name = "Prologix_Header_Label";
       Prologix_Header_Label.Size = new Size ( 102, 15 );
       Prologix_Header_Label.TabIndex = 15;
       Prologix_Header_Label.Text = "Prologix Settings";
       // 
-      // GPIB_Address_Label
-      // 
-      GPIB_Address_Label.AutoSize = true;
-      GPIB_Address_Label.Location = new Point ( 9, 394 );
-      GPIB_Address_Label.Name = "GPIB_Address_Label";
-      GPIB_Address_Label.Size = new Size ( 80, 15 );
-      GPIB_Address_Label.TabIndex = 16;
-      GPIB_Address_Label.Text = "GPIB Address:";
-      // 
-      // GPIB_Address_Numeric
-      // 
-      GPIB_Address_Numeric.Location = new Point ( 109, 391 );
-      GPIB_Address_Numeric.Name = "GPIB_Address_Numeric";
-      GPIB_Address_Numeric.Size = new Size ( 60, 23 );
-      GPIB_Address_Numeric.TabIndex = 17;
-      // 
       // Defaults_Button
       // 
-      Defaults_Button.Location = new Point ( 10, 445 );
+      Defaults_Button.Location = new Point ( 9, 453 );
       Defaults_Button.Name = "Defaults_Button";
-      Defaults_Button.Size = new Size ( 90, 30 );
+      Defaults_Button.Size = new Size ( 109, 30 );
       Defaults_Button.TabIndex = 20;
       Defaults_Button.Text = "Defaults";
       Defaults_Button.UseVisualStyleBackColor = true;
@@ -405,7 +422,7 @@ namespace Multimeter_Controller
       // 
       // Connect_Button
       // 
-      Connect_Button.Location = new Point ( 122, 445 );
+      Connect_Button.Location = new Point ( 154, 453 );
       Connect_Button.Name = "Connect_Button";
       Connect_Button.Size = new Size ( 83, 30 );
       Connect_Button.TabIndex = 21;
@@ -418,15 +435,25 @@ namespace Multimeter_Controller
       Connection_Status_Label.AutoSize = true;
       Connection_Status_Label.Font = new System.Drawing.Font ( "Segoe UI", 9F, FontStyle.Bold );
       Connection_Status_Label.ForeColor = Color.Red;
-      Connection_Status_Label.Location = new Point ( 122, 478 );
+      Connection_Status_Label.Location = new Point ( 154, 486 );
       Connection_Status_Label.Name = "Connection_Status_Label";
       Connection_Status_Label.Size = new Size ( 83, 15 );
       Connection_Status_Label.TabIndex = 22;
       Connection_Status_Label.Text = "Disconnected";
       // 
+      // Info_Popup_Button
+      // 
+      Info_Popup_Button.Location = new Point ( 11, 465 );
+      Info_Popup_Button.Name = "Info_Popup_Button";
+      Info_Popup_Button.Size = new Size ( 75, 44 );
+      Info_Popup_Button.TabIndex = 27;
+      Info_Popup_Button.Text = "Session\r\nInfo";
+      Info_Popup_Button.UseVisualStyleBackColor = true;
+      Info_Popup_Button.Click +=  Button_Info_Click ;
+      // 
       // Instrument_Address_Numeric
       // 
-      Instrument_Address_Numeric.Location = new Point ( 85, 77 );
+      Instrument_Address_Numeric.Location = new Point ( 101, 78 );
       Instrument_Address_Numeric.Maximum = new decimal ( new int [ ] { 30, 0, 0, 0 } );
       Instrument_Address_Numeric.Name = "Instrument_Address_Numeric";
       Instrument_Address_Numeric.Size = new Size ( 60, 23 );
@@ -463,9 +490,9 @@ namespace Multimeter_Controller
       // 
       // Diag_Button
       // 
-      Diag_Button.Location = new Point ( 689, 243 );
+      Diag_Button.Location = new Point ( 599, 244 );
       Diag_Button.Name = "Diag_Button";
-      Diag_Button.Size = new Size ( 120, 25 );
+      Diag_Button.Size = new Size ( 103, 25 );
       Diag_Button.TabIndex = 8;
       Diag_Button.Text = "Raw Diagnostic";
       Diag_Button.UseVisualStyleBackColor = true;
@@ -498,7 +525,9 @@ namespace Multimeter_Controller
       // 
       Instruments_Group.Anchor =    AnchorStyles.Top  |  AnchorStyles.Bottom   |  AnchorStyles.Right ;
       Instruments_Group.Controls.Add ( Instrument_Name_Label );
+      Instruments_Group.Controls.Add ( NPLC_Label );
       Instruments_Group.Controls.Add ( Instrument_Name_Text );
+      Instruments_Group.Controls.Add ( NPLC_Combo );
       Instruments_Group.Controls.Add ( Instrument_Address_Label );
       Instruments_Group.Controls.Add ( Instrument_Address_Numeric );
       Instruments_Group.Controls.Add ( Instrument_Type_Label );
@@ -506,9 +535,9 @@ namespace Multimeter_Controller
       Instruments_Group.Controls.Add ( Add_Instrument_Button );
       Instruments_Group.Controls.Add ( Remove_Instrument_Button );
       Instruments_Group.Controls.Add ( Saved_Instruments_Label );
-      Instruments_Group.Controls.Add ( Scan_Bus_Button );
       Instruments_Group.Controls.Add ( Instruments_List );
       Instruments_Group.Controls.Add ( Select_Instrument_Button );
+      Instruments_Group.Controls.Add ( Multi_Poll_Button );
       Instruments_Group.Location = new Point ( 830, 12 );
       Instruments_Group.Name = "Instruments_Group";
       Instruments_Group.Size = new Size ( 240, 503 );
@@ -525,21 +554,41 @@ namespace Multimeter_Controller
       Instrument_Name_Label.TabIndex = 0;
       Instrument_Name_Label.Text = "Name:";
       // 
+      // NPLC_Label
+      // 
+      NPLC_Label.AutoSize = true;
+      NPLC_Label.Location = new Point ( 107, 176 );
+      NPLC_Label.Name = "NPLC_Label";
+      NPLC_Label.Size = new Size ( 40, 15 );
+      NPLC_Label.TabIndex = 32;
+      NPLC_Label.Text = "NPLC:";
+      // 
       // Instrument_Name_Text
       // 
-      Instrument_Name_Text.Location = new Point ( 85, 16 );
+      Instrument_Name_Text.Location = new Point ( 101, 16 );
       Instrument_Name_Text.Name = "Instrument_Name_Text";
-      Instrument_Name_Text.Size = new Size ( 146, 23 );
+      Instrument_Name_Text.Size = new Size ( 130, 23 );
       Instrument_Name_Text.TabIndex = 1;
+      // 
+      // NPLC_Combo
+      // 
+      NPLC_Combo.DropDownStyle = ComboBoxStyle.DropDownList;
+      NPLC_Combo.FormattingEnabled = true;
+      NPLC_Combo.Items.AddRange ( new object [ ] { "0.02", "0.2", "1", "10", "100" } );
+      NPLC_Combo.Location = new Point ( 155, 173 );
+      NPLC_Combo.Name = "NPLC_Combo";
+      NPLC_Combo.Size = new Size ( 70, 23 );
+      NPLC_Combo.TabIndex = 33;
+      NPLC_Combo.SelectedIndexChanged +=  NPLC_Combo_SelectedIndexChanged ;
       // 
       // Instrument_Address_Label
       // 
       Instrument_Address_Label.AutoSize = true;
       Instrument_Address_Label.Location = new Point ( 15, 80 );
       Instrument_Address_Label.Name = "Instrument_Address_Label";
-      Instrument_Address_Label.Size = new Size ( 52, 15 );
+      Instrument_Address_Label.Size = new Size ( 80, 15 );
       Instrument_Address_Label.TabIndex = 2;
-      Instrument_Address_Label.Text = "Address:";
+      Instrument_Address_Label.Text = "GPIB Address:";
       // 
       // Instrument_Type_Label
       // 
@@ -553,15 +602,15 @@ namespace Multimeter_Controller
       // Instrument_Type_Combo
       // 
       Instrument_Type_Combo.DropDownStyle = ComboBoxStyle.DropDownList;
-      Instrument_Type_Combo.Location = new Point ( 85, 45 );
+      Instrument_Type_Combo.Location = new Point ( 101, 45 );
       Instrument_Type_Combo.Name = "Instrument_Type_Combo";
-      Instrument_Type_Combo.Size = new Size ( 146, 23 );
+      Instrument_Type_Combo.Size = new Size ( 130, 23 );
       Instrument_Type_Combo.TabIndex = 5;
       Instrument_Type_Combo.SelectedIndexChanged +=  Instrument_Type_Combo_SelectedIndexChanged ;
       // 
       // Add_Instrument_Button
       // 
-      Add_Instrument_Button.Location = new Point ( 60, 115 );
+      Add_Instrument_Button.Location = new Point ( 19, 116 );
       Add_Instrument_Button.Name = "Add_Instrument_Button";
       Add_Instrument_Button.Size = new Size ( 75, 27 );
       Add_Instrument_Button.TabIndex = 6;
@@ -571,7 +620,7 @@ namespace Multimeter_Controller
       // 
       // Remove_Instrument_Button
       // 
-      Remove_Instrument_Button.Location = new Point ( 142, 115 );
+      Remove_Instrument_Button.Location = new Point ( 101, 116 );
       Remove_Instrument_Button.Name = "Remove_Instrument_Button";
       Remove_Instrument_Button.Size = new Size ( 83, 27 );
       Remove_Instrument_Button.TabIndex = 7;
@@ -583,29 +632,18 @@ namespace Multimeter_Controller
       // 
       Saved_Instruments_Label.AutoSize = true;
       Saved_Instruments_Label.Font = new System.Drawing.Font ( "Segoe UI", 9F, FontStyle.Bold );
-      Saved_Instruments_Label.Location = new Point ( 39, 194 );
+      Saved_Instruments_Label.Location = new Point ( 39, 259 );
       Saved_Instruments_Label.Name = "Saved_Instruments_Label";
       Saved_Instruments_Label.Size = new Size ( 152, 15 );
       Saved_Instruments_Label.TabIndex = 8;
       Saved_Instruments_Label.Text = "Instruments for Multi-Poll";
       // 
-      // Scan_Bus_Button
-      // 
-      Scan_Bus_Button.Enabled = false;
-      Scan_Bus_Button.Location = new Point ( 142, 148 );
-      Scan_Bus_Button.Name = "Scan_Bus_Button";
-      Scan_Bus_Button.Size = new Size ( 80, 25 );
-      Scan_Bus_Button.TabIndex = 9;
-      Scan_Bus_Button.Text = "Scan Bus";
-      Scan_Bus_Button.UseVisualStyleBackColor = true;
-      Scan_Bus_Button.Click +=  Scan_Bus_Button_Click ;
-      // 
       // Instruments_List
       // 
       Instruments_List.Anchor =     AnchorStyles.Top  |  AnchorStyles.Bottom   |  AnchorStyles.Left   |  AnchorStyles.Right ;
-      Instruments_List.Location = new Point ( 15, 212 );
+      Instruments_List.Location = new Point ( 15, 277 );
       Instruments_List.Name = "Instruments_List";
-      Instruments_List.Size = new Size ( 210, 244 );
+      Instruments_List.Size = new Size ( 210, 184 );
       Instruments_List.TabIndex = 10;
       Instruments_List.DoubleClick +=  Select_Instrument_Button_Click ;
       // 
@@ -620,25 +658,14 @@ namespace Multimeter_Controller
       Select_Instrument_Button.UseVisualStyleBackColor = true;
       Select_Instrument_Button.Click +=  Select_Instrument_Button_Click ;
       // 
-      // Voltage_Reader_Button
-      // 
-      Voltage_Reader_Button.Anchor =   AnchorStyles.Bottom  |  AnchorStyles.Left ;
-      Voltage_Reader_Button.Location = new Point ( 12, 413 );
-      Voltage_Reader_Button.Name = "Voltage_Reader_Button";
-      Voltage_Reader_Button.Size = new Size ( 72, 35 );
-      Voltage_Reader_Button.TabIndex = 12;
-      Voltage_Reader_Button.Text = "Single Poll";
-      Voltage_Reader_Button.UseVisualStyleBackColor = true;
-      Voltage_Reader_Button.Click +=  Single_Poll_Button_Click ;
-      // 
       // Multi_Poll_Button
       // 
       Multi_Poll_Button.Anchor =   AnchorStyles.Bottom  |  AnchorStyles.Left ;
-      Multi_Poll_Button.Location = new Point ( 90, 413 );
+      Multi_Poll_Button.Location = new Point ( 24, 162 );
       Multi_Poll_Button.Name = "Multi_Poll_Button";
-      Multi_Poll_Button.Size = new Size ( 71, 35 );
+      Multi_Poll_Button.Size = new Size ( 71, 42 );
       Multi_Poll_Button.TabIndex = 13;
-      Multi_Poll_Button.Text = "Multi-Poll";
+      Multi_Poll_Button.Text = "Launch\r\nPoller";
       Multi_Poll_Button.UseVisualStyleBackColor = true;
       Multi_Poll_Button.Click +=  Multi_Poll_Button_Click ;
       // 
@@ -646,9 +673,9 @@ namespace Multimeter_Controller
       // 
       Command_History_List_Box.FormattingEnabled = true;
       Command_History_List_Box.HorizontalScrollbar = true;
-      Command_History_List_Box.Location = new Point ( 307, 288 );
+      Command_History_List_Box.Location = new Point ( 307, 273 );
       Command_History_List_Box.Name = "Command_History_List_Box";
-      Command_History_List_Box.Size = new Size ( 200, 49 );
+      Command_History_List_Box.Size = new Size ( 200, 64 );
       Command_History_List_Box.TabIndex = 16;
       Command_History_List_Box.DoubleClick +=  Command_History_ListBox_DoubleClick ;
       // 
@@ -656,7 +683,7 @@ namespace Multimeter_Controller
       // 
       History_Label.AutoSize = true;
       History_Label.Font = new System.Drawing.Font ( "Segoe UI", 9F, FontStyle.Bold );
-      History_Label.Location = new Point ( 251, 288 );
+      History_Label.Location = new Point ( 251, 273 );
       History_Label.Name = "History_Label";
       History_Label.Size = new Size ( 50, 15 );
       History_Label.TabIndex = 17;
@@ -664,72 +691,35 @@ namespace Multimeter_Controller
       // 
       // Button_Show_Execution_Trace
       // 
-      Button_Show_Execution_Trace.Location = new Point ( 603, 288 );
+      Button_Show_Execution_Trace.Location = new Point ( 89, 465 );
       Button_Show_Execution_Trace.Name = "Button_Show_Execution_Trace";
-      Button_Show_Execution_Trace.Size = new Size ( 80, 26 );
+      Button_Show_Execution_Trace.Size = new Size ( 80, 44 );
       Button_Show_Execution_Trace.TabIndex = 19;
-      Button_Show_Execution_Trace.Text = "Trace";
+      Button_Show_Execution_Trace.Text = "Trace Execution";
       Button_Show_Execution_Trace.UseVisualStyleBackColor = true;
       Button_Show_Execution_Trace.Click +=  Button_Show_Execution_Trace_Click ;
       // 
       // Settings_Button
       // 
       Settings_Button.Anchor =   AnchorStyles.Bottom  |  AnchorStyles.Left ;
-      Settings_Button.Location = new Point ( 13, 473 );
+      Settings_Button.Location = new Point ( 13, 417 );
       Settings_Button.Name = "Settings_Button";
-      Settings_Button.Size = new Size ( 71, 42 );
+      Settings_Button.Size = new Size ( 73, 42 );
       Settings_Button.TabIndex = 20;
       Settings_Button.Text = "Settings";
       Settings_Button.UseVisualStyleBackColor = true;
       Settings_Button.Click +=  Settings_Button_Click ;
       // 
-      // NPLC_Label
-      // 
-      NPLC_Label.AutoSize = true;
-      NPLC_Label.Location = new Point ( 691, 319 );
-      NPLC_Label.Name = "NPLC_Label";
-      NPLC_Label.Size = new Size ( 40, 15 );
-      NPLC_Label.TabIndex = 32;
-      NPLC_Label.Text = "NPLC:";
-      // 
-      // NPLC_Combo
-      // 
-      NPLC_Combo.DropDownStyle = ComboBoxStyle.DropDownList;
-      NPLC_Combo.FormattingEnabled = true;
-      NPLC_Combo.Items.AddRange ( new object [ ] { "0.02", "0.2", "1", "10", "100" } );
-      NPLC_Combo.Location = new Point ( 739, 316 );
-      NPLC_Combo.Name = "NPLC_Combo";
-      NPLC_Combo.Size = new Size ( 70, 23 );
-      NPLC_Combo.TabIndex = 33;
-      NPLC_Combo.SelectedIndexChanged +=  NPLC_Combo_SelectedIndexChanged ;
-      // 
       // Reset_Defaults_Button
       // 
       Reset_Defaults_Button.Anchor =   AnchorStyles.Bottom  |  AnchorStyles.Left ;
-      Reset_Defaults_Button.Location = new Point ( 90, 473 );
+      Reset_Defaults_Button.Location = new Point ( 89, 417 );
       Reset_Defaults_Button.Name = "Reset_Defaults_Button";
-      Reset_Defaults_Button.Size = new Size ( 71, 42 );
+      Reset_Defaults_Button.Size = new Size ( 80, 42 );
       Reset_Defaults_Button.TabIndex = 34;
       Reset_Defaults_Button.Text = "Reset\r\nDefaults";
       Reset_Defaults_Button.UseVisualStyleBackColor = true;
       Reset_Defaults_Button.Click +=  Reset_Defaults_Button_Click ;
-      // 
-      // label2
-      // 
-      label2.AutoSize = true;
-      label2.Location = new Point ( 34, 275 );
-      label2.Name = "label2";
-      label2.Size = new Size ( 47, 15 );
-      label2.TabIndex = 34;
-      label2.Text = "Subnet:";
-      // 
-      // Subnet_Textbox
-      // 
-      Subnet_Textbox.Location = new Point ( 109, 270 );
-      Subnet_Textbox.Name = "Subnet_Textbox";
-      Subnet_Textbox.Size = new Size ( 129, 23 );
-      Subnet_Textbox.TabIndex = 33;
-      Subnet_Textbox.TextChanged +=  Subnet_Textbox_TextChanged;
       // 
       // Form1
       // 
@@ -737,14 +727,13 @@ namespace Multimeter_Controller
       AutoScaleMode = AutoScaleMode.Font;
       ClientSize = new Size ( 1340, 530 );
       Controls.Add ( Reset_Defaults_Button );
-      Controls.Add ( NPLC_Label );
-      Controls.Add ( NPLC_Combo );
       Controls.Add ( Settings_Button );
       Controls.Add ( Button_Show_Execution_Trace );
       Controls.Add ( History_Label );
       Controls.Add ( Command_History_List_Box );
       Controls.Add ( Title_Label );
       Controls.Add ( Command_List_Label );
+      Controls.Add ( Info_Popup_Button );
       Controls.Add ( Command_List );
       Controls.Add ( Detail_Text_Box );
       Controls.Add ( Send_Command_Label );
@@ -754,8 +743,6 @@ namespace Multimeter_Controller
       Controls.Add ( Response_Label );
       Controls.Add ( Response_Text_Box );
       Controls.Add ( Open_Dictionary_Button );
-      Controls.Add ( Voltage_Reader_Button );
-      Controls.Add ( Multi_Poll_Button );
       Controls.Add ( Instruments_Group );
       Controls.Add ( Connection_Group );
       Name = "Form1";
@@ -763,7 +750,6 @@ namespace Multimeter_Controller
       Text = "Multimeter Controller";
       Connection_Group.ResumeLayout ( false );
       Connection_Group.PerformLayout ( );
-      ( (System.ComponentModel.ISupportInitialize) GPIB_Address_Numeric ).EndInit ( );
       ( (System.ComponentModel.ISupportInitialize) Instrument_Address_Numeric ).EndInit ( );
       Instruments_Group.ResumeLayout ( false );
       Instruments_Group.PerformLayout ( );
@@ -798,13 +784,10 @@ namespace Multimeter_Controller
     private System.Windows.Forms.ComboBox Stop_Bits_Combo;
     private System.Windows.Forms.Label Flow_Control_Label;
     private System.Windows.Forms.ComboBox Flow_Control_Combo;
-    private System.Windows.Forms.Label GPIB_Address_Label;
-    private System.Windows.Forms.NumericUpDown GPIB_Address_Numeric;
     private System.Windows.Forms.Button Connect_Button;
     private System.Windows.Forms.Button Defaults_Button;
     private System.Windows.Forms.Label Connection_Status_Label;
     private System.Windows.Forms.Label Prologix_Header_Label;
-    private System.Windows.Forms.Button Voltage_Reader_Button;
     private System.Windows.Forms.Button Multi_Poll_Button;
     private System.Windows.Forms.Button Diag_Button;
 
@@ -829,7 +812,7 @@ namespace Multimeter_Controller
     private Label History_Label;
     private Button Button_Show_Execution_Trace;
     private Button Settings_Button;
-    private Button Button_Info;
+    private Button Info_Popup_Button;
     private Label Selected_IP_Address_Label;
     private TextBox IP_Address_Text;
     private Label NPLC_Label;
@@ -840,6 +823,8 @@ namespace Multimeter_Controller
     private Button Reset_Defaults_Button;
     private Label label2;
     private TextBox Subnet_Textbox;
+    private Label Read_Timeout_Label;
+    private ComboBox Read_Timeout_Combo_Box;
   }
 }
 

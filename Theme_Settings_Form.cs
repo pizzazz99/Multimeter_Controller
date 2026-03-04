@@ -10,11 +10,7 @@ namespace Multimeter_Controller
       DesignerSerializationVisibility.Hidden )]
     public Chart_Theme Result { get; private set; } = null!;
 
-    public Theme_Settings_Form ( )
-    {
-      InitializeComponent ( );
-      _Working = new Chart_Theme ( );
-    }
+   
 
     public Theme_Settings_Form ( Chart_Theme Current )
     {
@@ -22,6 +18,8 @@ namespace Multimeter_Controller
 
       _Working = new Chart_Theme ( );
       _Working.Copy_From ( Current );
+
+
 
       Update_Swatches ( );
     }
@@ -130,6 +128,34 @@ namespace Multimeter_Controller
       object? Sender, EventArgs E )
     {
       _Working.Copy_From ( Chart_Theme.Light_Preset ( ) );
+      Update_Swatches ( );
+    }
+
+    private void Brown_Preset_Button_Click (
+  object? Sender, EventArgs E )
+    {
+      _Working.Copy_From ( Chart_Theme.Brown_Preset ( ) );
+      Update_Swatches ( );
+    }
+
+    private void Grey_Preset_Button_Click (
+      object? Sender, EventArgs E )
+    {
+      _Working.Copy_From ( Chart_Theme.Grey_Preset ( ) );
+      Update_Swatches ( );
+    }
+
+    private void Golden_Preset_Button_Click (
+      object? Sender, EventArgs E )
+    {
+      _Working.Copy_From ( Chart_Theme.Golden_Preset ( ) );
+      Update_Swatches ( );
+    }
+
+    private void Light_Yellow_Preset_Button_Click (
+      object? Sender, EventArgs E )
+    {
+      _Working.Copy_From ( Chart_Theme.Light_Yellow_Preset ( ) );
       Update_Swatches ( );
     }
 

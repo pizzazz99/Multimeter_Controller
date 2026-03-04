@@ -21,7 +21,8 @@ namespace Multimeter_Controller
     private CheckBox _Default_Combined_Check;
     private CheckBox _Default_Normalized_Check;
     private CheckBox _Show_Legend_Check;
-    private NumericUpDown _Max_Display_Points_Numeric;
+    private NumericUpDown _Display_Digits_Numeric;
+
 
 
 
@@ -35,7 +36,10 @@ namespace Multimeter_Controller
     private NumericUpDown _Max_Errors_Numeric;
     private CheckBox _Auto_Retry_Check;
     private NumericUpDown _Retry_Delay_Numeric;
-
+    private NumericUpDown _Skew_Warning_Numeric;
+    private NumericUpDown _Stale_Data_Numeric;
+    private NumericUpDown _Max_Display_Points_Numeric;
+    private CheckBox _Stop_At_Max_Check;
 
     // ===== In Build_Prologix_Tab ( ) =====
 
@@ -455,29 +459,42 @@ namespace Multimeter_Controller
       Display_Tab.Controls.Add ( _Show_Legend_Check );
       Y += 30;
 
-      // Max Display Points
-      var Max_Display_Label = new Label
-      {
-        Text = "Default Max Display Points:",
-        Location = new Point ( 15, Y ),
-        AutoSize = true
-      };
-      Display_Tab.Controls.Add ( Max_Display_Label );
-
-      _Max_Display_Points_Numeric = new NumericUpDown
-      {
-        Location = new Point ( 250, Y - 3 ),
-        Size = new Size ( 80, 23 ),
-        Minimum = 10,
-        Maximum = 100000,
-        Value = 100
-      };
-      Display_Tab.Controls.Add ( _Max_Display_Points_Numeric );
+   
     }
 
     private void Initialize_Polling_Tab ( )
     {
       int Y = 15;
+
+
+      var Max_Points_Label = new Label
+      {
+        Text = "Max Display Points:",
+        Location = new Point ( 15, Y ),
+        AutoSize = true
+      };
+      Polling_Tab.Controls.Add ( Max_Points_Label );   // ← was missing
+
+      _Max_Display_Points_Numeric = new NumericUpDown  // ← assign to field, not local
+      {
+        Minimum = 5,
+        Maximum = _Settings.Max_Display_Points,
+        Increment = 1_000,
+        Value = 5,
+        Location = new Point ( 250, Y - 3 ),
+        Size = new Size ( 90, 22 )
+      };
+      Polling_Tab.Controls.Add ( _Max_Display_Points_Numeric );  // ← was missing
+      Y += 30;
+
+      _Stop_At_Max_Check = new CheckBox
+      {
+        Text = "Stop polling when max display points reached (default: roll/warn)",
+        Location = new Point ( 15, Y ),
+        AutoSize = true
+      };
+      Polling_Tab.Controls.Add ( _Stop_At_Max_Check );
+      Y += 30;
 
       // Poll Delay
       var Poll_Delay_Label = new Label
@@ -499,6 +516,8 @@ namespace Multimeter_Controller
       };
       Polling_Tab.Controls.Add ( _Poll_Delay_Numeric );
       Y += 30;
+
+   
 
       // NPLC
       var NPLC_Label = new Label
@@ -653,8 +672,68 @@ namespace Multimeter_Controller
       };
       Polling_Tab.Controls.Add ( _Retry_Delay_Numeric );
 
+      Y += 35;
 
-     
+      Polling_Tab.Controls.Add ( new Label
+      {
+        Text = "Data Freshness:",
+        Location = new Point ( 15, Y ),
+        Font = new Font ( "Segoe UI", 9F, FontStyle.Bold ),
+        AutoSize = true
+      } );
+      Y += 25;
+
+      Polling_Tab.Controls.Add ( new Label
+      {
+        Text = "Skew Warning (seconds):",
+        Location = new Point ( 15, Y ),
+        AutoSize = true
+      } );
+      _Skew_Warning_Numeric = new NumericUpDown
+      {
+        Location = new Point ( 250, Y - 3 ),
+        Size = new Size ( 80, 23 ),
+        Minimum = 0.2M,
+        Maximum = 10M,
+        Increment = 0.1M,
+        DecimalPlaces = 1,
+        Value = 1.0M
+      };
+      Polling_Tab.Controls.Add ( _Skew_Warning_Numeric );
+      Polling_Tab.Controls.Add ( new Label
+      {
+        Text = "(orange)",
+        Location = new Point ( 340, Y ),
+        AutoSize = true,
+        ForeColor = Color.Orange
+      } );
+      Y += 30;
+
+      Polling_Tab.Controls.Add ( new Label
+      {
+        Text = "Stale Data (seconds):",
+        Location = new Point ( 15, Y ),
+        AutoSize = true
+      } );
+      _Stale_Data_Numeric = new NumericUpDown
+      {
+        Location = new Point ( 250, Y - 3 ),
+        Size = new Size ( 80, 23 ),
+        Minimum = 0.2M,
+        Maximum = 60M,
+        Increment = 0.5M,
+        DecimalPlaces = 1,
+        Value = 3.0M
+      };
+      Polling_Tab.Controls.Add ( _Stale_Data_Numeric );
+      Polling_Tab.Controls.Add ( new Label
+      {
+        Text = "(red)",
+        Location = new Point ( 340, Y ),
+        AutoSize = true,
+        ForeColor = Color.Red
+      } );
+      Y += 30;
 
 
     }
@@ -1087,13 +1166,23 @@ namespace Multimeter_Controller
       };
       _Theme_Combo.Items.Add ( "Dark" );
       _Theme_Combo.Items.Add ( "Light" );
+      _Theme_Combo.Items.Add ( "Brown" );
+      _Theme_Combo.Items.Add ( "Grey" );
+      _Theme_Combo.Items.Add ( "Golden" );
+      _Theme_Combo.Items.Add ( "Light Yellow" );
       _Theme_Combo.SelectedItem = _Settings.Current_Theme.Name;
       _Theme_Combo.SelectedIndexChanged += ( s, e ) =>
       {
         string Selected = _Theme_Combo.SelectedItem?.ToString ( ) ?? "Dark";
-        Chart_Theme New_Theme = Selected == "Light"
-          ? Chart_Theme.Light_Preset ( )
-          : Chart_Theme.Dark_Preset ( );
+        Chart_Theme New_Theme = Selected switch
+        {
+          "Light" => Chart_Theme.Light_Preset ( ),
+          "Brown" => Chart_Theme.Brown_Preset ( ),
+          "Grey" => Chart_Theme.Grey_Preset ( ),
+          "Golden" => Chart_Theme.Golden_Preset ( ),
+          "Light Yellow" => Chart_Theme.Light_Yellow_Preset ( ),
+          _ => Chart_Theme.Dark_Preset ( )
+        };
         _Settings.Set_Theme ( New_Theme );
       };
       UI_Tab.Controls.Add ( _Theme_Combo );
@@ -1348,10 +1437,33 @@ namespace Multimeter_Controller
 
       Y += 35;
 
-      
+      Scroll_Panel.Controls.Add ( new Label
+      {
+        Text = "HP3458 Digits (4-10):",
+        Location = new Point ( 15, Y ),       // ← left column
+        AutoSize = true
+      } );
+      _Display_Digits_Numeric = new NumericUpDown
+      {
+        Location = new Point ( 250, Y - 3 ),
+        Size = new Size ( 60, 23 ),
+        Minimum = 4,
+        Maximum = 10,
+        Value = _Settings.Display_Digits
+      };
+      Scroll_Panel.Controls.Add ( _Display_Digits_Numeric );
+      Scroll_Panel.Controls.Add ( new Label
+      {
+        Text = "(also sets display precision)",
+        Location = new Point ( 320, Y ),     // ← right of numeric
+        AutoSize = true,
+        ForeColor = SystemColors.GrayText
+      } );
+      Y += 30;
+ 
 
 
-  
+
 
     }
 
@@ -1395,7 +1507,8 @@ namespace Multimeter_Controller
       _Default_Combined_Check.Checked = _Settings.Default_To_Combined_View;
       _Default_Normalized_Check.Checked = _Settings.Default_To_Normalized_View;
       _Show_Legend_Check.Checked = _Settings.Show_Legend_On_Startup;
-      _Max_Display_Points_Numeric.Value = _Settings.Default_Max_Display_Points;
+      _Display_Digits_Numeric.Value = _Settings.Display_Digits;
+
 
       // Polling tab
       _Poll_Delay_Numeric.Value = _Settings.Default_Poll_Delay_Ms;
@@ -1407,6 +1520,10 @@ namespace Multimeter_Controller
       _Max_Errors_Numeric.Value = _Settings.Max_Consecutive_Errors_Before_Disable;
       _Auto_Retry_Check.Checked = _Settings.Auto_Retry_Failed_Instruments;
       _Retry_Delay_Numeric.Value = _Settings.Retry_Delay_Seconds;
+      _Skew_Warning_Numeric.Value = (decimal) _Settings.Skew_Warning_Threshold_Seconds;
+      _Stale_Data_Numeric.Value = (decimal) _Settings.Stale_Data_Threshold_Seconds;
+      _Max_Display_Points_Numeric.Value = _Settings.Max_Display_Points;
+      _Stop_At_Max_Check.Checked = _Settings.Stop_Polling_At_Max_Display_Points;
 
       // Files tab
       _Save_Folder_Text.Text = _Settings.Default_Save_Folder;
@@ -1487,7 +1604,10 @@ namespace Multimeter_Controller
       _Settings.Default_To_Combined_View = _Default_Combined_Check.Checked;
       _Settings.Default_To_Normalized_View = _Default_Normalized_Check.Checked;
       _Settings.Show_Legend_On_Startup = _Show_Legend_Check.Checked;
-      _Settings.Default_Max_Display_Points = (int) _Max_Display_Points_Numeric.Value;
+      _Settings.Display_Digits = (int) _Display_Digits_Numeric.Value;
+      
+
+
 
       // Polling tab
       _Settings.Default_Poll_Delay_Ms = (int) _Poll_Delay_Numeric.Value;
@@ -1499,6 +1619,10 @@ namespace Multimeter_Controller
       _Settings.Max_Consecutive_Errors_Before_Disable = (int) _Max_Errors_Numeric.Value;
       _Settings.Auto_Retry_Failed_Instruments = _Auto_Retry_Check.Checked;
       _Settings.Retry_Delay_Seconds = (int) _Retry_Delay_Numeric.Value;
+      _Settings.Skew_Warning_Threshold_Seconds = (double) _Skew_Warning_Numeric.Value;
+      _Settings.Stale_Data_Threshold_Seconds = (double) _Stale_Data_Numeric.Value;
+      _Settings.Max_Display_Points = (int) _Max_Display_Points_Numeric.Value;
+      _Settings.Stop_Polling_At_Max_Display_Points = _Stop_At_Max_Check.Checked;
 
       // Files tab
       _Settings.Default_Save_Folder = _Save_Folder_Text.Text;

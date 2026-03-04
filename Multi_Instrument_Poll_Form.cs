@@ -1,24 +1,247 @@
 
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// POLL CYCLE TIMING CHART  —  Design, Purpose, and Implementation Notes
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// OVERVIEW
+// ────────
+// This chart is a real-time and post-session diagnostic tool designed to answer
+// one specific question: WHY does polling speed degrade over time?
+//
+// Traditional instrument polling loops give you no visibility into where time
+// is being spent. You know the cycle took 300ms instead of 70ms, but you do not
+// know if that is the instrument, the GPIB bus, the UI thread, or the file
+// system. This chart makes that visible.
+//
+//
+// WHAT IS BEING CAPTURED
+// ──────────────────────
+// Every polling cycle is timed using a Stopwatch that is started at the top of
+// the while loop and stopped after all instruments have been read and all
+// housekeeping is complete. The total wall-clock time is broken into five
+// discrete phases:
+//
+//   Total_Ms        — Full cycle wall-clock time from first instrument read
+//                     to end of UI update. This is the primary line on the
+//                     chart and represents your actual polling rate.
+//
+//   Comm_Ms         — Time spent waiting for instrument responses across all
+//                     instruments in the cycle. This includes the GPIB bus
+//                     turnaround, the Prologix adapter overhead, and the
+//                     instrument's own conversion time. For an HP3458A at
+//                     NPLC=1 over RS-232/GPIB this is typically 40-60ms per
+//                     instrument. If this band grows over time the instrument
+//                     or the physical connection is the bottleneck.
+//
+//   Address_Switch_Ms — Time spent switching GPIB addresses between
+//                     instruments (++addr, ++auto 0 commands). For a single
+//                     instrument this is near zero. For multiple instruments
+//                     on the same Prologix adapter this adds up. If this band
+//                     grows it indicates Prologix adapter contention or serial
+//                     port latency increasing.
+//
+//   UI_Ms           — Time spent on the UI thread via Invoke() to update the
+//                     current values display, legend, cycle counter, and
+//                     scrollbar. This is the most likely culprit for gradual
+//                     slowdown at high point counts because the legend rebuild
+//                     and panel repaints become more expensive as data
+//                     accumulates. If this band grows while Comm_Ms stays
+//                     flat the bottleneck is the UI, not the instrument.
+//
+//   Record_Ms       — Time spent writing the current cycle row to the CSV
+//                     StreamWriter. Under normal conditions this is sub-
+//                     millisecond since the writer is buffered. Periodic spikes
+//                     every 100 cycles indicate the FlushAsync() call. If this
+//                     band grows consistently it indicates disk pressure or
+//                     the StringBuilder allocation cost is increasing.
+//
+// The remaining time (Total_Ms minus the sum of all four phases) represents
+// miscellaneous overhead: Task.Delay() calls between instruments, await
+// scheduling latency, and .NET thread pool overhead.
+//
+//
+// HOW THE DATA IS STORED
+// ──────────────────────
+// Samples are stored in a fixed-size pre-allocated ring buffer:
+//
+//   private readonly Poll_Cycle_Sample[] _Cycle_Timing = 
+//       new Poll_Cycle_Sample[_Timing_Buffer_Size];  // default 10,000 entries
+//
+// Each entry is a value-type struct (no heap allocation). The ring buffer uses
+// a head pointer (_Timing_Head) that wraps at _Timing_Buffer_Size. Writing a
+// sample is a single array index assignment — there are no locks, no lists,
+// no GC pressure on the hot polling path. This was a deliberate design choice
+// to ensure the timing measurement itself does not distort the thing being
+// measured.
+//
+// Disconnect events are stored separately in a List<Disconnect_Event> under a
+// lock because they are rare (written only on first comm error per dropout)
+// and need to survive ring buffer rollover for correlation purposes.
+//
+//
+// WHAT THE CHART SHOWS
+// ────────────────────
+// The chart renders as a stacked area graph with five visual layers:
+//
+//   Gold band    — Address switching time (bottom of stack)
+//   Blue band    — Communication / instrument read time
+//   Green band   — UI update time
+//   Red band     — Record write time
+//   White line   — Total cycle time (drawn on top of all bands)
+//
+// The vertical gap between the top of the red band and the white total line
+// represents unaccounted overhead — Task.Delay() calls, await scheduling,
+// and any other time not explicitly measured.
+//
+// Orange dashed vertical lines mark the exact cycle where a communication
+// disconnect was first detected on any instrument. The instrument name is
+// labelled at the top of each marker. Because disconnects cause the polling
+// loop to wait for the full GPIB timeout before Handle_Read_Error() fires,
+// the white total line will almost always show a sharp upward spike at the
+// same X position as an orange disconnect marker. If a spike occurs WITHOUT
+// an orange marker the slowdown was caused by something other than a comm
+// dropout — GC collection, Windows scheduler interference, or UI contention.
+//
+//
+// HOW TO READ THE CHART IN PRACTICE
+// ──────────────────────────────────
+// Gradual upward creep in the green band
+//     → UI thread is the bottleneck. Check legend rebuild frequency,
+//       Current_Values_Display repaint cost, and whether the chart refresh
+//       timer interval needs to be increased at high point counts.
+//
+// Sudden step increase in the blue band
+//     → The instrument slowed down. Check NPLC setting, input signal
+//       stability, and whether the instrument is in a degraded state.
+//       On RS-232/GPIB also check for serial buffer overflow.
+//
+// Periodic spikes at regular time intervals
+//     → Auto-save timer firing, FlushAsync() every 100 cycles, or Windows
+//       power management interfering with the serial port.
+//
+// Spike exactly coincident with orange disconnect marker
+//     → Physical connection issue. Cable, Prologix adapter, or instrument
+//       power cycling. The height of the spike tells you how long the
+//       timeout wait was before the error was detected.
+//
+// Baseline slowly drifting up with no single band growing
+//     → .NET GC pressure from accumulated short-lived objects in the paint
+//       loop (Pen, Brush, Font created and disposed on every repaint).
+//       Consider pre-allocating chart drawing resources.
+//
+//
+// CONTROLS
+// ────────
+// The existing Show Last 'N' Points numeric controls how many cycles are
+// visible in the timing chart window — identical to how it controls the
+// data chart window. The Pan scrollbar allows scrolling backward through
+// the timing history. The Clear button resets the timing buffer and clears
+// all disconnect events. These controls switch behavior automatically
+// depending on whether the Data View or Poll Speed view is active.
+//
+//
+// RECORDING
+// ─────────
+// When the Record button is pressed a companion timing CSV file is created
+// alongside the instrument data CSV. The timing file uses the same timestamp
+// prefix with a _Timing suffix so the two files sort together in the folder.
+// Every cycle writes one row containing all five phase timings. Disconnect
+// events are written as clearly marked rows and flushed to disk immediately
+// so they are never lost even if the session ends abnormally. The timing file
+// can be reloaded via the Load button — the chart will detect the _Timing.csv
+// suffix and automatically switch to Poll Speed view with the full phase
+// breakdown visible for post-session analysis.
+//
+// ═══════════════════════════════════════════════════════════════════════════════
+
+
+
+
 using System.Data.Common;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Globalization;
+using System.IO.Ports;
 using System.Linq;
 using System.Net;
+using System.Threading;
 using System.Threading.Channels;
 using System.Windows.Forms;
 using System.Xml.Linq;
 using Trace_Execution_Namespace;
-using static Trace_Execution_Namespace.Trace_Execution;
 using static System.ComponentModel.Design.ObjectSelectorEditor;
 using static System.Runtime.InteropServices.JavaScript.JSType;
+using static Trace_Execution_Namespace.Trace_Execution;
 
 namespace Multimeter_Controller
 {
   public partial class Multi_Instrument_Poll_Form : Form
   {
 
+    public class Buffered_Panel : Panel
+    {
+      public Buffered_Panel ( )
+      {
+        DoubleBuffered = true;
+        ResizeRedraw = true;
+      }
+    }
 
+    // Lightweight struct - no heap allocation
+    public struct Poll_Cycle_Sample
+    {
+      public DateTime Cycle_Time;
+      public double Total_Ms;           // full cycle wall time
+      public double Comm_Ms;            // time spent in actual GPIB reads
+      public double Address_Switch_Ms;  // time spent switching addresses
+      public double UI_Ms;              // time spent in Invoke/UI updates
+      public double Record_Ms;          // time spent writing to stream
+      public int Instrument_Count;
+      public bool Had_Error;
+    }
+
+    private StreamWriter? _Timing_Writer;
+    private string? _Timing_File_Path;
+
+    private bool _Is_Shutting_Down = false;
+
+
+
+    private bool _Show_Timing_View = false;
+    private int _Timing_View_Offset = 0;  // mirrors _View_Offset but for timing buffer
+    public struct Disconnect_Event
+    {
+      public DateTime Time;
+      public string Instrument_Name;
+      public int Cycle_Number;
+    }
+
+
+
+    // Polling performance tracking
+    private const int _Timing_Buffer_Size = 10_000;
+    private readonly Poll_Cycle_Sample [ ] _Cycle_Timing =
+        new Poll_Cycle_Sample [ _Timing_Buffer_Size ];
+    private int _Timing_Head = 0;          // next write index (ring buffer)
+    private int _Timing_Count = 0;         // total samples written (capped at buffer size)
+
+    private readonly List<Disconnect_Event> _Disconnect_Events = new ( );
+
+    private readonly Stopwatch _Cycle_Stopwatch = new Stopwatch ( );
+
+
+
+    // ── Chart Layout Constants ───────────────────────────────────────────
+    private const int _Chart_Margin_Left = 110;
+    private const int _Chart_Margin_Right = 140;
+    private const int _Chart_Margin_Top = 30;
+    private const int _Chart_Margin_Bottom = 30;
+    private const int _Chart_Subplot_Gap = 8;
+
+
+
+    private DateTime _Last_Successful_Read = DateTime.Now;
 
     private int _View_Offset = 0;  // 0 = most recent, positive = looking back in time
 
@@ -74,9 +297,11 @@ namespace Multimeter_Controller
     private DateTime _Record_Start;
     private string _Record_Query = "";
     private List<int> _Filtered_Indices = new List<int> ( );
-    private Chart_Theme _Theme = Chart_Theme.Load ( );
+    private Chart_Theme _Theme;
     private bool _Enable_Rolling = true;
     private int _Max_Display_Points = 10;
+    private StreamWriter? _Recording_Writer;
+    private string? _Recording_File_Path;
 
 
     private readonly List<DateTime> _Reading_Timestamps = new List<DateTime> ( );
@@ -112,8 +337,9 @@ namespace Multimeter_Controller
 
     public Multi_Instrument_Poll_Form (
      Instrument_Comm Comm,
-     List<(string Name, int Address, Meter_Type Meter)> Instruments,
-     Application_Settings settings, Meter_Type Selected_Meter )
+     List<Instrument> Instruments,
+     Application_Settings Settings,
+     Meter_Type Selected_Meter )
     {
 
       using var Block = Trace_Block.Start_If_Enabled ( );
@@ -122,26 +348,58 @@ namespace Multimeter_Controller
 
 
       // Load settings FIRST
-      _Settings = settings;  // ← Use the passed settings, don't reload from disk
+      _Settings = Settings;  // ← Use the passed settings, don't reload from disk
+
+      _Theme = _Settings.Current_Theme;
+
       NPLC_Delay_Textbox.ReadOnly = true;
       NPLC_Delay_Textbox.BackColor = SystemColors.Control;
+
+
+      _Theme = _Settings.Current_Theme;
+      Chart_Panel.BackColor = _Theme.Background;
 
       _Settings.Theme_Changed += ( s, e ) =>
       {
         _Theme = _Settings.Current_Theme;
+        Chart_Panel.BackColor = _Theme.Background;
         Apply_Theme_To_Current_Values_Panel ( );
+
+        if ( _Legend_Panel_2 != null )
+        {
+          _Legend_Panel_2.BackColor = _Theme.Background;
+          int Series_Index = 0;
+          foreach ( Control C in _Legend_Panel_2.Controls )
+          {
+            if ( C is Panel Item )
+            {
+              Item.BackColor = _Theme.Background;
+              foreach ( Control Inner in Item.Controls )
+              {
+                if ( Inner is Label L )
+                  L.ForeColor = _Theme.Foreground;
+                // Update the color swatch box
+                else if ( Inner is Panel Color_Box && Color_Box.Size == new Size ( 14, 14 ) )
+                  Color_Box.BackColor = _Theme.Line_Colors [ Series_Index % _Theme.Line_Colors.Length ];
+              }
+              Series_Index++;
+            }
+          }
+        }
+
+        // Force chart repaint with new theme
         Chart_Panel.Invalidate ( );
       };
+
+
+
+
 
       Initialize_Current_Values_Display ( );
 
       _Selected_Meter = Selected_Meter;
 
-      typeof ( Panel ).InvokeMember ( "DoubleBuffered",
-        System.Reflection.BindingFlags.SetProperty |
-        System.Reflection.BindingFlags.Instance |
-        System.Reflection.BindingFlags.NonPublic,
-        null, Chart_Panel, new object [ ] { true } );
+      Enable_Double_Buffer ( Chart_Panel );
 
       _Comm = Comm;
 
@@ -152,15 +410,10 @@ namespace Multimeter_Controller
         var Inst = Instruments [ I ];
         _Series.Add ( new Instrument_Series
         {
-          Name = Inst.Name,
-          Address = Inst.Address,
-          Type = Inst.Meter,
+          Instrument = Inst,
           Points = new List<(DateTime Time, double Value)> ( ),
           Line_Color = _Theme.Line_Colors [ I % _Theme.Line_Colors.Length ],
-          Visible = true
         } );
-
-        // Initialize error tracking
         _Error_Counts [ Inst.Name ] = 0;
         _Last_Success [ Inst.Name ] = DateTime.Now;
       }
@@ -180,7 +433,7 @@ namespace Multimeter_Controller
       Create_Legend_Panel ( );
       Initialize_Legend_Panel ( );
 
-      Chart_Panel.BackColor = _Theme.Background;
+      //  Chart_Panel.BackColor = _Theme.Background;
       Text = $"Multi-Instrument Poller ({Instruments.Count} instruments)";
 
       Populate_Measurement_Combo ( );
@@ -192,14 +445,18 @@ namespace Multimeter_Controller
       _Auto_Save_Timer = new System.Windows.Forms.Timer ( );
       _Auto_Save_Timer.Tick += Auto_Save_Timer_Tick;
 
+      /*
       _Chart_Refresh_Timer = new System.Windows.Forms.Timer ( );
       _Chart_Refresh_Timer.Interval = 100;
       _Chart_Refresh_Timer.Tick += ( s, e ) =>
       {
+        Capture_Trace.Write ( $"Refresh timer tick - series count: {_Series.Count} points: {_Series.Sum ( x => x.Points.Count )}" );
         Chart_Panel.Invalidate ( );
         Update_Legend ( );
         Update_Current_Values_Display ( );
       };
+
+      */
 
       // Initialize GPIB manager with settings AND comm
       _GPIB_Manager = new GPIB_Manager ( _Settings, _Comm );
@@ -207,6 +464,7 @@ namespace Multimeter_Controller
 
       Normalize_Button.Visible = _Combined_View;
 
+      Initialize_Chart_Refresh_Timer ( );
 
       Update_Graph_Style_Availability ( );
 
@@ -229,27 +487,55 @@ namespace Multimeter_Controller
       Legend_Toggle_Button.Text = "Show Stats";
 
 
-      Block?.Trace ( $"_Chart_Tooltip initialized: {_Chart_Tooltip != null}" );
-      Block?.Trace ( $"Show_Tooltips_On_Hover = {_Settings.Show_Tooltips_On_Hover}" );
-      Block?.Trace ( $"Tooltip_Distance_Threshold = {_Settings.Tooltip_Distance_Threshold}" );
+      Capture_Trace.Write ( $"_Chart_Tooltip initialized: {_Chart_Tooltip != null}" );
+      Capture_Trace.Write ( $"Show_Tooltips_On_Hover = {_Settings.Show_Tooltips_On_Hover}" );
+      Capture_Trace.Write ( $"Tooltip_Distance_Threshold = {_Settings.Tooltip_Distance_Threshold}" );
+
+      Max_Points_Numeric.Enabled = true;
 
     }
 
 
 
 
+    private static void Enable_Double_Buffer ( Control C )
+    {
+      typeof ( Panel ).InvokeMember ( "DoubleBuffered",
+        System.Reflection.BindingFlags.SetProperty |
+        System.Reflection.BindingFlags.Instance |
+        System.Reflection.BindingFlags.NonPublic,
+        null, C, new object [ ] { true } );
+    }
+
+
+
+    DateTime Last_Updated
+    {
+      get; set;
+    }
+
     private string Current_Unit
     {
       get
       {
         string Measurement = Measurement_Combo.Text.Trim ( );
-        return Measurement.Contains ( "Voltage" ) ? "V"
-             : Measurement.Contains ( "Current" ) ? "A"
-             : Measurement.Contains ( "Resistance" ) ? "Ω"
-             : Measurement.Contains ( "Frequency" ) ? "Hz"
-             : Measurement.Contains ( "Temperature" ) ? "°C"
-             : Measurement.Contains ( "Capacitance" ) ? "F"
-             : "";
+        switch ( Measurement )
+        {
+          case string s when s.Contains ( "Voltage" ):
+            return "V";
+          case string s when s.Contains ( "Current" ):
+            return "A";
+          case string s when s.Contains ( "Resistance" ):
+            return "Ω";
+          case string s when s.Contains ( "Frequency" ):
+            return "Hz";
+          case string s when s.Contains ( "Temperature" ):
+            return "°C";
+          case string s when s.Contains ( "Capacitance" ):
+            return "F";
+          default:
+            return "";
+        }
       }
     }
 
@@ -294,7 +580,7 @@ namespace Multimeter_Controller
       if ( Graph_Style_Combo.SelectedItem == null )
         return;
       _Current_Graph_Style = Graph_Style_Combo.SelectedItem.ToString ( )!;
-      Block?.Trace ( $"Graph style changed to: [{_Current_Graph_Style}]" );
+      Capture_Trace.Write ( $"Graph style changed to: [{_Current_Graph_Style}]" );
       Chart_Panel.Invalidate ( );
     }
 
@@ -302,13 +588,13 @@ namespace Multimeter_Controller
     {
 
       using var Block = Trace_Block.Start_If_Enabled ( );
-      Block?.Trace ( $"MouseMove at ({e.X}, {e.Y})" );
+      Capture_Trace.Write ( $"MouseMove at ({e.X}, {e.Y})" );
 
       // Check if tooltips are enabled
       if ( !_Settings.Show_Tooltips_On_Hover )
       {
 
-        Block?.Trace ( "Tooltips disabled in settings" );
+        Capture_Trace.Write ( "Tooltips disabled in settings" );
         return;
       }
 
@@ -365,12 +651,9 @@ namespace Multimeter_Controller
       if ( _Combined_View )
       {
         // Combined view logic
-        int Margin_Left = 80;
-        int Margin_Right = 20;
-        int Margin_Top = 40;
-        int Margin_Bottom = 50;
-        int Chart_W = W - Margin_Left - Margin_Right;
-        int Chart_H = H - Margin_Top - Margin_Bottom;
+
+        int Chart_W = W - _Chart_Margin_Left - _Chart_Margin_Right;
+        int Chart_H = H - _Chart_Margin_Top - _Chart_Margin_Bottom;
 
         // Calculate Y range
         double Global_Min = double.MaxValue;
@@ -438,10 +721,10 @@ namespace Multimeter_Controller
 
             double Time_Offset = ( P.Time - Visible_Time_Min ).TotalSeconds;
             float X_Ratio = (float) ( Time_Offset / Visible_Time_Range_Sec );
-            float X = Margin_Left + ( X_Ratio * Chart_W );
+            float X = _Chart_Margin_Left + ( X_Ratio * Chart_W );
 
             double Y_Normalized = ( P.Value - Display_Min ) / Display_Range;
-            float Y = H - Margin_Bottom - (float) ( Y_Normalized * Chart_H );
+            float Y = H - _Chart_Margin_Bottom - (float) ( Y_Normalized * Chart_H );
 
             double Distance = Math.Sqrt ( Math.Pow ( Mouse_Pos.X - X, 2 ) + Math.Pow ( Mouse_Pos.Y - Y, 2 ) );
 
@@ -457,17 +740,14 @@ namespace Multimeter_Controller
       else
       {
         // Split view logic
-        int Margin_Left = 80;
-        int Margin_Right = 20;
-        int Margin_Top = 10;
-        int Margin_Bottom = 30;
-        int Gap = 8;
 
-        int Chart_W = W - Margin_Left - Margin_Right;
-        int Total_H = H - Margin_Top - Margin_Bottom;
+
+
+        int Chart_W = W - _Chart_Margin_Left - _Chart_Margin_Right;
+        int Total_H = H - _Chart_Margin_Top - _Chart_Margin_Bottom;
 
         int Subplot_Count = _Series.Count ( S => S.Visible );
-        int Subplot_H = ( Total_H - Gap * ( Subplot_Count - 1 ) ) / Subplot_Count;
+        int Subplot_H = ( Total_H - _Chart_Subplot_Gap * ( Subplot_Count - 1 ) ) / Subplot_Count;
 
         int SI = 0;
         foreach ( var S in _Series )
@@ -475,7 +755,7 @@ namespace Multimeter_Controller
           if ( !S.Visible || S.Points.Count == 0 )
             continue;
 
-          int Sub_Top = Margin_Top + SI * ( Subplot_H + Gap );
+          int Sub_Top = _Chart_Margin_Top + SI * ( Subplot_H + _Chart_Subplot_Gap );
           int Sub_Bottom = Sub_Top + Subplot_H;
           int Label_Top = Sub_Top + 18;
           int Plot_H = Sub_Bottom - Label_Top;
@@ -523,7 +803,7 @@ namespace Multimeter_Controller
 
             double Time_Offset = ( P.Time - Visible_Time_Min ).TotalSeconds;
             float X_Ratio = (float) ( Time_Offset / Visible_Time_Range_Sec );
-            float X = Margin_Left + ( X_Ratio * Chart_W );
+            float X = _Chart_Margin_Left + ( X_Ratio * Chart_W );
 
             double Y_Normalized = ( P.Value - Display_Min ) / Display_Range;
             float Y = Sub_Bottom - (float) ( Y_Normalized * Plot_H );
@@ -552,7 +832,7 @@ namespace Multimeter_Controller
     private void Chart_Refresh_Timer_Tick ( object sender, EventArgs e )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
-      Block?.Trace ( "Chart refresh tick - calling Invalidate()" );
+      Capture_Trace.Write ( "Chart refresh tick - calling Invalidate()" );
       Chart_Panel.Invalidate ( );
     }
 
@@ -613,29 +893,25 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
 
-      Block?.Trace ( $"Draw_Split_View called: W={W}, H={H}" );
-      Block?.Trace ( $"Total series: {_Series.Count}, Visible: {_Series.Count ( s => s.Visible )}" );
+      Capture_Trace.Write ( $"Draw_Split_View called: W={W}, H={H}" );
+      Capture_Trace.Write ( $"Total series: {_Series.Count}, Visible: {_Series.Count ( s => s.Visible )}" );
 
       var (Time_Min, Time_Max) = Calculate_Time_Range ( );
       double Time_Range_Sec = ( Time_Max - Time_Min ).TotalSeconds;
 
-      Block?.Trace ( $"Time range: {Time_Range_Sec:F2} seconds" );
+      Capture_Trace.Write ( $"Time range: {Time_Range_Sec:F2} seconds" );
 
 
       if ( Time_Range_Sec < 0.001 )
         Time_Range_Sec = 1.0;
 
-      int Margin_Left = 80;
-      int Margin_Right = 20;
-      int Margin_Top = 10;
-      int Margin_Bottom = 30;
-      int Gap = 8;
 
-      int Chart_W = W - Margin_Left - Margin_Right;
-      int Total_H = H - Margin_Top - Margin_Bottom;
+
+      int Chart_W = W - _Chart_Margin_Left - _Chart_Margin_Right;
+      int Total_H = H - _Chart_Margin_Top - _Chart_Margin_Bottom;
 
       int Subplot_Count = _Series.Count ( S => S.Visible );
-      int Subplot_H = ( Total_H - Gap * ( Subplot_Count - 1 ) ) / Subplot_Count;
+      int Subplot_H = ( Total_H - _Chart_Subplot_Gap * ( Subplot_Count - 1 ) ) / Subplot_Count;
 
       if ( Chart_W < 10 || Subplot_H < 30 )
         return;
@@ -655,13 +931,12 @@ namespace Multimeter_Controller
         if ( !S.Visible )
           continue;
 
-        int Sub_Top = Margin_Top + SI * ( Subplot_H + Gap );
+        int Sub_Top = _Chart_Margin_Top + SI * ( Subplot_H + _Chart_Subplot_Gap );
         int Sub_Bottom = Sub_Top + Subplot_H;
 
         Draw_Subplot (
           G, S, SI,
           Sub_Top, Sub_Bottom,
-          Margin_Left, Margin_Right,
           W, Time_Min, Time_Range_Sec, Chart_W,
           Grid_Pen, Sep_Pen, Label_Font, Name_Font, Label_Brush );
 
@@ -673,40 +948,12 @@ namespace Multimeter_Controller
       {
         Draw_Time_Axis (
           G, H, Chart_W, Time_Range_Sec,
-          Margin_Left, Margin_Bottom, Margin_Top,
           Grid_Pen, Label_Brush );
       }
     }
 
 
 
-
-    private void Draw_Y_Axis ( Graphics G, double Min, double Range, int W, int H,
-      int Chart_H, int Margin_Left, int Margin_Right, int Margin_Bottom,
-      Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
-    {
-      using var Block = Trace_Block.Start_If_Enabled ( );
-
-
-
-      // Draw 5 horizontal grid lines and labels
-      for ( int I = 0; I <= 4; I++ )
-      {
-        float Y_Ratio = I / 4f;
-        float Y = H - Margin_Bottom - ( Y_Ratio * Chart_H );
-
-        // Grid line
-        G.DrawLine ( Grid_Pen, Margin_Left, Y, W - Margin_Right, Y );
-
-        // Label
-        double Value = Min + ( Range * Y_Ratio );
-        string Label = Format_Axis_Value ( Value );
-
-        SizeF Label_Size = G.MeasureString ( Label, Label_Font );
-        G.DrawString ( Label, Label_Font, Label_Brush,
-          Margin_Left - Label_Size.Width - 5, Y - Label_Size.Height / 2 );
-      }
-    }
 
 
 
@@ -716,45 +963,40 @@ namespace Multimeter_Controller
 
 
     private PointF [ ] Build_Point_Array_Combined (
-      Instrument_Series Series,
-      DateTime Start_Time,
-      TimeSpan Duration,
-      double Padded_Min,
-      double Padded_Range,
-      int Margin_Left,
-      int Margin_Bottom,
-      int Chart_W,
-      int Chart_H,
-      int H )
+        Instrument_Series Series,
+        DateTime Start_Time,
+        TimeSpan Duration,
+        double Padded_Min,
+        double Padded_Range,
+        int W, int H )
     {
       if ( Series.Points.Count == 0 )
         return Array.Empty<PointF> ( );
 
-      var Points = new PointF [ Series.Points.Count ];
+      int Chart_W = W - _Chart_Margin_Left - _Chart_Margin_Right;
+      int Chart_H = H - _Chart_Margin_Top - _Chart_Margin_Bottom;
 
+      var Points = new PointF [ Series.Points.Count ];
       for ( int I = 0; I < Series.Points.Count; I++ )
       {
         var P = Series.Points [ I ];
 
-        // X position based on time
         double Time_Offset_Seconds = ( P.Time - Start_Time ).TotalSeconds;
         float X_Ratio = (float) ( Time_Offset_Seconds / Duration.TotalSeconds );
-        float X = Margin_Left + ( X_Ratio * Chart_W );
+        float X = _Chart_Margin_Left + ( X_Ratio * Chart_W );
 
-        // Y position based on value
         double Normalized = ( P.Value - Padded_Min ) / Padded_Range;
-        float Y = H - Margin_Bottom - (float) ( Normalized * Chart_H );
+        float Y = H - _Chart_Margin_Bottom - (float) ( Normalized * Chart_H );
 
         Points [ I ] = new PointF ( X, Y );
       }
-
       return Points;
     }
 
-    private void Draw_Mini_Legend ( Graphics G, int W, int Margin_Top, int Margin_Right )
+    private void Draw_Mini_Legend ( Graphics G, int W )
     {
       int X = W - 200;
-      int Y = Margin_Top;
+      int Y = _Chart_Margin_Top;
 
       using ( var Font = new Font ( this.Font.FontFamily, 8f ) )
       using ( var Brush = new SolidBrush ( _Theme.Foreground ) )
@@ -911,15 +1153,6 @@ namespace Multimeter_Controller
       if ( _Memory_Status_Label != null )
       {
         _Memory_Status_Label.Text = $"Memory: {current:N0} / {max:N0} ({Percent}%)";
-
-        /*
-        if ( Percent >= 90 )
-          _Memory_Status_Label.BackColor = Color.Red;
-        else if ( Percent >= _Settings.Warning_Threshold_Percent )
-          _Memory_Status_Label.BackColor = Color.Yellow;
-        else
-          _Memory_Status_Label.BackColor = Color.Green;
-        */
       }
     }
 
@@ -956,7 +1189,7 @@ namespace Multimeter_Controller
         BorderStyle = BorderStyle.FixedSingle,
         BackColor = _Theme.Background,
         Dock = DockStyle.None,
-        Width = 200,
+        Width = 400,
         Visible = false  // Start hidden
       };
 
@@ -1093,13 +1326,13 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
 
+
       if ( !_Comm.Is_Connected )
       {
         MessageBox.Show (
             "Not connected. Please connect first.",
             "Connection Required",
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Warning );
+            MessageBoxButtons.OK, MessageBoxIcon.Warning );
         return;
       }
 
@@ -1109,25 +1342,42 @@ namespace Multimeter_Controller
             "No instruments in the list.\n" +
             "Add instruments on the main form first.",
             "No Instruments",
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Warning );
+            MessageBoxButtons.OK, MessageBoxIcon.Warning );
         return;
       }
 
-
-
       int Combo_Index = Measurement_Combo.SelectedIndex;
       if ( Combo_Index < 0 || Combo_Index >= _Filtered_Indices.Count )
+      {
         return;
+      }
+
+      string Command = Measurement_Combo.Text.Trim ( );
+
+      if ( string.IsNullOrEmpty ( Command ) )
+      {
+
+        return;
+      }
+
+      _Cts?.Cancel ( );
+      _Cts?.Dispose ( );
+      _Cts = new CancellationTokenSource ( );
+      _Poll_Error_Shown = false;
+
+
+      _Is_Running = true;
+      _Cycle_Count = 0;
+      Start_Stop_Button.Text = "Stop";
+      Show_Progress ( "Polling...", _Foreground_Color );
+
+
 
       int Func_Index = _Filtered_Indices [ Combo_Index ];
       var Selected = _Measurements [ Func_Index ];
 
-      string Command = Measurement_Combo.Text.Trim ( );
       Capture_Trace.Write ( $"Starting poll with command: '{Command}'" );
 
-      if ( string.IsNullOrEmpty ( Command ) )
-        return;
 
       // Determine command and unit for first instrument (they should all be same type)
       string Configure_Cmd = _Series.Count > 0 && _Series [ 0 ].Type == Meter_Type.HP34401
@@ -1141,11 +1391,7 @@ namespace Multimeter_Controller
       Capture_Trace.Write ( $"Unit             : {Unit}" );
       Capture_Trace.Write ( $"Query mode       : {Is_Query_Mode}" );
 
-      _Is_Running = true;
-      _Cts = new CancellationTokenSource ( );
-      _Cycle_Count = 0;
-      Start_Stop_Button.Text = "Stop";
-      Show_Progress ( "Polling...", _Foreground_Color );
+
 
 
       Delay_Numeric.Enabled = true;
@@ -1155,6 +1401,7 @@ namespace Multimeter_Controller
       Cycles_Numeric.Enabled = false;
       Clear_Button.Enabled = false;
       Load_Button.Enabled = false;
+
 
 
       bool Continuous = Continuous_Check.Checked;
@@ -1168,8 +1415,41 @@ namespace Multimeter_Controller
       // Track configuration state per instrument
       bool [ ] Configured = new bool [ _Series.Count ];
 
+      Capture_Trace.Write ( $"Points: {_Settings.Max_Display_Points}" );
+
       _Comm.Instrument_Settle_Ms = Multimeter_Common_Helpers_Class.Calculate_Settle_Ms ( NPLC_Value );
       NPLC_Delay_Textbox.Text = _Comm.Instrument_Settle_Ms.ToString ( );
+
+
+      // NPLC to minimum timeout table:**
+      // NPLC 0.02  →  ~100ms  — default fine
+      // NPLC 0.2   →  ~200ms  — default fine
+      // NPLC 1     →  ~500ms  — default fine
+      // NPLC 10    →  ~2000ms — borderline
+      // NPLC 100   →  ~4500ms — needs explicit increase
+
+      // In Start_Polling, before the polling loop,
+      // calculate required timeout from NPLC:
+      double NPLC_Value_Double = double.Parse ( NPLC_Value,
+          CultureInfo.InvariantCulture );
+
+      // At 60Hz: NPLC/60 seconds conversion + 50% safety margin
+      int Required_Timeout_Ms = (int) ( ( NPLC_Value_Double / 60.0 )
+                                        * 1000 * 1.5 ) + 2000;
+
+      // Apply to comm layer
+      _Comm.Read_Timeout_Ms = Math.Max (
+          _Settings.Prologix_Read_Tmo_Ms,   // never go below user setting
+          Required_Timeout_Ms );
+
+      Capture_Trace.Write ( $"NPLC={NPLC_Value} requires " +
+          $"{Required_Timeout_Ms}ms timeout" );
+
+
+
+
+
+
 
       try
       {
@@ -1190,6 +1470,11 @@ namespace Multimeter_Controller
 
           // Switch to this instrument
           await Task.Run ( ( ) => _Comm.Change_GPIB_Address ( S.Address ), Token );
+          await Task.Delay ( 50, Token );
+
+
+          // ── Prologix one-time setup ───────────────────────────────────────────
+          await Task.Run ( ( ) => _Comm.Send_Prologix_Command ( "++savecfg 0" ), Token );
           await Task.Delay ( 50, Token );
 
           // Set ++auto 0 for ALL instruments
@@ -1216,6 +1501,36 @@ namespace Multimeter_Controller
           // Configure measurement function
           if ( S.Type == Meter_Type.HP3458 )
           {
+
+
+            if ( NPLC_Value_Double >= 10 )
+            {
+              // High NPLC — use single trigger so we control
+              // exactly when conversion starts and ends
+              Capture_Trace.Write ( $"High NPLC {NPLC_Value} — switching to TRIG SGL" );
+              await Task.Run ( ( ) =>
+                  _Comm.Send_Instrument_Command ( "TRIG HOLD" ), Token );
+              await Task.Delay ( 200, Token );
+            }
+            else
+            {
+              // Normal NPLC — TRIG AUTO is fine
+              await Task.Run ( ( ) =>
+                  _Comm.Send_Instrument_Command ( "TRIG AUTO" ), Token );
+              await Task.Delay ( 200, Token );
+            }
+
+
+
+            S.Total_Errors = 0;
+            S.Consecutive_Errors = 0;  // reset error count on config
+
+
+            // Set number of digits
+            Capture_Trace.Write ( $"Setting NDIG {_Settings.Display_Digits}" );
+            await Task.Run ( ( ) => _Comm.Send_Instrument_Command ( $"NDIG {_Settings.Display_Digits}" ), Token );
+            await Task.Delay ( 50, Token );
+
             string Config_Command = Get_Command_For_Series ( S, Selected );
             Capture_Trace.Write ( $"Sending config command: {Config_Command} to {S.Type}" );
             await Task.Run ( ( ) => _Comm.Send_Instrument_Command ( Config_Command ), Token );
@@ -1224,7 +1539,7 @@ namespace Multimeter_Controller
 
             // Restart trigger after TRIG HOLD from verify
             await Task.Run ( ( ) => _Comm.Send_Instrument_Command ( "TRIG AUTO" ), Token );
-            await Task.Delay ( 100, Token );
+            await Task.Delay ( 1000, Token );
 
             // Prime - wait for first reading so buffer is ready for poll loop
             Capture_Trace.Write ( $"Priming 3458..." );
@@ -1238,6 +1553,8 @@ namespace Multimeter_Controller
           }
           else if ( S.Type == Meter_Type.HP34401 )
           {
+            S.Total_Errors = 0;
+            S.Consecutive_Errors = 0;  // reset error count on config
             // Get the selected measurement label (e.g. "DC Voltage")
             string Measurement_Label = Measurement_Combo.Text.Trim ( );
 
@@ -1270,6 +1587,8 @@ namespace Multimeter_Controller
           }
           else
           {
+            S.Total_Errors = 0;
+            S.Consecutive_Errors = 0;  // reset error count on config
             string Config_Command = Get_Command_For_Series ( S, Selected );
             Capture_Trace.Write ( $"Sending config command: {Config_Command} to {S.Type}" );
             await Task.Run ( ( ) => _Comm.Send_Instrument_Command ( Config_Command ), Token );
@@ -1283,11 +1602,24 @@ namespace Multimeter_Controller
         Show_Progress ( "Polling...", _Foreground_Color );
         await Task.Delay ( 300, Token );
 
+
+
         // ========================================
         // PHASE 2: POLLING LOOP
         // ========================================
 
+
+
+
         this.Invoke ( ( ) => Initialize_Current_Values_Display ( ) );
+
+
+
+
+
+        _Cycle_Stopwatch.Restart ( );
+        var Sw = Stopwatch.StartNew ( );
+
 
         int Previous_Address = -1;
 
@@ -1295,88 +1627,168 @@ namespace Multimeter_Controller
                ( Continuous || _Cycle_Count < Total_Cycles ) )
         {
           _Cycle_Count++;
-          DateTime Cycle_Time = DateTime.Now;
+          _Cycle_Stopwatch.Restart ( );         // ← total cycle timer
+         
+          double Addr_Ms = 0, Comm_Ms = 0, UI_Ms = 0, Record_Ms = 0;
+          bool Cycle_Had_Error = false;
 
-          Capture_Trace.Write ( $"" );
-          Capture_Trace.Write ( $"╔═══════════════════════════════════════╗" );
-          Capture_Trace.Write ( $"║  CYCLE {_Cycle_Count}" );
-          Capture_Trace.Write ( $"╠═══════════════════════════════════════╣" );
+          DateTime Cycle_Time = DateTime.Now;
+          Log_Cycle_Header ( Cycle_Count: _Cycle_Count );
 
           for ( int I = 0; I < _Series.Count; I++ )
           {
             Token.ThrowIfCancellationRequested ( );
-
             var S = _Series [ I ];
-            Show_Progress ( $"Cycle {_Cycle_Count}: querying {S.Name} (GPIB {S.Address})", _Foreground_Color );
 
-            Capture_Trace.Write ( $"║  Reading {S.Name} (GPIB {S.Address})" );
-
-            // Switch address if needed
+            // ── Address switch ────────────────────────────────────────────
             if ( S.Address != Previous_Address )
             {
-              Capture_Trace.Write ( $"║  Switching to GPIB address {S.Address}" );
+              Sw.Restart ( );
               await Task.Run ( ( ) => _Comm.Change_GPIB_Address ( S.Address ), Token );
               await Task.Delay ( 50, Token );
               await Task.Run ( ( ) => _Comm.Send_Prologix_Command ( "++auto 0" ), Token );
               await Task.Delay ( 50, Token );
-              // NO ++clr here - it kills the measurement queue
+              Addr_Ms += Sw.Elapsed.TotalMilliseconds;   // ← accumulate across instruments
               Previous_Address = S.Address;
             }
 
-            // Read measurement
+            // ── Actual read ───────────────────────────────────────────────
             string Response;
-            if ( S.Type == Meter_Type.HP3458 )
+            try
             {
-              Capture_Trace.Write ( $"║  3458: ++read eoi" );
-              await Task.Run ( ( ) => _Comm.Raw_Write_Prologix ( "++read eoi" ), Token );
-              Response = await Task.Run ( ( ) =>
-                  _Comm.Read_Instrument ( Token ), Token ) ?? "";
-            }
-            else if ( S.Type == Meter_Type.HP34401 )
-            {
-              Capture_Trace.Write ( $"║  34401: READ?" );
-              Response = await Task.Run ( ( ) =>
-                  _Comm.Query_Instrument ( "READ?", Token ), Token );
-            }
-            else
-            {
-              string Instrument_Command = Get_Command_For_Series ( S, Selected );
-              Capture_Trace.Write ( $"║  Sending query: {Instrument_Command} to {S.Type}" );
-              Response = await Task.Run ( ( ) =>
-                  _Comm.Query_Instrument ( Instrument_Command, Token ), Token );
-            }
+              Sw.Restart ( );
+              if ( S.Type == Meter_Type.HP3458 )
+              {
+                if ( NPLC_Value_Double >= 10 )
+                {
+                  // Trigger one conversion, then wait for it to complete
+                  Capture_Trace.Write ( $"║  3458 TRIG SGL + read" );
+                  await Task.Run ( ( ) =>
+                      _Comm.Send_Instrument_Command ( "TRIG SGL" ), Token );
 
-            Capture_Trace.Write ( $"║  Response: {Response}" );
-            Token.ThrowIfCancellationRequested ( );
+                  // Wait the full conversion time before reading
+                  int Wait_Ms = (int) ( ( NPLC_Value_Double / 60.0 ) * 1000 ) + 500;
+                  await Task.Delay ( Wait_Ms, Token );
+
+                  await Task.Run ( ( ) =>
+                      _Comm.Raw_Write_Prologix ( "++read eoi" ), Token );
+                  Response = await Task.Run ( ( ) =>
+                      _Comm.Read_Instrument ( Token ), Token ) ?? "";
+                }
+                else
+                {
+                  // Existing TRIG AUTO path unchanged
+                  await Task.Run ( ( ) =>
+                      _Comm.Raw_Write_Prologix ( "++read eoi" ), Token );
+                  await Task.Delay ( 50, Token );
+                  Response = await Task.Run ( ( ) =>
+                      _Comm.Read_Instrument ( Token ), Token ) ?? "";
+                }
+              }
+              else if ( S.Type == Meter_Type.HP34401 )
+              {
+                Response = await Task.Run ( ( ) => _Comm.Query_Instrument ( "READ?", Token ), Token );
+              }
+              else
+              {
+                string Instrument_Command = Get_Command_For_Series ( S, Selected );
+                Response = await Task.Run ( ( ) => _Comm.Query_Instrument ( Instrument_Command, Token ), Token );
+              }
+              Comm_Ms += Sw.Elapsed.TotalMilliseconds;   // ← accumulate across instruments
+            }
+            catch ( TimeoutException Ex )
+            {
+              Comm_Ms += Sw.Elapsed.TotalMilliseconds;
+              Cycle_Had_Error = true;
+              Handle_Read_Error ( S, $"TIMEOUT: {Ex.Message}" );
+              continue;
+            }
+            catch ( InvalidOperationException Ex )
+            {
+              Comm_Ms += Sw.Elapsed.TotalMilliseconds;
+              Cycle_Had_Error = true;
+              Handle_Read_Error ( S, $"PORT CLOSED: {Ex.Message}" );
+              continue;
+            }
+            catch ( Exception Ex )
+            {
+              Comm_Ms += Sw.Elapsed.TotalMilliseconds;
+              Cycle_Had_Error = true;
+              Handle_Read_Error ( S, $"COMM ERROR: {Ex.GetType ( ).Name} - {Ex.Message}" );
+              continue;
+            }
 
             if ( double.TryParse ( Response,
-             System.Globalization.NumberStyles.Float,
-             System.Globalization.CultureInfo.InvariantCulture,
-             out double Value ) )
+            System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out double Value ) )
             {
-              S.Points.Add ( (DateTime.Now, Value) );
+              var Point = (DateTime.Now, Value);
+
+              // Always add to display buffer, cap it
+
+
+
+              S.Points.Add ( Point );
+              S.Add_Point_Value ( Value );
+
+              if ( S.Points.Count > _Settings.Max_Display_Points )
+              {
+                if ( _Settings.Stop_Polling_At_Max_Display_Points )
+                {
+                  Capture_Trace.Write ( "Max display points reached - stopping poll" );
+                  this.Invoke ( ( ) =>
+                  {
+                    Show_Progress ( "Max display points reached", Color.Orange );
+                    Stop_Polling ( );
+                  } );
+                  return;
+                }
+                else
+                {
+                  S.Points.RemoveAt ( 0 );  // roll - oldest dropped
+                }
+              }
+
+
+
+              S.Consecutive_Errors = 0;   // reset streak
+              _Last_Successful_Read = DateTime.Now;
               Capture_Trace.Write ( $"║  Parsed value: {Value}" );
             }
             else
             {
-              Capture_Trace.Write ( $"║  ERROR: Could not parse response" );
+              S.Consecutive_Errors++;
+              S.Total_Errors++;
+              Capture_Trace.Write ( $"║  ERROR: consecutive={S.Consecutive_Errors} total={S.Total_Errors}" );
             }
           }
 
-          Capture_Trace.Write ( $"╚═══════════════════════════════════════╝" );
+          Log_Cycle_Footer ( );
 
-          // Update current values grid
-          this.Invoke ( ( ) => Update_Current_Values_Display ( ) );
+          // ── Record write ──────────────────────────────────────────────────
+          Sw.Restart ( );
+          Write_Recording_Row ( );
+          Record_Ms = Sw.Elapsed.TotalMilliseconds;
 
-          // Update display
-          if ( Continuous )
-            Cycle_Text_Box.Text = $"Cycle {_Cycle_Count}  (Continuous)  [{_Actual_FPS} S/s]";
-          else
-            Cycle_Text_Box.Text = $"Cycle {_Cycle_Count} of {Total_Cycles}";
+          // ── UI update ─────────────────────────────────────────────────────
+          Sw.Restart ( );
+          Update_Cycle_Display ( Continuous, Total_Cycles );   // already does Invoke internally
+          UI_Ms = Sw.Elapsed.TotalMilliseconds;
 
-          // Chart_Panel.Invalidate ( );
+          // ── Capture full cycle ────────────────────────────────────────────
+          _Cycle_Stopwatch.Stop ( );
+          Record_Cycle_Timing (
+              DateTime.Now,
+              _Cycle_Stopwatch.Elapsed.TotalMilliseconds,
+              Comm_Ms,
+              Addr_Ms,
+              UI_Ms,
+              Record_Ms,
+              Cycle_Had_Error );
 
-          Update_Legend ( );
+          Chart_Panel.Invalidate ( );
+         
 
           // Delay before next cycle
           // Delay before next cycle - read live so user can adjust during polling
@@ -1394,19 +1806,7 @@ namespace Multimeter_Controller
       }
       catch ( TimeoutException Ex )
       {
-        Capture_Trace.Write ( $"Timeout error: {Ex.Message}" );
-
-        if ( !_Poll_Error_Shown )
-        {
-          _Poll_Error_Shown = true;
-          _Cts?.Cancel ( );  // ← Force stop BEFORE showing dialog
-
-          MessageBox.Show (
-              "Operation timed out. Check instrument connection and GPIB bus status.",
-              "Timeout Error",
-              MessageBoxButtons.OK,
-              MessageBoxIcon.Warning );
-        }
+        Capture_Trace.Write ( $"║  Unhandled timeout: {Ex.Message} - continuing" );
       }
       catch ( Exception Ex )
       {
@@ -1440,15 +1840,65 @@ namespace Multimeter_Controller
           // Ignore errors during cleanup
         }
 
+
         Finish_Polling ( );
       }
     }
 
+    private void Handle_Read_Error ( Instrument_Series S, string Message )
+    {
+      Capture_Trace.Write ( $"║  {Message} on {S.Name} - continuing" );
+      S.Consecutive_Errors++;
+      S.Total_Errors++;
+      S.Comm_Error_Count++;
 
+      if ( S.Consecutive_Errors == 1 && !_Is_Shutting_Down )  // ← add check
+      {
+        S.Disconnect_Count++;
+        Record_Disconnect ( S.Name, _Cycle_Count );
+        Capture_Trace.Write ( $"║  DISCONNECT #{S.Disconnect_Count} on {S.Name}" );
+      }
+
+      if ( S.Consecutive_Errors == 3 && !_Is_Shutting_Down )  // ← add check
+      {
+        Capture_Trace.Write ( $"║  3 consecutive errors - attempting port recovery" );
+        Reopen_Serial_Port ( S.Address );
+      }
+    }
+
+
+    private void Update_Cycle_Display ( bool Continuous, int Total_Cycles )
+    {
+      int Total_Display = _Series.Sum ( S => S.Points.Count );
+
+      this.Invoke ( ( ) =>
+      {
+        Update_Current_Values_Display ( );
+        Update_Memory_Status ( Total_Display, _Settings.Max_Display_Points );
+        Update_Legend ( );
+
+        Cycle_Text_Box.Text = Continuous
+            ? $"Cycle {_Cycle_Count}  (Continuous)  [{_Actual_FPS} S/s]"
+            : $"Cycle {_Cycle_Count} of {Total_Cycles}";
+
+        // ── Scrollbar range update ────────────────────────────────────
+        if ( _Show_Timing_View )
+        {
+          Update_Timing_Scrollbar ( );
+        }
+        else
+        {
+          int Max_Points = _Series.Max ( s => s.Points.Count );
+          Update_Data_Scrollbar ( Max_Points );
+        }
+      } );
+    }
 
     private string Get_Command_For_Series ( Instrument_Series S,
       (string Label, string Cmd_3458, string Cmd_34401, string Cmd_Generic_GPIB, string Unit) Entry )
     {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
       return S.Type switch
       {
         Meter_Type.HP3458 => Entry.Cmd_3458,
@@ -1460,30 +1910,10 @@ namespace Multimeter_Controller
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     private void Stop_Polling ( )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
-
+      _Is_Shutting_Down = true;
       _Cts?.Cancel ( );
     }
 
@@ -1512,6 +1942,7 @@ namespace Multimeter_Controller
       using var Block = Trace_Block.Start_If_Enabled ( );
 
       _Is_Running = false;
+      _Is_Shutting_Down = false;  // ← reset for next session
       _Poll_Error_Shown = false;
 
       _Cts?.Dispose ( );
@@ -1529,10 +1960,6 @@ namespace Multimeter_Controller
       Load_Button.Enabled = true;
 
       Rolling_Check.Enabled = true;
-      Max_Points_Numeric.Enabled = _Enable_Rolling;
-
-
-
 
       Update_Legend ( );
 
@@ -1601,6 +2028,19 @@ namespace Multimeter_Controller
         return;
       }
 
+      // ── Timing view clear ─────────────────────────────────────────────
+      if ( _Show_Timing_View )
+      {
+        _Timing_Head = 0;
+        _Timing_Count = 0;
+        _Timing_View_Offset = 0;
+        _Disconnect_Events.Clear ( );
+        Chart_Panel.Invalidate ( );
+        return;
+      }
+
+
+
       // Check if we should prompt
       if ( _Settings.Prompt_Before_Clear && _Series.Any ( s => s.Points.Count > 0 ) )
       {
@@ -1652,67 +2092,123 @@ namespace Multimeter_Controller
 
       _Record_Query = Measurement_Combo.Text.Trim ( );
       _Record_Start = DateTime.Now;
+      _Memory_Warning_Shown = false;
+
+      // ── Data file (existing) ──────────────────────────────────────────
+      _Recording_File_Path = Path.Combine (
+          Multimeter_Common_Helpers_Class.Get_Graph_Captures_Folder ( ),
+          $"{DateTime.Now:yyyy-MM-dd_HH-mm-ss}_Multi.csv" );
+
+      _Recording_Writer = new StreamWriter ( _Recording_File_Path, false, System.Text.Encoding.UTF8 )
+      {
+        AutoFlush = false
+      };
+      string Header = "Timestamp," + string.Join ( ",", _Series.Select ( s => s.Name ) );
+      _Recording_Writer.WriteLine ( Header );
+
+      // ── Timing file (new) ─────────────────────────────────────────────
+      // Same base name, _Timing suffix so they sort together
+      _Timing_File_Path = Path.Combine (
+          Multimeter_Common_Helpers_Class.Get_Graph_Captures_Folder ( ),
+          $"{DateTime.Now:yyyy-MM-dd_HH-mm-ss}_Multi_Timing.csv" );
+
+      _Timing_Writer = new StreamWriter ( _Timing_File_Path, false, System.Text.Encoding.UTF8 )
+      {
+        AutoFlush = false
+      };
+      _Timing_Writer.WriteLine (
+          "Timestamp,Cycle,Total_Ms,Comm_Ms,AddrSwitch_Ms,UI_Ms,Record_Ms,Had_Error" );
 
       foreach ( var S in _Series )
-        S.Points.Clear ( );
-
-      Multimeter_Common_Helpers_Class.Check_Memory_Limit (
-        _Settings,
-        ( ) => _Series.Sum ( s => s.Points.Count ),
-        Stop_Recording,
-        Show_Memory_Warning,
-        ref _Memory_Warning_Shown );
-
-      Update_Performance_Status ( );
+        S.Is_Recording = true;
 
       _Is_Recording = true;
-      Multimeter_Common_Helpers_Class.Start_Recording_UI ( Record_Button );  // ← replaces 3 lines
+      Update_Performance_Status ( );
+      Multimeter_Common_Helpers_Class.Start_Recording_UI ( Record_Button );
+      Capture_Trace.Write ( $"Recording started -> {_Recording_File_Path}" );
+      Capture_Trace.Write ( $"Timing recording  -> {_Timing_File_Path}" );
     }
 
-    private void Stop_Recording ( )
+    private async void Stop_Recording ( )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
 
+      foreach ( var S in _Series )
+        S.Is_Recording = false;
+
+      _Is_Recording = false;
+
+      if ( _Recording_Writer != null )
+      {
+        await _Recording_Writer.FlushAsync ( );
+        _Recording_Writer.Dispose ( );
+        _Recording_Writer = null;
+      }
+
+      // ── Flush timing file ─────────────────────────────────────────────
+      if ( _Timing_Writer != null )
+      {
+        await _Timing_Writer.FlushAsync ( );
+        _Timing_Writer.Dispose ( );
+        _Timing_Writer = null;
+      }
+
       Multimeter_Common_Helpers_Class.Stop_Recording (
-        ref _Is_Recording,
-        Record_Button,
-        ( ) => _Series.Sum ( s => s.Points.Count ),
-        Save_Recorded_Data );
+          ref _Is_Recording,
+          Record_Button,
+          ( ) =>
+          {
+            if ( _Recording_File_Path == null || !File.Exists ( _Recording_File_Path ) )
+              return 0;
+            try
+            {
+              return File.ReadLines ( _Recording_File_Path ).Count ( ) - 1;
+            }
+            catch { return 0; }
+          },
+          Save_Recorded_Data );
     }
 
     private void Save_Recorded_Data ( )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
 
-      if ( _Series.Count == 0 || _Series.All ( s => s.Points.Count == 0 ) )
+      if ( _Recording_File_Path == null || !File.Exists ( _Recording_File_Path ) )
+      {
+        MessageBox.Show ( "No recording file found.",
+          "Recording", MessageBoxButtons.OK, MessageBoxIcon.Warning );
         return;
+      }
 
-      string File_Path = Path.Combine (
-        Multimeter_Common_Helpers_Class.Get_Graph_Captures_Folder ( ),
-        $"{DateTime.Now:yyyy-MM-dd_HH-mm-ss}_Multi.csv" );
+      // Count lines in file (minus header) for point count
+      int Line_Count = 0;
+      try
+      {
+        Line_Count = File.ReadLines ( _Recording_File_Path ).Count ( ) - 1;
+      }
+      catch { }
 
-      var Series_Data = _Series
-        .Select ( s => (s.Name, s.Points) )
-        .ToList ( );
-
-      Multimeter_Common_Helpers_Class.Save_Multi_Series_CSV ( File_Path, Series_Data );
-
-      int Total_Points = _Series.Sum ( s => s.Points.Count );
-      string Summary = $"Saved {_Series.Count} instruments, {Total_Points} total points to:\n{File_Path}\n\n";
-
-      foreach ( var S in _Series.Where ( s => s.Points.Count > 0 ) )
-        Summary += $"{S.Name}: {S.Points.Count} pts, Avg: {S.Get_Average ( ):F7}\n";
+      string Summary =
+        $"Recording saved to:\n{_Recording_File_Path}\n\n" +
+        $"Instruments : {_Series.Count}\n" +
+        $"Total cycles: {Line_Count:N0}\n" +
+        $"Duration    : {( DateTime.Now - _Record_Start ):hh\\:mm\\:ss}";
 
       MessageBox.Show ( Summary, "Recording Saved",
         MessageBoxButtons.OK, MessageBoxIcon.Information );
+
+      _Recording_File_Path = null;
     }
-
-
-
 
     private void Load_Recorded_File ( string File_Path )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
+      // ── Detect timing file ────────────────────────────────────────────
+      if ( File_Path.EndsWith ( "_Timing.csv", StringComparison.OrdinalIgnoreCase ) )
+      {
+        Load_Timing_File ( File_Path );
+        return;
+      }
 
       if ( !Multimeter_Common_Helpers_Class.Load_CSV_Preamble (
           File_Path, out var Lines, out int Header_Index,
@@ -1751,10 +2247,15 @@ namespace Multimeter_Controller
 
         _Series.Add ( new Instrument_Series
         {
-          Name = Name,
-          Address = Address,
-          Type = Meter_Type.HP3458,
+          Instrument = new Instrument
+          {
+            Name = Name,
+            Address = Address,
+            Type = Meter_Type.HP3458,
+            Visible = true,
+          },
           Points = new List<(DateTime Time, double Value)> ( ),
+          Display_Digits = _Settings.Display_Digits,
           Line_Color = _Theme.Line_Colors [ I % _Theme.Line_Colors.Length ],
           File_Stats = Sectioned_Stats.ContainsKey ( Name ) ? Sectioned_Stats [ Name ] : null
         } );
@@ -1810,10 +2311,9 @@ namespace Multimeter_Controller
     private void Chart_Panel_Paint ( object? sender, PaintEventArgs e )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
-
       Multimeter_Common_Helpers_Class.Track_FPS (
-        ref _Paint_Count, ref _Actual_FPS,
-        _FPS_Stopwatch, Update_Performance_Status );
+          ref _Paint_Count, ref _Actual_FPS,
+          _FPS_Stopwatch, Update_Performance_Status );
 
       Graphics G = e.Graphics;
       G.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
@@ -1825,15 +2325,22 @@ namespace Multimeter_Controller
       using var Bg_Brush = new SolidBrush ( _Theme.Background );
       G.FillRectangle ( Bg_Brush, 0, 0, W, H );
 
+      // ── Timing view overrides everything else ─────────────────────────
+      if ( _Show_Timing_View )
+      {
+        Draw_Poll_Timing_Chart ( G, W, H );
+        return;
+      }
+      // ─────────────────────────────────────────────────────────────────
+
       if ( _Series.Count == 0 )
       {
         Draw_Empty_State ( G, W, H,
-          "No instruments. Add instruments and press Start." );
+            "No instruments. Add instruments and press Start." );
         return;
       }
 
       bool Has_Data = _Series.Any ( s => s.Visible && s.Points.Count > 0 );
-
       if ( !Has_Data )
       {
         Draw_Instrument_List ( G, H );
@@ -1846,60 +2353,52 @@ namespace Multimeter_Controller
         Draw_Split_View ( G, W, H );
 
       Draw_Position_Indicator ( e.Graphics, W, H );
-
-      Block?.Trace ( "Paint complete" );
+      Capture_Trace.Write ( "Paint complete" );
     }
 
 
 
 
-
-
-    private void Draw_Multi_Line ( Graphics G,
-  int W, int H, int Margin_Left, int Margin_Right,
-  int Margin_Top, int Margin_Bottom,
-  int Chart_W, int Chart_H )
+    private void Draw_Multi_Line ( Graphics G, int W, int H )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
 
+      int Chart_W = W - _Chart_Margin_Left - _Chart_Margin_Right;
+      int Chart_H = H - _Chart_Margin_Top - _Chart_Margin_Bottom;
+
       var (Min_V, Max_V) = Get_Y_Range ( );
-      float Baseline = H - Margin_Bottom;
-      Draw_Grid_And_Axes ( G, W, H, Margin_Left, Margin_Right,
-        Margin_Top, Margin_Bottom, Chart_W, Chart_H, Min_V, Max_V );
+      float Baseline = H - _Chart_Margin_Bottom;
+
+      Draw_Grid_And_Axes ( G, W, H, Min_V, Max_V );
 
       for ( int S_Idx = 0; S_Idx < _Series.Count; S_Idx++ )
       {
         var S = _Series [ S_Idx ];
         var (Start_Index, Visible_Count) = Multimeter_Common_Helpers_Class.Get_Visible_Range (
-          S.Points.Count, _Enable_Rolling, _Max_Display_Points, _View_Offset );
+            S.Points.Count, _Enable_Rolling, _Max_Display_Points, _View_Offset );
 
         int Actual_Count = Math.Min ( Visible_Count, S.Points.Count - Start_Index );
         if ( Actual_Count < 1 )
           continue;
 
         PointF [ ] Points = Build_Points ( S.Points, Start_Index, Actual_Count,
-          Margin_Left, Chart_W, Chart_H, Margin_Top, Min_V, Max_V );
+            Chart_W, Chart_H, Min_V, Max_V );
 
         Color Line_Color = _Theme.Line_Colors [ S_Idx % _Theme.Line_Colors.Length ];
         using var Line_Pen = new Pen ( Line_Color, 1.5f );
         using var Dot_Brush = new SolidBrush ( Line_Color );
 
-        Draw_Line_Chart ( G, Points, Actual_Count,
-          Line_Pen, Dot_Brush, Margin_Top, Baseline );
+        Draw_Line_Chart ( G, Points, Actual_Count, Line_Pen, Dot_Brush, Baseline );
       }
     }
 
-
     private void Draw_Multi_Scatter ( Graphics G,
-      int W, int H, int Margin_Left, int Margin_Right,
-      int Margin_Top, int Margin_Bottom,
-      int Chart_W, int Chart_H )
+      int W, int H, int Chart_W, int Chart_H )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
 
       var (Min_V, Max_V) = Get_Y_Range ( );
-      Draw_Grid_And_Axes ( G, W, H, Margin_Left, Margin_Right,
-        Margin_Top, Margin_Bottom, Chart_W, Chart_H, Min_V, Max_V );
+      Draw_Grid_And_Axes ( G, W, H, Min_V, Max_V );
 
       for ( int S_Idx = 0; S_Idx < _Series.Count; S_Idx++ )
       {
@@ -1912,7 +2411,7 @@ namespace Multimeter_Controller
           continue;
 
         PointF [ ] Points = Build_Points ( S.Points, Start_Index, Actual_Count,
-          Margin_Left, Chart_W, Chart_H, Margin_Top, Min_V, Max_V );
+          Chart_W, Chart_H, Min_V, Max_V );
 
         Color Line_Color = _Theme.Line_Colors [ S_Idx % _Theme.Line_Colors.Length ];
         using var Dot_Brush = new SolidBrush ( Line_Color );
@@ -1923,16 +2422,13 @@ namespace Multimeter_Controller
 
 
     private void Draw_Multi_Step ( Graphics G,
-      int W, int H, int Margin_Left, int Margin_Right,
-      int Margin_Top, int Margin_Bottom,
-      int Chart_W, int Chart_H )
+      int W, int H, int Chart_W, int Chart_H )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
 
       var (Min_V, Max_V) = Get_Y_Range ( );
-      float Baseline = H - Margin_Bottom;
-      Draw_Grid_And_Axes ( G, W, H, Margin_Left, Margin_Right,
-        Margin_Top, Margin_Bottom, Chart_W, Chart_H, Min_V, Max_V );
+      float Baseline = H - _Chart_Margin_Bottom;
+      Draw_Grid_And_Axes ( G, W, H, Min_V, Max_V );
 
       for ( int S_Idx = 0; S_Idx < _Series.Count; S_Idx++ )
       {
@@ -1945,13 +2441,12 @@ namespace Multimeter_Controller
           continue;
 
         PointF [ ] Points = Build_Points ( S.Points, Start_Index, Actual_Count,
-          Margin_Left, Chart_W, Chart_H, Margin_Top, Min_V, Max_V );
+           Chart_W, Chart_H, Min_V, Max_V );
 
         Color Line_Color = _Theme.Line_Colors [ S_Idx % _Theme.Line_Colors.Length ];
         using var Line_Pen = new Pen ( Line_Color, 1.5f );
 
-        Draw_Step_Chart ( G, Points, Actual_Count,
-          Line_Pen, Margin_Top, Baseline );
+        Draw_Step_Chart ( G, Points, Actual_Count, Line_Pen, Baseline );
       }
     }
 
@@ -1966,19 +2461,16 @@ namespace Multimeter_Controller
     }
 
     private void Draw_Single_Bar ( Graphics G,
-      int W, int H, int Margin_Left, int Margin_Right,
-      int Margin_Top, int Margin_Bottom,
-      int Chart_W, int Chart_H )
+      int W, int H, int Chart_W, int Chart_H )
     {
       var Readings = Get_Single_Series_Readings ( );
       if ( Readings.Count == 0 )
         return;
 
       var (Min_V, Max_V) = Get_Y_Range ( );
-      float Baseline = H - Margin_Bottom;
+      float Baseline = H - _Chart_Margin_Bottom;
 
-      Draw_Grid_And_Axes ( G, W, H, Margin_Left, Margin_Right,
-        Margin_Top, Margin_Bottom, Chart_W, Chart_H, Min_V, Max_V );
+      Draw_Grid_And_Axes ( G, W, H, Min_V, Max_V );
 
       var (Start_Index, Visible_Count) = Multimeter_Common_Helpers_Class.Get_Visible_Range (
         Readings.Count, _Enable_Rolling, _Max_Display_Points, _View_Offset );
@@ -1989,39 +2481,12 @@ namespace Multimeter_Controller
 
       PointF [ ] Points = Build_Points ( _Series [ 0 ].Points,
         Start_Index, Actual_Count,
-        Margin_Left, Chart_W, Chart_H, Margin_Top, Min_V, Max_V );
+         Chart_W, Chart_H, Min_V, Max_V );
 
-      Draw_Bar_Chart ( G, Points, Actual_Count,
-        Margin_Left, Chart_W, Baseline );
+      Draw_Bar_Chart ( G, Points, Actual_Count, Chart_W, Baseline );
     }
 
-    private void Draw_Single_Histogram ( Graphics G,
-     int W, int H, int Margin_Left, int Margin_Right,
-     int Margin_Top, int Margin_Bottom,
-     int Chart_W, int Chart_H )
-    {
-      var Saved = _Readings;
-      _Readings = Get_Single_Series_Readings ( );
 
-      Draw_Histogram ( G, W, H, Margin_Left, Margin_Right,  // ← was Draw_Single_Histogram
-        Margin_Top, Margin_Bottom, Chart_W, Chart_H );
-
-      _Readings = Saved;
-    }
-
-    private void Draw_Single_Pie ( Graphics G,
-      int W, int H, int Margin_Left, int Margin_Right,
-      int Margin_Top, int Margin_Bottom,
-      int Chart_W, int Chart_H )
-    {
-      var Saved = _Readings;
-      _Readings = Get_Single_Series_Readings ( );
-
-      Draw_Pie_Chart ( G, W, H, Margin_Left, Margin_Right,
-        Margin_Top, Margin_Bottom, Chart_W, Chart_H );
-
-      _Readings = Saved;
-    }
 
 
 
@@ -2060,16 +2525,16 @@ namespace Multimeter_Controller
     private PointF [ ] Build_Points (
       List<(DateTime Time, double Value)> Points,
       int Start_Index, int Count,
-      int Margin_Left, int Chart_W, int Chart_H,
-      int Margin_Top, double Min_V, double Max_V )
+      int Chart_W, int Chart_H,
+      double Min_V, double Max_V )
     {
       var Result = new PointF [ Count ];
       double Range = Max_V - Min_V;
 
       for ( int I = 0; I < Count; I++ )
       {
-        float X = Margin_Left + (float) I / ( Count - 1 ) * Chart_W;
-        float Y = Margin_Top + (float) ( ( Max_V - Points [ Start_Index + I ].Value )
+        float X = _Chart_Margin_Left + (float) I / ( Count - 1 ) * Chart_W;
+        float Y = _Chart_Margin_Top + (float) ( ( Max_V - Points [ Start_Index + I ].Value )
                                         / Range * Chart_H );
         Result [ I ] = new PointF ( X, Y );
       }
@@ -2081,111 +2546,6 @@ namespace Multimeter_Controller
 
 
 
-
-
-
-
-
-
-
-
-    /*
-    private void old_Chart_Panel_Paint ( object? Sender, PaintEventArgs E )
-    {
-      using var Block = Trace_Block.Start_If_Enabled ( );
-
-
-      Multimeter_Common_Helpers_Class.Track_FPS (
-   ref _Paint_Count,
-   ref _Actual_FPS,
-   _FPS_Stopwatch,
-   Update_Performance_Status );
-
-      switch ( Current_Graph_Style )
-      {
-        case "Line":
-          Draw_Line_Chart ( e.Graphics );
-          break;
-        case "Scatter":
-          Draw_Scatter_Chart ( e.Graphics );
-          break;
-        case "Step":
-          Draw_Step_Chart ( e.Graphics );
-          break;
-        case "Bar":
-          Draw_Bar_Chart ( e.Graphics );
-          break;
-        case "Histogram":
-          Draw_Histogram ( e.Graphics );
-          break;
-        case "Pie":
-          Draw_Pie_Chart ( e.Graphics );
-          break;
-        default:
-          Draw_Line_Chart ( e.Graphics );
-          break;
-      }
-
-      Block?.Trace ( $"PAINT CALLED - Series: {_Series.Count}" );
-      Block?.Trace ( $"_Combined_View = {_Combined_View}" );
-
-      Graphics G = E.Graphics;
-      G.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-      G.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-
-      int W = Chart_Panel.ClientSize.Width;
-      int H = Chart_Panel.ClientSize.Height;
-
-      Block?.Trace ( $"Chart size: W={W}, H={H}" );
-
-      using var Bg_Brush = new SolidBrush ( _Theme.Background );
-      G.FillRectangle ( Bg_Brush, 0, 0, W, H );
-
-      if ( _Series.Count == 0 )
-      {
-        Block?.Trace ( "No series - drawing empty state" );
-        Draw_Empty_State ( G, W, H, "No instruments. Add instruments and press Start." );
-        return;
-      }
-
-      bool Has_Data = false;
-      foreach ( var S in _Series )
-      {
-        if ( S.Visible && S.Points.Count > 0 )
-        {
-          Has_Data = true;
-          Block?.Trace ( $"Found data: {S.Name} has {S.Points.Count} points" );
-          break;
-        }
-      }
-
-      if ( !Has_Data )
-      {
-        Block?.Trace ( "No data - drawing instrument list" );
-        Draw_Instrument_List ( G, H );
-        return;
-      }
-
-      Block?.Trace ( "Drawing charts..." );
-
-      // Branch based on view mode
-      if ( _Combined_View )
-      {
-        Block?.Trace ( "Drawing combined view" );
-        Draw_Combined_View ( G, W, H );
-      }
-      else
-      {
-        Block?.Trace ( "Drawing split view" );
-        Draw_Split_View ( G, W, H );
-      }
-
-      Draw_Position_Indicator ( E.Graphics, W, H );
-
-      Block?.Trace ( "Paint complete" );
-    }
-
-    */
 
 
     private void Draw_Empty_State (
@@ -2205,9 +2565,9 @@ namespace Multimeter_Controller
       using var Empty_Brush = new SolidBrush ( _Theme.Labels );
 
       int Y_Pos = 30;
-      G.DrawString (
-        "Press Start to begin polling. Instruments:",
-        Empty_Font, Empty_Brush, 20, Y_Pos );
+
+      string Status = _Is_Running ? "Configuring instruments..." : "Press Start to begin polling.";
+      G.DrawString ( Status, Empty_Font, Empty_Brush, 20, Y_Pos );
       Y_Pos += 25;
 
       for ( int I = 0; I < _Series.Count; I++ )
@@ -2216,12 +2576,11 @@ namespace Multimeter_Controller
         using var Dot_Brush = new SolidBrush ( S.Line_Color );
         G.FillEllipse ( Dot_Brush, 30, Y_Pos + 3, 10, 10 );
         G.DrawString (
-          $"{S.Name}  (GPIB {S.Address})",
-          Empty_Font, Empty_Brush, 48, Y_Pos );
+            $"{S.Name}  (GPIB {S.Address})",
+            Empty_Font, Empty_Brush, 48, Y_Pos );
         Y_Pos += 22;
       }
     }
-
 
 
     private (DateTime Min, DateTime Max) Calculate_Time_Range ( )
@@ -2276,8 +2635,6 @@ namespace Multimeter_Controller
   int Subplot_Index,
   int Sub_Top,
   int Sub_Bottom,
-  int Margin_Left,
-  int Margin_Right,
   int W,
   DateTime Time_Min,
   double Time_Range_Sec,
@@ -2290,35 +2647,34 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
 
-      Block?.Trace ( $"Drawing subplot for {S.Name}, Points: {S.Points.Count}, Visible: {S.Visible}" );
+      Capture_Trace.Write ( $"Drawing subplot for {S.Name}, Points: {S.Points.Count}, Visible: {S.Visible}" );
 
       // Instrument name label
       using var Name_Brush = new SolidBrush ( S.Line_Color );
       G.DrawString (
         $"{S.Name} (GPIB {S.Address})",
         Name_Font, Name_Brush,
-        Margin_Left + 4, Sub_Top + 2 );
+        _Chart_Margin_Left + 4, Sub_Top + 2 );
 
       // Draw separator between subplots
       if ( Subplot_Index > 0 )
       {
         int Sep_Y = Sub_Top - 8 / 2;
         G.DrawLine ( Sep_Pen,
-          Margin_Left, Sep_Y,
-          W - Margin_Right, Sep_Y );
+          _Chart_Margin_Left, Sep_Y,
+          W - _Chart_Margin_Right, Sep_Y );
       }
 
       if ( S.Points.Count == 0 )
       {
         G.DrawString ( "No data",
           Label_Font, Label_Brush,
-          Margin_Left + 4, Sub_Top + 20 );
+          _Chart_Margin_Left + 4, Sub_Top + 20 );
         return;
       }
 
       // Calculate Y-axis range
-      var (Padded_Min, Padded_Max, Padded_Range) =
-        Calculate_Y_Range ( S.Points );
+      var (Padded_Min, Padded_Max, Padded_Range) = Calculate_Y_Range ( S.Points );
 
       // **APPLY ZOOM HERE**
       double Display_Min = Padded_Min;
@@ -2334,23 +2690,22 @@ namespace Multimeter_Controller
         Display_Max = Center + ( Zoomed_Range / 2.0 );
         Display_Range = Display_Max - Display_Min;
 
-        Block?.Trace ( $"{S.Name} ZOOM: {_Zoom_Factor:F2}x -> [{Display_Min:F6}, {Display_Max:F6}]" );
+        Capture_Trace.Write ( $"{S.Name} ZOOM: {_Zoom_Factor:F2}x -> [{Display_Min:F6}, {Display_Max:F6}]" );
       }
 
       int Label_Top = Sub_Top + 18;
       int Plot_H = Sub_Bottom - Label_Top;
 
       // Draw grid and Y-axis labels (use Display values)
-      Draw_Y_Axis (
-        G, Display_Min, Display_Range,
-        Sub_Bottom, Plot_H,
-        Margin_Left, Margin_Right, W,
-        Grid_Pen, Label_Font, Label_Brush );
+      Draw_Y_Axis_Subplot (
+      G, Display_Min, Display_Range,
+      W, Sub_Bottom, Plot_H,
+      Grid_Pen, Label_Font, Label_Brush );
       // Build point array (use Display values)
       PointF [ ] Points = Build_Point_Array (
         S.Points, Time_Min, Time_Range_Sec,
         Display_Min, Display_Range,
-        Margin_Left, Chart_W,
+         Chart_W,
         Sub_Bottom, Plot_H );
       // Draw based on selected style
       switch ( _Current_Graph_Style )
@@ -2365,10 +2720,11 @@ namespace Multimeter_Controller
         case "Bar":
           Draw_Subplot_Bars ( G, Points, S.Line_Color, Sub_Bottom, Label_Top );
           break;
+
+
         case "Histogram":
-          Draw_Subplot_Histogram ( G, S.Points, S.Line_Color,
-            Margin_Left, Chart_W, Sub_Bottom, Label_Top,
-            Display_Min, Display_Range );
+          Draw_Subplot_Histogram ( G, S.Points, S.Line_Color, W, Sub_Bottom, Label_Top, Display_Min, Display_Range );
+
           break;
         default: // Line
           Draw_Line_And_Fill ( G, Points, S.Line_Color, Sub_Bottom, Label_Top );
@@ -2378,7 +2734,7 @@ namespace Multimeter_Controller
       // Highlight last point with value
       Draw_Last_Point (
         G, Points, S.Points, S.Line_Color,
-        W, Margin_Right, Label_Font, Name_Brush );
+        W, Label_Font, Name_Brush );
     }
 
 
@@ -2387,152 +2743,17 @@ namespace Multimeter_Controller
 
 
 
-    private void new_Draw_Subplot (
-      Graphics G,
-      Instrument_Series S,
-      int Subplot_Index,
-      int Sub_Top,
-      int Sub_Bottom,
-      int Margin_Left,
-      int Margin_Right,
-      int W,
-      DateTime Time_Min,
-      double Time_Range_Sec,
-      int Chart_W,
-      Pen Grid_Pen,
-      Pen Sep_Pen,
-      Font Label_Font,
-      Font Name_Font,
-      Brush Label_Brush )
-    {
-      using var Block = Trace_Block.Start_If_Enabled ( );
-
-      // Instrument name label
-      using var Name_Brush = new SolidBrush ( S.Line_Color );
-      G.DrawString (
-        $"{S.Name} (GPIB {S.Address})",
-        Name_Font, Name_Brush,
-        Margin_Left + 4, Sub_Top + 2 );
-
-      // Draw separator between subplots
-      if ( Subplot_Index > 0 )
-      {
-        int Sep_Y = Sub_Top - 8 / 2;
-        G.DrawLine ( Sep_Pen,
-          Margin_Left, Sep_Y,
-          W - Margin_Right, Sep_Y );
-      }
-
-      if ( S.Points.Count == 0 )
-      {
-        G.DrawString ( "No data",
-          Label_Font, Label_Brush,
-          Margin_Left + 4, Sub_Top + 20 );
-        return;
-      }
-
-      // Calculate Y-axis range
-      var (Padded_Min, Padded_Max, Padded_Range) =
-        Calculate_Y_Range ( S.Points );
-
-      // **APPLY ZOOM HERE**
-      double Display_Min = Padded_Min;
-      double Display_Max = Padded_Max;
-      double Display_Range = Padded_Range;
-
-      if ( _Zoom_Factor > 0 && _Zoom_Factor != 1.0 )
-      {
-        double Center = ( Padded_Max + Padded_Min ) / 2.0;
-        double Zoomed_Range = Padded_Range / _Zoom_Factor;
-
-        Display_Min = Center - ( Zoomed_Range / 2.0 );
-        Display_Max = Center + ( Zoomed_Range / 2.0 );
-        Display_Range = Display_Max - Display_Min;
-
-        Block?.Trace ( $"{S.Name} ZOOM: {_Zoom_Factor:F2}x -> [{Display_Min:F6}, {Display_Max:F6}]" );
-      }
-
-      int Label_Top = Sub_Top + 18;
-      int Plot_H = Sub_Bottom - Label_Top;
-
-      // Draw grid and Y-axis labels (use Display values)
-      Draw_Y_Axis (
-        G, Display_Min, Display_Range,
-        Sub_Bottom, Plot_H,
-        Margin_Left, Margin_Right, W,
-        Grid_Pen, Label_Font, Label_Brush );
-
-      // Build point array (use Display values)
-      PointF [ ] Points = Build_Point_Array (
-        S.Points, Time_Min, Time_Range_Sec,
-        Display_Min, Display_Range,
-        Margin_Left, Chart_W,
-        Sub_Bottom, Plot_H );
-
-      // Set clipping for this subplot
-      var Clip_Rect = new Rectangle ( Margin_Left, Label_Top, Chart_W, Plot_H );
-      G.SetClip ( Clip_Rect );
-
-      // Draw gradient fill and line
-      Draw_Line_And_Fill (
-        G, Points, S.Line_Color,
-        Sub_Bottom, Label_Top );
-
-      // Draw data point dots
-      Draw_Data_Dots ( G, Points, S.Line_Color );
-
-      // Highlight last point with value
-      Draw_Last_Point (
-        G, Points, S.Points, S.Line_Color,
-        W, Margin_Right, Label_Font, Name_Brush );
-
-      // Reset clipping
-      G.ResetClip ( );
-    }
-    private (double Min, double Max, double Range) Calculate_Y_Range (
-  List<(DateTime Time, double Value)> Points )
-    {
-      using var Block = Trace_Block.Start_If_Enabled ( );
-
-      double Min_V = double.MaxValue;
-      double Max_V = double.MinValue;
-
-      foreach ( var P in Points )
-      {
-        if ( P.Value < Min_V )
-          Min_V = P.Value;
-        if ( P.Value > Max_V )
-          Max_V = P.Value;
-      }
-
-      double Range = Max_V - Min_V;
-      if ( Range < 1e-12 )
-      {
-        Range = Math.Abs ( Max_V ) * 0.1;
-        if ( Range < 1e-12 )
-          Range = 1.0;
-      }
-
-      double Padded_Min = Min_V - Range * 0.1;
-      double Padded_Max = Max_V + Range * 0.1;
-      double Padded_Range = Padded_Max - Padded_Min;
-
-      return (Padded_Min, Padded_Max, Padded_Range);
-    }
-
-
+    // Subplot version - Sub_Bottom and Plot_H are per-subplot values passed in
     private void Draw_Y_Axis (
-  Graphics G,
-  double Padded_Min,
-  double Padded_Range,
-  int Sub_Bottom,
-  int Plot_H,
-  int Margin_Left,
-  int Margin_Right,
-  int W,
-  Pen Grid_Pen,
-  Font Label_Font,
-  Brush Label_Brush )
+        Graphics G,
+        double Padded_Min,
+        double Padded_Range,
+        int Sub_Bottom,
+        int Plot_H,
+        int W,
+        Pen Grid_Pen,
+        Font Label_Font,
+        Brush Label_Brush )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
 
@@ -2543,17 +2764,77 @@ namespace Multimeter_Controller
         double Value = Padded_Min + Fraction * Padded_Range;
         int Y = Sub_Bottom - (int) ( Fraction * Plot_H );
 
-        G.DrawLine ( Grid_Pen,
-          Margin_Left, Y,
-          W - Margin_Right, Y );
+        G.DrawLine ( Grid_Pen, _Chart_Margin_Left, Y, W - _Chart_Margin_Right, Y );
 
         string Lbl = Format_Value ( Value );
         var Lbl_Size = G.MeasureString ( Lbl, Label_Font );
         G.DrawString ( Lbl, Label_Font, Label_Brush,
-          Margin_Left - Lbl_Size.Width - 4,
-          Y - Lbl_Size.Height / 2 );
+            _Chart_Margin_Left - Lbl_Size.Width - 4,
+            Y - Lbl_Size.Height / 2 );
       }
     }
+
+    // Full-chart version - computes Sub_Bottom and Plot_H from constants
+    private void Draw_Y_Axis (
+        Graphics G,
+        double Padded_Min,
+        double Padded_Range,
+        int W,
+        int H,
+        Pen Grid_Pen,
+        Font Label_Font,
+        Brush Label_Brush )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
+      int Sub_Bottom = H - _Chart_Margin_Bottom;
+      int Plot_H = H - _Chart_Margin_Top - _Chart_Margin_Bottom;
+
+      int Num_Grid = 4;
+      for ( int I = 0; I <= Num_Grid; I++ )
+      {
+        double Fraction = (double) I / Num_Grid;
+        double Value = Padded_Min + Fraction * Padded_Range;
+        int Y = Sub_Bottom - (int) ( Fraction * Plot_H );
+
+        G.DrawLine ( Grid_Pen, _Chart_Margin_Left, Y, W - _Chart_Margin_Right, Y );
+
+        string Lbl = Format_Value ( Value );
+        var Lbl_Size = G.MeasureString ( Lbl, Label_Font );
+        G.DrawString ( Lbl, Label_Font, Label_Brush,
+            _Chart_Margin_Left - Lbl_Size.Width - 4,
+            Y - Lbl_Size.Height / 2 );
+      }
+    }
+
+
+    // Subplot version - keeps Sub_Bottom and Plot_H as parameters
+
+
+    private void Draw_Y_Axis_Subplot (
+    Graphics G, double Min, double Range,
+    int W, int Sub_Bottom, int Plot_H,
+    Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
+      int Num_Grid = 4;
+      for ( int I = 0; I <= Num_Grid; I++ )
+      {
+        double Fraction = (double) I / Num_Grid;
+        double Value = Min + ( Range * Fraction );
+        int Y = Sub_Bottom - (int) ( Fraction * Plot_H );
+
+        G.DrawLine ( Grid_Pen, _Chart_Margin_Left, Y, W - _Chart_Margin_Right, Y );
+
+        string Lbl = Format_Axis_Value ( Value );
+        var Lbl_Size = G.MeasureString ( Lbl, Label_Font );
+        G.DrawString ( Lbl, Label_Font, Label_Brush,
+            _Chart_Margin_Left - Lbl_Size.Width - 4,
+            Y - Lbl_Size.Height / 2 );
+      }
+    }
+
 
     private PointF [ ] Build_Point_Array (
       List<(DateTime Time, double Value)> Points,
@@ -2561,7 +2842,6 @@ namespace Multimeter_Controller
       double Time_Range_Sec,
       double Padded_Min,
       double Padded_Range,
-      int Margin_Left,
       int Chart_W,
       int Sub_Bottom,
       int Plot_H )
@@ -2596,7 +2876,7 @@ namespace Multimeter_Controller
 
         double V_Frac = ( Points [ Data_Index ].Value - Padded_Min ) / Padded_Range;
 
-        float X = Margin_Left + (float) ( Time_Frac * Chart_W );
+        float X = _Chart_Margin_Left + (float) ( Time_Frac * Chart_W );
         float Y = Sub_Bottom - (float) ( V_Frac * Plot_H );
 
         Result [ I ] = new PointF ( X, Y );
@@ -2679,7 +2959,6 @@ namespace Multimeter_Controller
   List<(DateTime Time, double Value)> Data_Points,
   Color Line_Color,
   int W,
-  int Margin_Right,
   Font Label_Font,
   Brush Name_Brush )
     {
@@ -2704,7 +2983,7 @@ namespace Multimeter_Controller
       string Val_Text = Format_Value ( Data_Points [ Count - 1 ].Value );
       var Val_Size = G.MeasureString ( Val_Text, Label_Font );
       float Tx = Last.X + 8;
-      if ( Tx + Val_Size.Width > W - Margin_Right )
+      if ( Tx + Val_Size.Width > W - _Chart_Margin_Right )
         Tx = Last.X - Val_Size.Width - 8;
 
       G.DrawString ( Val_Text, Label_Font, Name_Brush, Tx,
@@ -2716,9 +2995,6 @@ namespace Multimeter_Controller
   int H,
   int Chart_W,
   double Time_Range_Sec,
-  int Margin_Left,
-  int Margin_Bottom,
-  int Margin_Top,
   Pen Grid_Pen,
   Brush Label_Brush )
     {
@@ -2732,7 +3008,7 @@ namespace Multimeter_Controller
       for ( int I = 0; I <= Num_X_Labels; I++ )
       {
         double Fraction = (double) I / Num_X_Labels;
-        int X_Pos = Margin_Left + (int) ( Fraction * Chart_W );
+        int X_Pos = _Chart_Margin_Left + (int) ( Fraction * Chart_W );
 
         double Sec = Fraction * Time_Range_Sec;
         string Time_Text = Format_Time_Label ( Sec, Time_Range_Sec );
@@ -2740,12 +3016,12 @@ namespace Multimeter_Controller
         var Ts = G.MeasureString ( Time_Text, X_Label_Font );
         G.DrawString ( Time_Text, X_Label_Font, Label_Brush,
           X_Pos - Ts.Width / 2,
-          H - Margin_Bottom + 8 );
+          H - _Chart_Margin_Bottom + 8 );
 
         // Vertical grid line
         G.DrawLine ( Grid_Pen,
-          X_Pos, Margin_Top,
-          X_Pos, H - Margin_Bottom );
+          X_Pos, _Chart_Margin_Top,
+          X_Pos, H - _Chart_Margin_Bottom );
       }
     }
 
@@ -2766,16 +3042,28 @@ namespace Multimeter_Controller
 
 
 
-    private void Theme_Button_Click ( object Sender, EventArgs E )
+    private void Theme_Button_Click (
+      object Sender, EventArgs E )
     {
-      using var Block = Trace_Block.Start_If_Enabled ( );
+      using var Dlg = new Theme_Settings_Form ( _Theme );
+      if ( Dlg.ShowDialog ( this ) == DialogResult.OK )
+      {
+        _Theme.Copy_From ( Dlg.Result );
+        _Theme.Save ( );
+        Chart_Panel.BackColor = _Theme.Background;
 
-      var Next_Theme = Multimeter_Common_Helpers_Class.Get_Next_Theme ( _Theme );
-      _Settings.Set_Theme ( Next_Theme );
+        // Update series line colors from theme palette
+        for ( int I = 0; I < _Series.Count; I++ )
+        {
+          _Series [ I ].Line_Color =
+            _Theme.Line_Colors [
+              I % _Theme.Line_Colors.Length ];
+        }
+
+        _Settings.Set_Theme ( _Theme );
+        Chart_Panel.Invalidate ( );
+      }
     }
-
-
-
 
     private string Format_Axis_Value ( double Value )
     {
@@ -2784,22 +3072,17 @@ namespace Multimeter_Controller
 
       if ( Abs_Value >= 1000 )
         return Value.ToString ( "F2" );
-      else if ( Abs_Value >= 100 )
+      if ( Abs_Value >= 100 )
         return Value.ToString ( "F3" );
-      else if ( Abs_Value >= 10 )
+      if ( Abs_Value >= 10 )
         return Value.ToString ( "F4" );
-      else if ( Abs_Value >= 1 )
-        return Value.ToString ( "F5" );
-      else if ( Abs_Value >= 0.1 )
-        return Value.ToString ( "F6" );
-      else if ( Abs_Value >= 0.01 )
-        return Value.ToString ( "F7" );
-      else if ( Abs_Value >= 0.001 )
+      if ( Abs_Value >= 1 )
+        return Value.ToString ( "F9" );  // 3.762991449
+      if ( Abs_Value >= 0.1 )
         return Value.ToString ( "F8" );
-      else if ( Abs_Value >= 0.0001 )
+      if ( Abs_Value >= 0.01 )
         return Value.ToString ( "F9" );
-      else
-        return Value.ToString ( "F11" );
+      return Value.ToString ( "G6" );
     }
 
 
@@ -2807,171 +3090,18 @@ namespace Multimeter_Controller
 
 
     private string Format_Value ( double Value )
-    {
-      using var Block = Trace_Block.Start_If_Enabled ( );
-
-      double Abs_Value = Math.Abs ( Value );
-
-      // Use decimal notation with appropriate precision
-      if ( Abs_Value >= 1000 )
-      {
-        return Value.ToString ( "F2" );  // 1234.56
-      }
-      else if ( Abs_Value >= 100 )
-      {
-        return Value.ToString ( "F3" );  // 123.456
-      }
-      else if ( Abs_Value >= 10 )
-      {
-        return Value.ToString ( "F4" );  // 12.3456
-      }
-      else if ( Abs_Value >= 1 )
-      {
-        return Value.ToString ( "F5" );  // 1.23456
-      }
-      else if ( Abs_Value >= 0.1 )
-      {
-        return Value.ToString ( "F6" );  // 0.123456
-      }
-      else if ( Abs_Value >= 0.01 )
-      {
-        return Value.ToString ( "F7" );  // 0.0123456
-      }
-      else if ( Abs_Value >= 0.001 )
-      {
-        return Value.ToString ( "F8" );  // 0.00123456
-      }
-      else if ( Abs_Value >= 0.0001 )
-      {
-        return Value.ToString ( "F9" );  // 0.000123456
-      }
-      else
-      {
-        return Value.ToString ( "F11" ); // 0.00000123456
-      }
-    }
+    => Multimeter_Common_Helpers_Class.Format_Value ( Value, Current_Unit, _Selected_Meter, _Settings.Display_Digits );
 
 
 
-    // ===== Data Model =====
 
-    private class Instrument_Series
-    {
-      public string Name { get; set; } = "";
-      public int Address
-      {
-        get; set;
-      }
-      public Meter_Type Type
-      {
-        get; set;
-      }
-      public List<(DateTime Time, double Value)> Points
-      {
-        get; set;
-      }
-          = new List<(DateTime, double)> ( );
-      public Color Line_Color
-      {
-        get; set;
-      }
-      public bool Visible { get; set; } = true;
-
-      // Existing methods
-      public double Get_Average ( )
-      {
-        if ( Points == null || Points.Count == 0 )
-          return 0.0;
-        return Points.Average ( P => P.Value );
-      }
-
-      public double Get_Min ( )
-      {
-        if ( Points == null || Points.Count == 0 )
-          return 0.0;
-        return Points.Min ( P => P.Value );
-      }
-
-      public double Get_Max ( )
-      {
-        if ( Points == null || Points.Count == 0 )
-          return 0.0;
-        return Points.Max ( P => P.Value );
-      }
-
-      public double Get_StdDev ( )
-      {
-        if ( Points == null || Points.Count < 2 )
-          return 0.0;
-        double Average = Get_Average ( );
-        double Sum_Of_Squares = Points.Sum ( P => Math.Pow ( P.Value - Average, 2 ) );
-        return Math.Sqrt ( Sum_Of_Squares / Points.Count );
-      }
-
-      // New methods
-      public double Get_Range ( )
-      {
-        return Get_Max ( ) - Get_Min ( );
-      }
-
-      public double Get_Last ( )
-      {
-        if ( Points == null || Points.Count == 0 )
-          return 0.0;
-        return Points [ Points.Count - 1 ].Value;
-      }
-
-      public double Get_Peak_To_Peak ( )
-      {
-        return Get_Range ( );
-      }
-
-      public double Get_RMS ( )
-      {
-        if ( Points == null || Points.Count == 0 )
-          return 0.0;
-
-
-        double Sum_Of_Squares = Points.Sum ( P => P.Value * P.Value );
-        return Math.Sqrt ( Sum_Of_Squares / Points.Count );
-      }
-
-      public string Get_Trend ( )
-      {
-        if ( Points == null || Points.Count < 10 )
-          return "—";
-
-        // Compare average of last 5 vs previous 5
-        double Recent = Points.Skip ( Points.Count - 5 ).Average ( P => P.Value );
-        double Previous = Points.Skip ( Points.Count - 10 ).Take ( 5 ).Average ( P => P.Value );
-
-        double Change = ( Recent - Previous ) / Previous * 100;
-
-        if ( Math.Abs ( Change ) < 0.1 )
-          return "→";  // Stable
-        return Change > 0 ? "↑" : "↓";
-      }
-
-      public double Get_Sample_Rate ( )
-      {
-        if ( Points == null || Points.Count < 2 )
-          return 0.0;
-
-        TimeSpan Elapsed = Points [ Points.Count - 1 ].Time - Points [ 0 ].Time;
-        return ( Points.Count - 1 ) / Elapsed.TotalSeconds;
-      }
-
-
-      public Dictionary<string, string> File_Stats { get; set; } = null;
-
-    }
 
     private void Rolling_Check_CheckedChanged ( object? Sender, EventArgs E )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
 
       _Enable_Rolling = Rolling_Check.Checked;
-      Max_Points_Numeric.Enabled = Rolling_Check.Checked;
+      //  Max_Points_Numeric.Enabled = Rolling_Check.Checked;
 
       if ( _Enable_Rolling )
       {
@@ -3009,6 +3139,13 @@ namespace Multimeter_Controller
       using var Block = Trace_Block.Start_If_Enabled ( );
 
       _Max_Display_Points = (int) Max_Points_Numeric.Value;
+
+      if ( _Show_Timing_View )
+      {
+        Chart_Panel.Invalidate ( );
+        return;   // timing chart reads _Max_Display_Points directly for visible count
+      }
+
       Capture_Trace.Write ( $"Max display points changed to: {_Max_Display_Points}" );
 
       // If rolling is enabled and we're actively polling, trim the data
@@ -3099,14 +3236,6 @@ namespace Multimeter_Controller
 
 
 
-
-    private void Initialize_Chart_Refresh_Timer ( )
-    {
-      _Chart_Refresh_Timer = new System.Windows.Forms.Timer ( );
-      _Chart_Refresh_Timer.Tick += ( s, e ) => Chart_Panel.Invalidate ( );
-      _Chart_Refresh_Timer.Interval = _Settings.Chart_Refresh_Rate_Ms;
-
-    }
 
     private void Initialize_Status_Panel ( )
     {
@@ -3402,8 +3531,8 @@ namespace Multimeter_Controller
       Update_Chart_Refresh_Rate ( );
 
       // Default max display points
-      _Max_Display_Points = _Settings.Default_Max_Display_Points;
-      Max_Points_Numeric.Value = _Settings.Default_Max_Display_Points;
+      _Max_Display_Points = _Settings.Max_Display_Points;
+      Max_Points_Numeric.Value = _Settings.Max_Display_Points;
 
       // View mode defaults (only apply if no data yet)
       if ( _Series.All ( s => s.Points.Count == 0 ) )
@@ -3495,7 +3624,7 @@ namespace Multimeter_Controller
       Update_Legend ( );
       Chart_Panel.Invalidate ( );
 
-      Block?.Trace ( "Settings applied successfully" );
+      Capture_Trace.Write ( "Settings applied successfully" );
     }
 
     private void Update_Chart_Refresh_Rate ( )
@@ -3534,14 +3663,16 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
 
-      Block?.Trace ( $"_Is_Running = {_Is_Running}" );
+      Capture_Trace.Write ( $"_Is_Running = {_Is_Running}" );
 
       if ( !_Is_Running )
       {
-        Block?.Trace ( "Starting polling..." );
+        Capture_Trace.Write ( "Starting polling..." );
 
         // Start chart refresh timer
         _Chart_Refresh_Timer.Start ( );
+        Capture_Trace.Write ( $"Timer enabled: {_Chart_Refresh_Timer.Enabled}, Interval: {_Chart_Refresh_Timer.Interval}" );
+
 
         // Start auto-save if enabled
         if ( _Settings.Enable_Auto_Save )
@@ -3552,7 +3683,7 @@ namespace Multimeter_Controller
       }
       else
       {
-        Block?.Trace ( "Stopping polling..." );
+        Capture_Trace.Write ( "Stopping polling..." );
         Stop_Polling ( );   // ← cancels the CTS
 
         _Chart_Refresh_Timer.Stop ( );
@@ -3580,82 +3711,6 @@ namespace Multimeter_Controller
       }
     }
 
-    /*
-    private void Delay_Numeric_ValueChanged ( object Sender, EventArgs E )
-    {
-      int Interval_Ms = (int) ( Delay_Numeric.Value * 1000 );
-    //  _Poll_Timer.Interval = Interval_Ms;
-    }
-    */
-
-
-    /*
-    private void Poll_Timer_Tick ( object sender, EventArgs e )
-    {
-      using var Block = Trace_Block.Start_If_Enabled ( );
-
-      Block?.Trace ( "=== POLL TICK FIRED ===" );
-      Block?.Trace ( $"_Is_Running = {_Is_Running}" );
-      Block?.Trace ( $"Series count = {_Series.Count}" );
-
-      foreach ( var Series in _Series )
-      {
-        Block?.Trace ( $"Series: {Series.Name}, Visible: {Series.Visible}, Points: {Series.Points.Count}" );
-
-        if ( !Series.Visible )
-        {
-          Block?.Trace ( $"  Skipping (not visible)" );
-          continue;
-        }
-
-        Block?.Trace ( $"  Attempting to read address {Series.Address}" );
-
-        try
-        {
-          Block?.Trace ( $"  Calling GPIB_Manager.Read_Measurement({Series.Address})" );
-          //    double Value = _GPIB_Manager.Read_Measurement ( Series.Address );
-          string Command = Get_Measurement_Command ( Series.Type );
-          Block?.Trace ( $"  Command for {Series.Type}: [{Command}]" );
-          double Value = _GPIB_Manager.Read_Measurement ( Series.Address, Command );
-          Block?.Trace ( $"  Got value: {Value}" );
-
-          Series.Points.Add ( (DateTime.Now, Value) );
-
-          Block?.Trace ( $"  Added to Points list. Count now: {Series.Points.Count}" );
-
-          _Error_Counts [ Series.Name ] = 0;
-          _Last_Success [ Series.Name ] = DateTime.Now;
-        }
-        catch ( Exception ex )
-        {
-          Block?.Trace ( $"  EXCEPTION: {ex.GetType ( ).Name}" );
-          Block?.Trace ( $"  Message: {ex.Message}" );
-          Block?.Trace ( $"  StackTrace: {ex.StackTrace}" );
-
-          Update_Error_Status ( Series.Name, ex.Message );
-
-          if ( Should_Disable_Instrument ( Series ) )
-          {
-            Disable_Instrument ( Series );
-          }
-        }
-      }
-
-      Block?.Trace ( "=== POLL TICK COMPLETE ===" );
-      Multimeter_Common_Helpers_Class.Check_Memory_Limit (
-  _Settings,
-  ( ) => _Series.Sum ( s => s.Points.Count ),  // summed across series
-  Stop_Recording,
-  Show_Memory_Warning,
-  ref _Memory_Warning_Shown );
-      Update_Performance_Status ( );
-      Update_Legend_Throttled ( );
-      Update_Scrollbar_Range ( );
-
-      Chart_Panel.Invalidate ( );
-    }
-
-    */
 
 
     private string Get_Measurement_Command ( Meter_Type Type )
@@ -3672,14 +3727,7 @@ namespace Multimeter_Controller
     }
 
 
-    private string old_Get_Measurement_Command ( Meter_Type Type )
-    {
-      int Filtered_Index = _Filtered_Indices [ Measurement_Combo.SelectedIndex ];
-      var Entry = _Measurements [ Filtered_Index ];
-      return Type == Meter_Type.HP3458
-          ? Entry.Cmd_3458
-          : Entry.Cmd_34401;
-    }
+
 
     private void Update_Legend_Throttled ( )
     {
@@ -3711,18 +3759,18 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
 
-      Block?.Trace ( $"Series count: {_Series.Count}" );
-      Block?.Trace ( $"Stats labels count: {_Stats_Labels.Count}" );
+      Capture_Trace.Write ( $"Series count: {_Series.Count}" );
+      Capture_Trace.Write ( $"Stats labels count: {_Stats_Labels.Count}" );
 
       // Only rebuild if we don't have labels for all series
       if ( _Stats_Labels.Count != _Series.Count )
       {
-        Block?.Trace ( "Rebuilding legend (series count changed)" );
+        Capture_Trace.Write ( "Rebuilding legend (series count changed)" );
         Build_Legend_Controls ( );
       }
       else
       {
-        Block?.Trace ( "Updating stats only (no rebuild)" );
+        Capture_Trace.Write ( "Updating stats only (no rebuild)" );
         Update_Legend_Stats_Only ( );
       }
     }
@@ -3742,11 +3790,33 @@ namespace Multimeter_Controller
       {
         var S = _Series [ I ];
 
+
+
         var Legend_Item = new Panel
         {
           Location = new Point ( 5, Y_Pos ),
-          Size = new Size ( 185, 120 ),
+          Size = new Size ( 300, 180 ),
           BackColor = _Theme.Background
+        };
+
+        var Name_Label = new Label
+        {
+          Location = new Point ( 20, 2 ),
+          Size = new Size ( 275, 16 ),
+          Text = S.Name,
+          ForeColor = _Theme.Foreground,
+          Font = new Font ( this.Font.FontFamily, 8f, FontStyle.Bold ),
+          AutoSize = false
+        };
+
+        var Stats_Label = new Label
+        {
+          Location = new Point ( 20, 18 ),
+          Size = new Size ( 225, 150 ),
+          Text = "No data",
+          ForeColor = _Theme.Foreground,
+          Font = new Font ( "Consolas", 9f ),
+          AutoSize = false
         };
 
         var Color_Box = new Panel
@@ -3757,35 +3827,16 @@ namespace Multimeter_Controller
           BorderStyle = BorderStyle.FixedSingle
         };
 
-        var Name_Label = new Label
-        {
-          Location = new Point ( 20, 2 ),
-          Size = new Size ( 160, 16 ),
-          Text = S.Name,
-          ForeColor = _Theme.Foreground,
-          Font = new Font ( this.Font.FontFamily, 8f, FontStyle.Bold ),
-          AutoSize = false
-        };
-
-        var Stats_Label = new Label
-        {
-          Location = new Point ( 20, 18 ),
-          Size = new Size ( 160, 85 ),
-          Text = "No data",
-          ForeColor = _Theme.Foreground,
-          Font = new Font ( "Consolas", 10f ),
-          AutoSize = false
-        };
 
         // Store reference with UNIQUE key (name + address)
-        string Key = $"{S.Name}_{S.Address}";  // ← Changed from S.Name
+        string Key = $"{S.Name}_{S.Address}";
         _Stats_Labels [ Key ] = Stats_Label;
 
         Legend_Item.Controls.Add ( Color_Box );
         Legend_Item.Controls.Add ( Name_Label );
         Legend_Item.Controls.Add ( Stats_Label );
         _Legend_Panel_2.Controls.Add ( Legend_Item );
-        Y_Pos += 123;
+        Y_Pos += 180;
       }
 
       _Legend_Panel_2.ResumeLayout ( );
@@ -3797,21 +3848,18 @@ namespace Multimeter_Controller
     private void Update_Legend_Stats_Only ( )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
-      Block?.Trace ( $"Updating stats for {_Series.Count} series" );
+      Capture_Trace.Write ( $"Updating stats for {_Series.Count} series" );
 
       foreach ( var S in _Series )
       {
-        string Key = $"{S.Name}_{S.Address}";  // ← Use same key format
-
+        string Key = $"{S.Name}_{S.Address}";
         if ( !_Stats_Labels.ContainsKey ( Key ) )
         {
-          Block?.Trace ( $"  {S.Name}: Label not found in dictionary!" );
+          Capture_Trace.Write ( $"{S.Name}: Label not found in dictionary!" );
           continue;
         }
 
         int Point_Count = S.Points.Count;
-        Block?.Trace ( $"  {S.Name}: {Point_Count} points" );
-
         string Stats_Text;
 
         if ( Point_Count > 0 )
@@ -3825,171 +3873,47 @@ namespace Multimeter_Controller
             double Last = S.Get_Last ( );
             string Trend = S.Get_Trend ( );
 
+            // In Update_Legend_Stats_Only
             Stats_Text =
-              $"Last: {Last:F6} {Trend}\n" +
-              $"Avg : {Average:F6}\n" +
-              $"σ   : {Standard_Deviation:F6}\n" +
-              $"Min : {Minimum:F6}\n" +
-              $"Max : {Maximum:F6}\n" +
-              $"N   = {Point_Count}";
+              $"Last        : {Format_Digits ( Last, _Settings.Display_Digits )} {Trend}\n" +
+              $"Avg         : {Format_Digits ( Average, _Settings.Display_Digits )}\n" +
+              $"σ           : {Format_Digits ( Standard_Deviation, 6 )}\n" +
+              $"Min         : {Format_Digits ( Minimum, _Settings.Display_Digits )}\n" +
+              $"Max         : {Format_Digits ( Maximum, _Settings.Display_Digits )}\n" +
+              $"Point Count : {Point_Count}\n" +
+              $"Disconnects : {S.Disconnect_Count}\n" +
+              $"Comm_Errors : {S.Comm_Error_Count}";
 
-            Block?.Trace ( $"    Stats calculated successfully" );
+
+            // Always append disconnect count regardless of point count
+            //    Stats_Text = Stats_Text + $"\nDisconnects : {S.Disconnect_Count} \nComm Errors: {S.Comm_Error_Count}";
+            Capture_Trace.Write ( $"Stats for {S.Name} - Disconnects: {S.Disconnect_Count} Comm_Errors: {S.Comm_Error_Count}" );
           }
           catch ( Exception ex )
           {
-            Block?.Trace ( $"    ERROR calculating stats: {ex.Message}" );
-            Stats_Text = "Error";
+            Capture_Trace.Write ( $"ERROR calculating stats for {S.Name}: {ex.Message}" );
+            Stats_Text = "Stat error";
           }
         }
         else
         {
-          Stats_Text = "No data";
-          Block?.Trace ( $"    No data yet" );
+          Stats_Text = $"No data\nDisconnects : {S.Disconnect_Count}\nComm Errors : {S.Comm_Error_Count}";
         }
 
-        // Update the label text using the unique key
+        // Always update the label, outside the if block
         _Stats_Labels [ Key ].Text = Stats_Text;
       }
     }
 
 
-    private void a_Draw_Combined_Normalized ( Graphics G, int W, int H, int Chart_W, int Chart_H,
-  DateTime Time_Min, double Time_Range_Sec, int Margin_Left, int Margin_Right, int Margin_Bottom,
-  Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
-    {
-      using var Block = Trace_Block.Start_If_Enabled ( );
-
-      // Y axis shows 0-100%
-      Draw_Y_Axis_Percentage ( G, W, H, Chart_H,
-        Margin_Left, Margin_Right, Margin_Bottom, Grid_Pen, Label_Font, Label_Brush );
-
-      // Draw each series normalized to its own range
-      int Color_Index = 0;
-      foreach ( var S in _Series )
-      {
-        if ( !S.Visible || S.Points.Count == 0 )
-          continue;
-
-        Color Line_Color = _Theme.Line_Colors [ Color_Index % _Theme.Line_Colors.Length ];
-
-        // Get visible points only
-        var (Start_Index, Visible_Count) = Multimeter_Common_Helpers_Class.Get_Visible_Range (
-  S.Points.Count, _Enable_Rolling, _Max_Display_Points, _View_Offset );
-
-        if ( Visible_Count == 0 )
-        {
-          Color_Index++;
-          continue;
-        }
-
-        // Calculate min/max for VISIBLE points only
-        double Series_Min = double.MaxValue;
-        double Series_Max = double.MinValue;
-
-        for ( int i = Start_Index; i < Start_Index + Visible_Count; i++ )
-        {
-          if ( S.Points [ i ].Value < Series_Min )
-            Series_Min = S.Points [ i ].Value;
-          if ( S.Points [ i ].Value > Series_Max )
-            Series_Max = S.Points [ i ].Value;
-        }
-
-        double Series_Range = Series_Max - Series_Min;
-
-        if ( Series_Range == 0 )
-          Series_Range = 1;
-
-        Block?.Trace ( $"{S.Name}: {Series_Min:F6} to {Series_Max:F6}" );
-
-        // Recalculate time range for VISIBLE points
-        DateTime Visible_Time_Min = S.Points [ Start_Index ].Time;
-        DateTime Visible_Time_Max = S.Points [ Start_Index + Visible_Count - 1 ].Time;
-        double Visible_Time_Range_Sec = ( Visible_Time_Max - Visible_Time_Min ).TotalSeconds;
-
-        if ( Visible_Time_Range_Sec < 0.001 )
-          Visible_Time_Range_Sec = 1.0;
-
-        var Points = new List<PointF> ( );
-
-        // Build points from VISIBLE range only
-        for ( int i = 0; i < Visible_Count; i++ )
-        {
-          int Data_Index = Start_Index + i;
-          var P = S.Points [ Data_Index ];
-
-          double Time_Offset = ( P.Time - Visible_Time_Min ).TotalSeconds;
-          float X_Ratio = (float) ( Time_Offset / Visible_Time_Range_Sec );
-          float X = Margin_Left + ( X_Ratio * Chart_W );
-
-          // Normalize to 0-1 based on THIS series' own range
-          double Normalized = ( P.Value - Series_Min ) / Series_Range;
-          float Y = H - Margin_Bottom - (float) ( Normalized * Chart_H );
-
-          Points.Add ( new PointF ( X, Y ) );
-        }
-
-        // Draw line
-        if ( Points.Count > 1 )
-        {
-          using ( var Line_Pen = new Pen ( Line_Color, 2f ) )
-          {
-            G.DrawLines ( Line_Pen, Points.ToArray ( ) );
-          }
-        }
-
-        // Draw dots
-        foreach ( var Point in Points )
-        {
-          using ( var Brush = new SolidBrush ( Line_Color ) )
-          {
-            G.FillEllipse ( Brush, Point.X - 2, Point.Y - 2, 4, 4 );
-          }
-        }
-
-        // Draw last point
-        if ( Points.Count > 0 )
-        {
-          var Last = Points [ Points.Count - 1 ];
-          using ( var Brush = new SolidBrush ( Line_Color ) )
-          {
-            G.FillEllipse ( Brush, Last.X - 4, Last.Y - 4, 8, 8 );
-          }
-        }
-
-        Color_Index++;
-      }
-    }
 
 
 
 
 
-    private void Draw_Y_Axis_Percentage ( Graphics G, int W, int H, int Chart_H,
-  int Margin_Left, int Margin_Right, int Margin_Bottom,
-  Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
-    {
-      using var Block = Trace_Block.Start_If_Enabled ( );
-
-      // Draw 0%, 25%, 50%, 75%, 100%
-      for ( int I = 0; I <= 4; I++ )
-      {
-        float Y_Ratio = I / 4f;
-        float Y = H - Margin_Bottom - ( Y_Ratio * Chart_H );
-
-        // Grid line
-        G.DrawLine ( Grid_Pen, Margin_Left, Y, W - Margin_Right, Y );
-
-        // Label
-        string Label = $"{I * 25}%";
-        SizeF Label_Size = G.MeasureString ( Label, Label_Font );
-        G.DrawString ( Label, Label_Font, Label_Brush,
-          Margin_Left - Label_Size.Width - 5, Y - Label_Size.Height / 2 );
-      }
-    }
 
 
-
-    private void Draw_Combined_Legend_With_Ranges ( Graphics G, int W, int Margin_Top, int Margin_Right )
+    private void Draw_Combined_Legend_With_Ranges ( Graphics G, int W )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
 
@@ -4054,7 +3978,7 @@ namespace Multimeter_Controller
       // Enable/disable zoom slider based on view mode and normalization
       Zoom_Slider.Enabled = !( _Combined_View && _Normalized_View );
 
-      Block?.Trace ( $"View mode: {( _Combined_View ? "Combined" : "Split" )}" );
+      Capture_Trace.Write ( $"View mode: {( _Combined_View ? "Combined" : "Split" )}" );
 
       Chart_Panel.Invalidate ( );
     }
@@ -4071,7 +3995,7 @@ namespace Multimeter_Controller
       // Disable zoom slider when normalized
       Zoom_Slider.Enabled = !_Normalized_View;
 
-      Block?.Trace ( $"Normalized: {_Normalized_View}" );
+      Capture_Trace.Write ( $"Normalized: {_Normalized_View}" );
 
       Chart_Panel.Invalidate ( );
     }
@@ -4080,22 +4004,19 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
 
-      Block?.Trace ( $"_Current_Graph_Style = [{_Current_Graph_Style}]" );
+      Capture_Trace.Write ( $"_Current_Graph_Style = [{_Current_Graph_Style}]" );
 
-      Block?.Trace ( $"Normalized mode: {_Normalized_View}" );
+      Capture_Trace.Write ( $"Normalized mode: {_Normalized_View}" );
 
       var (Time_Min, Time_Max) = Calculate_Time_Range ( );
       double Time_Range_Sec = ( Time_Max - Time_Min ).TotalSeconds;
       if ( Time_Range_Sec < 0.001 )
         Time_Range_Sec = 1.0;
 
-      int Margin_Left = 80;
-      int Margin_Right = 20;
-      int Margin_Top = 40;
-      int Margin_Bottom = 50;
 
-      int Chart_W = W - Margin_Left - Margin_Right;
-      int Chart_H = H - Margin_Top - Margin_Bottom;
+
+      int Chart_W = W - _Chart_Margin_Left - _Chart_Margin_Right;
+      int Chart_H = H - _Chart_Margin_Top - _Chart_Margin_Bottom;
 
       if ( Chart_W < 10 || Chart_H < 10 )
         return;
@@ -4107,10 +4028,10 @@ namespace Multimeter_Controller
 
       // Draw time axis (same for both modes)
       Draw_Time_Axis ( G, H, Chart_W, Time_Range_Sec,
-        Margin_Left, Margin_Bottom, Margin_Top, Grid_Pen, Label_Brush );
+        Grid_Pen, Label_Brush );
 
       // Draw instrument names at top
-      int Name_X = Margin_Left + 5;
+      int Name_X = _Chart_Margin_Left + 5;
       int Name_Y = 5;
 
       int Color_Index = 0;
@@ -4144,45 +4065,26 @@ namespace Multimeter_Controller
       switch ( _Current_Graph_Style )
       {
         case "Scatter":
-          Draw_Combined_Scatter ( G, W, H, Chart_W, Chart_H,
-            Time_Min, Time_Range_Sec, Margin_Left, Margin_Right, Margin_Bottom,
-            Grid_Pen, Label_Font, Label_Brush );
+          Draw_Combined_Scatter ( G, W, H, Time_Min, Time_Range_Sec, Grid_Pen, Label_Font, Label_Brush );
           break;
-
         case "Step":
-          Draw_Combined_Step ( G, W, H, Chart_W, Chart_H,
-            Time_Min, Time_Range_Sec, Margin_Left, Margin_Right, Margin_Bottom,
-            Grid_Pen, Label_Font, Label_Brush );
+          Draw_Combined_Step ( G, W, H, Time_Min, Time_Range_Sec, Grid_Pen, Label_Font, Label_Brush );
           break;
-
-        case "Bar":
-          Draw_Single_Bar_Combined ( G, W, H, Chart_W, Chart_H,
-            Margin_Left, Margin_Right, Margin_Bottom );
-          break;
-
         case "Histogram":
-          Draw_Single_Histogram ( G, W, H, Margin_Left, Margin_Right,
-            Margin_Top, Margin_Bottom, Chart_W, Chart_H );
+          Draw_Single_Histogram ( G, W, H, Chart_W, Chart_H );  // unchanged - delegates to Draw_Histogram
           break;
-
         case "Pie":
-          Draw_Single_Pie ( G, W, H, Margin_Left, Margin_Right,
-            Margin_Top, Margin_Bottom, Chart_W, Chart_H );
+          Draw_Single_Pie ( G, W, H, Chart_W, Chart_H );        // unchanged
           break;
-
-        default: // Line
+        default:
           if ( _Normalized_View )
-            Draw_Combined_Normalized ( G, W, H, Chart_W, Chart_H,
-              Time_Min, Time_Range_Sec, Margin_Left, Margin_Right, Margin_Bottom,
-              Grid_Pen, Label_Font, Label_Brush );
+            Draw_Combined_Normalized ( G, W, H, Time_Min, Time_Range_Sec, Grid_Pen, Label_Font, Label_Brush );
           else
-            Draw_Combined_Absolute ( G, W, H, Chart_W, Chart_H,
-              Time_Min, Time_Range_Sec, Margin_Left, Margin_Right, Margin_Bottom,
-              Grid_Pen, Label_Font, Label_Brush );
+            Draw_Combined_Absolute ( G, W, H, Chart_W, Chart_H, Time_Min, Time_Range_Sec, Grid_Pen, Label_Font, Label_Brush );
           break;
       }
 
-      Block?.Trace ( $"_Current_Graph_Style = [{_Current_Graph_Style}]" );
+      Capture_Trace.Write ( $"_Current_Graph_Style = [{_Current_Graph_Style}]" );
     }
 
 
@@ -4190,7 +4092,7 @@ namespace Multimeter_Controller
     private void Draw_Combined_Scatter ( Graphics G, int W, int H,
   int Chart_W, int Chart_H,
   DateTime Time_Min, double Time_Range_Sec,
-  int Margin_Left, int Margin_Right, int Margin_Bottom,
+
   Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
@@ -4226,7 +4128,7 @@ namespace Multimeter_Controller
         Display_Range = 0.001;
 
       Draw_Y_Axis ( G, Display_Min, Display_Range, W, H, Chart_H,
-        Margin_Left, Margin_Right, Margin_Bottom, Grid_Pen, Label_Font, Label_Brush );
+         Grid_Pen, Label_Font, Label_Brush );
 
       int Color_Index = 0;
       foreach ( var S in _Series )
@@ -4260,10 +4162,10 @@ namespace Multimeter_Controller
         for ( int I = 0; I < Visible_Count; I++ )
         {
           var P = S.Points [ Start_Index + I ];
-          float X = Margin_Left + (float) (
+          float X = _Chart_Margin_Left + (float) (
             ( P.Time - Visible_Time_Min ).TotalSeconds / Visible_Time_Range * Chart_W );
           double Y_Norm = ( P.Value - Display_Min ) / Display_Range;
-          float Y = H - Margin_Bottom - (float) ( Y_Norm * Chart_H );
+          float Y = H - _Chart_Margin_Bottom - (float) ( Y_Norm * Chart_H );
 
           G.FillEllipse ( Dot_Brush,
             X - Dot_Size / 2, Y - Dot_Size / 2, Dot_Size, Dot_Size );
@@ -4280,7 +4182,7 @@ namespace Multimeter_Controller
     private void Draw_Combined_Step ( Graphics G, int W, int H,
       int Chart_W, int Chart_H,
       DateTime Time_Min, double Time_Range_Sec,
-      int Margin_Left, int Margin_Right, int Margin_Bottom,
+
       Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
@@ -4316,7 +4218,7 @@ namespace Multimeter_Controller
         Display_Range = 0.001;
 
       Draw_Y_Axis ( G, Display_Min, Display_Range, W, H, Chart_H,
-        Margin_Left, Margin_Right, Margin_Bottom, Grid_Pen, Label_Font, Label_Brush );
+        Grid_Pen, Label_Font, Label_Brush );
 
       int Color_Index = 0;
       foreach ( var S in _Series )
@@ -4348,10 +4250,10 @@ namespace Multimeter_Controller
         for ( int I = 0; I < Visible_Count; I++ )
         {
           var P = S.Points [ Start_Index + I ];
-          float X = Margin_Left + (float) (
+          float X = _Chart_Margin_Left + (float) (
             ( P.Time - Visible_Time_Min ).TotalSeconds / Visible_Time_Range * Chart_W );
           double Y_Norm = ( P.Value - Display_Min ) / Display_Range;
-          float Y = H - Margin_Bottom - (float) ( Y_Norm * Chart_H );
+          float Y = H - _Chart_Margin_Bottom - (float) ( Y_Norm * Chart_H );
 
           if ( I > 0 )
             Step_Points.Add ( new PointF ( X, Step_Points [ Step_Points.Count - 1 ].Y ) );
@@ -4370,8 +4272,7 @@ namespace Multimeter_Controller
     }
 
     private void Draw_Single_Bar_Combined ( Graphics G, int W, int H,
-  int Chart_W, int Chart_H,
-  int Margin_Left, int Margin_Right, int Margin_Bottom )
+  int Chart_W, int Chart_H )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
 
@@ -4404,7 +4305,7 @@ namespace Multimeter_Controller
       if ( Display_Range == 0 )
         Display_Range = 0.001;
 
-      float Baseline = H - Margin_Bottom;
+      float Baseline = H - _Chart_Margin_Bottom;
       float Bar_Width = Math.Max ( 2f, ( Chart_W / (float) Actual_Count ) * 0.7f );
       float Half_Bar = Bar_Width / 2;
 
@@ -4413,7 +4314,7 @@ namespace Multimeter_Controller
       using var Label_Brush = new SolidBrush ( _Theme.Labels );
 
       Draw_Y_Axis ( G, Display_Min, Display_Range, W, H, Chart_H,
-        Margin_Left, Margin_Right, Margin_Bottom,
+
         Grid_Pen, Label_Font, Label_Brush );
 
       Color Bar_Color = _Theme.Line_Colors [ 0 ];
@@ -4427,9 +4328,9 @@ namespace Multimeter_Controller
       for ( int I = 0; I < Actual_Count; I++ )
       {
         var P = S.Points [ Start_Index + I ];
-        float X = Margin_Left + (float) I / Math.Max ( 1, Actual_Count - 1 ) * Chart_W;
+        float X = _Chart_Margin_Left + (float) I / Math.Max ( 1, Actual_Count - 1 ) * Chart_W;
         double Y_N = ( P.Value - Display_Min ) / Display_Range;
-        float Y = H - Margin_Bottom - (float) ( Y_N * Chart_H );
+        float Y = H - _Chart_Margin_Bottom - (float) ( Y_N * Chart_H );
         float Bar_H = Math.Max ( 1f, Baseline - Y );
 
         RectangleF Rect = new RectangleF (
@@ -4442,7 +4343,7 @@ namespace Multimeter_Controller
     }
 
     private void Draw_Combined_Absolute ( Graphics G, int W, int H, int Chart_W, int Chart_H,
-    DateTime Time_Min, double Time_Range_Sec, int Margin_Left, int Margin_Right, int Margin_Bottom,
+    DateTime Time_Min, double Time_Range_Sec,
     Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
@@ -4482,8 +4383,8 @@ namespace Multimeter_Controller
       if ( Padded_Range == 0 )
         Padded_Range = 0.001;
 
-      Block?.Trace ( $"Range: {Global_Min:F6} to {Global_Max:F6}" );
-      Block?.Trace ( $"Padded: {Padded_Min:F6} to {Padded_Max:F6}" );
+      Capture_Trace.Write ( $"Range: {Global_Min:F6} to {Global_Max:F6}" );
+      Capture_Trace.Write ( $"Padded: {Padded_Min:F6} to {Padded_Max:F6}" );
 
       // **APPLY ZOOM HERE**
       double Display_Min = Padded_Min;
@@ -4499,12 +4400,12 @@ namespace Multimeter_Controller
         Display_Max = Center + ( Zoomed_Range / 2.0 );
         Display_Range = Display_Max - Display_Min;
 
-        Block?.Trace ( $"Combined ZOOM: {_Zoom_Factor:F2}x -> [{Display_Min:F6}, {Display_Max:F6}]" );
+        Capture_Trace.Write ( $"Combined ZOOM: {_Zoom_Factor:F2}x -> [{Display_Min:F6}, {Display_Max:F6}]" );
       }
 
       // Y axis shows actual voltages (use Display values)
       Draw_Y_Axis ( G, Display_Min, Display_Range, W, H, Chart_H,
-        Margin_Left, Margin_Right, Margin_Bottom, Grid_Pen, Label_Font, Label_Brush );
+        Grid_Pen, Label_Font, Label_Brush );
 
       // Draw each series
       int Color_Index = 0;
@@ -4541,11 +4442,11 @@ namespace Multimeter_Controller
 
           double Time_Offset = ( P.Time - Visible_Time_Min ).TotalSeconds;
           float X_Ratio = (float) ( Time_Offset / Visible_Time_Range_Sec );
-          float X = Margin_Left + ( X_Ratio * Chart_W );
+          float X = _Chart_Margin_Left + ( X_Ratio * Chart_W );
 
           // Use Display_Min and Display_Range for Y calculation
           double Y_Normalized = ( P.Value - Display_Min ) / Display_Range;
-          float Y = H - Margin_Bottom - (float) ( Y_Normalized * Chart_H );
+          float Y = H - _Chart_Margin_Bottom - (float) ( Y_Normalized * Chart_H );
 
           Points.Add ( new PointF ( X, Y ) );
         }
@@ -4584,166 +4485,6 @@ namespace Multimeter_Controller
 
 
 
-
-
-    private void Draw_Combined_Normalized ( Graphics G, int W, int H, int Chart_W, int Chart_H,
-      DateTime Time_Min, double Time_Range_Sec, int Margin_Left, int Margin_Right, int Margin_Bottom,
-      Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
-    {
-      using var Block = Trace_Block.Start_If_Enabled ( );
-
-
-
-
-
-      Draw_Y_Axis_Percentage ( G, W, H, Chart_H,
-        Margin_Left, Margin_Right, Margin_Bottom, Grid_Pen, Label_Font, Label_Brush );
-
-      int Color_Index = 0;
-      foreach ( var S in _Series )
-      {
-        if ( !S.Visible || S.Points.Count == 0 )
-          continue;
-
-        var (Start_Index, Visible_Count) = Multimeter_Common_Helpers_Class.Get_Visible_Range (
-  S.Points.Count, _Enable_Rolling, _Max_Display_Points, _View_Offset );
-        if ( Visible_Count == 0 )
-        {
-          Color_Index++;
-          continue;
-        }
-
-        double Series_Min = double.MaxValue;
-        double Series_Max = double.MinValue;
-        for ( int i = Start_Index; i < Start_Index + Visible_Count; i++ )
-        {
-          if ( S.Points [ i ].Value < Series_Min )
-            Series_Min = S.Points [ i ].Value;
-          if ( S.Points [ i ].Value > Series_Max )
-            Series_Max = S.Points [ i ].Value;
-        }
-
-        double Series_Range = Series_Max - Series_Min;
-
-        Color Line_Color = _Theme.Line_Colors [ Color_Index % _Theme.Line_Colors.Length ];
-
-        // --- Draw the normalized line ---
-        using var Line_Pen = new Pen ( Line_Color, 1.5f );
-        var Points = new List<PointF> ( Visible_Count );
-
-        for ( int i = Start_Index; i < Start_Index + Visible_Count; i++ )
-        {
-          var Pt = S.Points [ i ];
-          double Elapsed_Sec = ( Pt.Time - Time_Min ).TotalSeconds;
-          float X = Margin_Left + (float) ( Elapsed_Sec / Time_Range_Sec * Chart_W );
-
-          // Normalize to 0-1, then map to chart height
-          double Normalized = Series_Range > 0
-            ? ( Pt.Value - Series_Min ) / Series_Range
-            : 0.5;
-          float Y = H - Margin_Bottom - (float) ( Normalized * Chart_H );
-
-          Points.Add ( new PointF ( X, Y ) );
-        }
-
-        if ( Points.Count > 1 )
-          G.DrawLines ( Line_Pen, Points.ToArray ( ) );
-        // ---
-
-        // Value labels
-        using var Value_Brush = new SolidBrush ( Color.FromArgb ( 180, Line_Color ) );
-
-        // Top label (100% = Series_Max)
-        string Top_Label = Format_Axis_Value ( Series_Max );
-        float Top_Y = H - Margin_Bottom - Chart_H;
-        G.DrawString ( Top_Label, Label_Font, Value_Brush,
-            Margin_Left + 4, Top_Y + Color_Index * 12 );
-
-        // Bottom label (0% = Series_Min)
-        string Bot_Label = Format_Axis_Value ( Series_Min );
-        float Bot_Y = H - Margin_Bottom - 12;
-        G.DrawString ( Bot_Label, Label_Font, Value_Brush,
-            Margin_Left + 4, Bot_Y - Color_Index * 12 );
-
-        Color_Index++;
-      }
-    }
-
-
-    private void B_Draw_Combined_Normalized ( Graphics G, int W, int H, int Chart_W, int Chart_H,
-DateTime Time_Min, double Time_Range_Sec, int Margin_Left, int Margin_Right, int Margin_Bottom,
-Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
-    {
-      using var Block = Trace_Block.Start_If_Enabled ( );
-
-      // Y axis shows 0-100%
-      Draw_Y_Axis_Percentage ( G, W, H, Chart_H,
-        Margin_Left, Margin_Right, Margin_Bottom, Grid_Pen, Label_Font, Label_Brush );
-
-      // Draw each series normalized to its own range
-      int Color_Index = 0;
-      foreach ( var S in _Series )
-      {
-        if ( !S.Visible || S.Points.Count == 0 )
-          continue;
-
-        Color Line_Color = _Theme.Line_Colors [ Color_Index % _Theme.Line_Colors.Length ];
-
-        double Series_Min = S.Get_Min ( );
-        double Series_Max = S.Get_Max ( );
-        double Series_Range = Series_Max - Series_Min;
-
-        if ( Series_Range == 0 )
-          Series_Range = 1;
-
-        Block?.Trace ( $"{S.Name}: {Series_Min:F6} to {Series_Max:F6}" );
-
-        var Points = new List<PointF> ( );
-
-        foreach ( var P in S.Points )
-        {
-          double Time_Offset = ( P.Time - Time_Min ).TotalSeconds;
-          float X_Ratio = (float) ( Time_Offset / Time_Range_Sec );
-          float X = Margin_Left + ( X_Ratio * Chart_W );
-
-          // Normalize to 0-1 based on THIS series' own range
-          double Normalized = ( P.Value - Series_Min ) / Series_Range;
-          float Y = H - Margin_Bottom - (float) ( Normalized * Chart_H );
-
-          Points.Add ( new PointF ( X, Y ) );
-        }
-
-        // Draw line
-        if ( Points.Count > 1 )
-        {
-          using ( var Line_Pen = new Pen ( Line_Color, 2f ) )
-          {
-            G.DrawLines ( Line_Pen, Points.ToArray ( ) );
-          }
-        }
-
-        // Draw dots
-        foreach ( var Point in Points )
-        {
-          using ( var Brush = new SolidBrush ( Line_Color ) )
-          {
-            G.FillEllipse ( Brush, Point.X - 2, Point.Y - 2, 4, 4 );
-          }
-        }
-
-        // Draw last point
-        if ( Points.Count > 0 )
-        {
-          var Last = Points [ Points.Count - 1 ];
-          using ( var Brush = new SolidBrush ( Line_Color ) )
-          {
-            G.FillEllipse ( Brush, Last.X - 4, Last.Y - 4, 8, 8 );
-          }
-        }
-
-        Color_Index++;
-      }
-    }
 
 
 
@@ -4772,7 +4513,7 @@ Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
       _Max_Display_Points = New_Value;
       Max_Points_Numeric.Value = New_Value;
 
-      Block?.Trace ( $"Zoomed to {_Max_Display_Points} points" );
+      Capture_Trace.Write ( $"Zoomed to {_Max_Display_Points} points" );
       Chart_Panel.Invalidate ( );
     }
 
@@ -4987,7 +4728,7 @@ Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
       int Scrollbar_Value = (int) ( (double) _View_Offset / Max_Offset * Scrollbar_Max );
       Scrollbar_Value = Math.Max ( 0, Math.Min ( Scrollbar_Max, Scrollbar_Value ) );
 
-      Block?.Trace ( $"Setting scrollbar value to {Scrollbar_Value} (offset={_View_Offset}, max_offset={Max_Offset})" );
+      Capture_Trace.Write ( $"Setting scrollbar value to {Scrollbar_Value} (offset={_View_Offset}, max_offset={Max_Offset})" );
 
       Pan_Scrollbar.Value = Scrollbar_Value;
     }
@@ -4996,27 +4737,46 @@ Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
 
     private void Pan_Scrollbar_Scroll ( object sender, ScrollEventArgs e )
     {
-      using var Block = Trace_Block.Start_If_Enabled ( );
       _Updating_Scroll = true;
       Auto_Scroll_Check.Checked = false;
       _Updating_Scroll = false;
 
-      int Total_Points = _Series.Max ( s => s?.Points?.Count ?? 0 );
-      if ( Total_Points == 0 )
-        return;
-      int Max_Offset = Math.Max ( 0, Total_Points - _Max_Display_Points );
-      if ( Max_Offset == 0 )
-        return;
-      int Scrollbar_Max = Pan_Scrollbar.Maximum - Pan_Scrollbar.LargeChange + 1;
-      int Clamped_Value = Math.Max ( 0, Math.Min ( Scrollbar_Max, e.NewValue ) );
-      _View_Offset = (int) ( ( (double) Clamped_Value / Scrollbar_Max ) * Max_Offset );
-      Block?.Trace ( $"Pan scrollbar: value={Clamped_Value}, offset={_View_Offset}, max_offset={Max_Offset}" );
-      if ( _View_Offset == 0 )
+      int Max_Offset;
+
+      if ( _Show_Timing_View )
       {
-        _Updating_Scroll = true;
-        Auto_Scroll_Check.Checked = true;
-        _Updating_Scroll = false;
+        int Total_Samples = Math.Min ( _Timing_Count, _Timing_Buffer_Size );
+        Max_Offset = Math.Max ( 0, Total_Samples - _Max_Display_Points );
+        if ( Max_Offset == 0 )
+          return;
+
+        int Usable = Pan_Scrollbar.Maximum - Pan_Scrollbar.LargeChange;
+        int Clamped = Math.Max ( 0, Math.Min ( Usable, e.NewValue ) );
+        _Timing_View_Offset = Usable > 0
+            ? (int) ( (double) Clamped / Usable * Max_Offset )
+            : 0;
       }
+      else
+      {
+        int Total_Points = _Series.Max ( s => s?.Points?.Count ?? 0 );
+        Max_Offset = Math.Max ( 0, Total_Points - _Max_Display_Points );
+        if ( Max_Offset == 0 )
+          return;
+
+        int Usable = Pan_Scrollbar.Maximum - Pan_Scrollbar.LargeChange;
+        int Clamped = Math.Max ( 0, Math.Min ( Usable, e.NewValue ) );
+        _View_Offset = Usable > 0
+            ? (int) ( (double) Clamped / Usable * Max_Offset )
+            : 0;
+
+        if ( _View_Offset == 0 )
+        {
+          _Updating_Scroll = true;
+          Auto_Scroll_Check.Checked = true;
+          _Updating_Scroll = false;
+        }
+      }
+
       Chart_Panel.Invalidate ( );
     }
 
@@ -5091,7 +4851,7 @@ Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
         _Zoom_Factor = 1.0 + ( ( Slider_Value - 50 ) / 50.0 ) * 9.0;
       }
 
-      Block?.Trace ( $"Zoom slider value: {Slider_Value}, Zoom factor: {_Zoom_Factor:F2}x" );
+      Capture_Trace.Write ( $"Zoom slider value: {Slider_Value}, Zoom factor: {_Zoom_Factor:F2}x" );
 
       Chart_Panel.Invalidate ( );
     }
@@ -5327,12 +5087,13 @@ Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
         return;
 
       string Selected = Measurement_Combo.SelectedItem.ToString ( );
-      Block?.Trace ( $"Measurement changed to: {Selected}" );
+      Capture_Trace.Write ( $"Measurement changed to: {Selected}" );
+
       Show_Progress ( $"Measurement changed to: {Selected}", _Foreground_Color );
 
       if ( !_Comm.Is_Connected )
       {
-        Block?.Trace ( "Not connected, skipping configuration" );
+        Capture_Trace.Write ( "Not connected, skipping configuration" );
         return;
       }
 
@@ -5347,19 +5108,19 @@ Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
 
           if ( string.IsNullOrEmpty ( Command ) )
           {
-            Block?.Trace ( $"  {S.Name} has no command for {Selected}, skipping" );
+            Capture_Trace.Write ( $"  {S.Name} has no command for {Selected}, skipping" );
             continue;
           }
 
-          Block?.Trace ( $"Configuring {S.Type} {S.Name} @ {S.Address} with [{Command}]" );
+          Capture_Trace.Write ( $"Configuring {S.Type} {S.Name} @ {S.Address} with [{Command}]" );
           _Comm.Change_GPIB_Address ( S.Address );
           _Comm.Send_Instrument_Command ( Command );
           Thread.Sleep ( 50 );
-          Block?.Trace ( $"  {S.Name} configured successfully" );
+          Capture_Trace.Write ( $"  {S.Name} configured successfully" );
         }
         catch ( Exception Ex )
         {
-          Block?.Trace ( $"  ERROR configuring {S.Name}: {Ex.Message}" );
+          Capture_Trace.Write ( $"  ERROR configuring {S.Name}: {Ex.Message}" );
           MessageBox.Show (
               $"Error configuring {S.Name} for {Selected}:\n{Ex.Message}",
               "Configuration Error",
@@ -5367,28 +5128,90 @@ Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
               MessageBoxIcon.Warning );
         }
       }
-      Block?.Trace ( "All instruments configured" );
+      Capture_Trace.Write ( "All instruments configured" );
     }
 
     private void Update_Current_Values_Display ( )
     {
+      if ( Current_Values_Panel.Controls.Count == 0 )
+        return;
+
       foreach ( var S in _Series )
       {
+        int Consecutive = S.Consecutive_Errors;
+        int Total = S.Total_Errors;
+
+        var Value_Label = Current_Values_Panel.Controls [ $"Value_{S.Address}" ] as Label;
+        var Time_Label = Current_Values_Panel.Controls [ $"Time_{S.Address}" ] as Label;
+        var Error_Label = Current_Values_Panel.Controls [ $"Error_{S.Address}" ] as Label;
+
+        // --- Error label (always update, regardless of point count) ---
+        if ( Error_Label != null )
+        {
+          Capture_Trace.Write ( $"Errors      -> {Total}" );
+          Capture_Trace.Write ( $"Consecutive -> {Consecutive}" );
+
+          string Error_Text = $"Err:{Total:D3}";
+          Color Error_Color = Consecutive > 0 ? Color.Red : Color.Green;
+
+
+
+          if ( Error_Label.Text != Error_Text )
+            Error_Label.Text = Error_Text;
+          if ( Error_Label.ForeColor != Error_Color )
+            Error_Label.ForeColor = Error_Color;
+        }
+        else
+        {
+          Capture_Trace.Write ( $"Error_Label not found for address {S.Address}" );
+        }
+
         if ( S.Points.Count == 0 )
           continue;
 
-        double Latest = S.Points [ S.Points.Count - 1 ].Value;
-        string Display = Multimeter_Common_Helpers_Class.Format_Value (
-          Latest, Current_Unit, S.Type );
+        var Last_Point = S.Points [ S.Points.Count - 1 ];
+        double Latest = Last_Point.Value;
+        DateTime Timestamp = Last_Point.Time;
+        TimeSpan Age = DateTime.Now - Timestamp;
 
-        var Value_Label = Current_Values_Panel.Controls [ $"Value_{S.Address}" ] as Label;
+        string Display = Multimeter_Common_Helpers_Class.Format_Value (
+            Latest, Current_Unit, S.Type, S.Display_Digits );
+
+
+
         if ( Value_Label != null )
-          Value_Label.Text = Display;
+        {
+          Capture_Trace.Write ( $"Value_Label found - Display: '{Display}' Current_Unit: '{Current_Unit}'" );
+          if ( Value_Label.Text != Display )
+            Value_Label.Text = Display;
+          if ( Value_Label.ForeColor != Color.Green )
+            Value_Label.ForeColor = Color.Green;
+        }
+
+        if ( Time_Label != null )
+        {
+          bool Is_Stale = Age.TotalSeconds > _Settings.Stale_Data_Threshold_Seconds;
+          bool Has_Skew = Age.TotalSeconds > _Settings.Skew_Warning_Threshold_Seconds;
+
+          Color Target_Color = Is_Stale ? Color.Red
+                              : Has_Skew ? Color.Orange
+                              : Color.Green;
+
+          string Target_Text = $"[{Timestamp:HH:mm:ss.fff}]";
+
+          if ( Time_Label.Text != Target_Text )
+            Time_Label.Text = Target_Text;
+          if ( Time_Label.ForeColor != Target_Color )
+            Time_Label.ForeColor = Target_Color;
+        }
       }
+
+      Current_Values_Panel.Invalidate ( );
+      Current_Values_Panel.Update ( );  // forces immediate repaint rather than queuing
     }
 
 
-    private void Initialize_Current_Values_Display ( )
+    private void old_Initialize_Current_Values_Display ( )
     {
       Current_Values_Panel.Controls.Clear ( );
       Current_Values_Panel.BackColor = _Theme.Background;
@@ -5414,9 +5237,103 @@ Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
           Name = $"Name_{S.Address}",
           Text = S.Name,
           Location = new Point ( 22, Y ),
-          Size = new Size ( 160, 16 ),
+          Size = new Size ( 120, 16 ),   // narrowed to make room
           Font = new Font ( "Consolas", 7.5f ),
           ForeColor = _Theme.Labels,
+          AutoSize = false
+        };
+        var Time_Label = new Label
+        {
+          Name = $"Time_{S.Address}",
+          Text = "",
+          Location = new Point ( 145, Y ),   // sits right of name
+          Size = new Size ( 220, 16 ),
+          Font = new Font ( "Consolas", 7.5f ),
+          ForeColor = Color.Green,
+          AutoSize = false
+        };
+        var Value_Label = new Label
+        {
+          Name = $"Value_{S.Address}",
+          Text = "---",
+          Location = new Point ( 22, Y + 18 ),
+          Size = new Size ( 280, 20 ),
+          Font = new Font ( "Consolas", 8.5f, FontStyle.Bold ),
+          ForeColor = _Theme.Foreground,
+          AutoSize = false
+        };
+        var Error_Label = new Label
+        {
+          Name = $"Error_{S.Address}",
+          Text = string.Empty,
+          Location = new Point ( 22, Y + 38 ),   // third row, below value
+          Size = new Size ( 280, 16 ),
+          Font = new Font ( "Consolas", 7.5f ),
+          ForeColor = Color.Red,
+          AutoSize = false
+        };
+
+
+        Current_Values_Panel.Controls.Add ( Dot );
+        Current_Values_Panel.Controls.Add ( Name_Label );
+        Current_Values_Panel.Controls.Add ( Time_Label );
+        Current_Values_Panel.Controls.Add ( Value_Label );
+        Current_Values_Panel.Controls.Add ( Error_Label );
+
+        Y += 58;  // bump to fit three rows
+      }
+
+      Current_Values_Panel.ResumeLayout ( );
+    }
+
+    private void Initialize_Current_Values_Display ( )
+    {
+      Current_Values_Panel.Controls.Clear ( );
+      Current_Values_Panel.BackColor = _Theme.Background;
+      Current_Values_Panel.AutoScroll = true;
+      Current_Values_Panel.SuspendLayout ( );
+
+      int Y = 5;
+      foreach ( var S in _Series )
+      {
+        var Dot = new Label
+        {
+          Name = $"Dot_{S.Address}",
+          Text = "●",
+          Location = new Point ( 5, Y ),
+          Size = new Size ( 12, 18 ),
+          Font = new Font ( "Consolas", 8f ),
+          ForeColor = S.Line_Color,
+          AutoSize = false
+        };
+        var Name_Label = new Label
+        {
+          Name = $"Name_{S.Address}",
+          Text = $"{S.Name} @{S.Address}",   // combine name + address
+          Location = new Point ( 18, Y ),
+          Size = new Size ( 110, 18 ),
+          Font = new Font ( "Consolas", 7.5f ),
+          ForeColor = _Theme.Labels,
+          AutoSize = false
+        };
+        var Time_Label = new Label
+        {
+          Name = $"Time_{S.Address}",
+          Text = "",
+          Location = new Point ( 130, Y ),
+          Size = new Size ( 110, 18 ),
+          Font = new Font ( "Consolas", 7.5f ),
+          ForeColor = Color.Green,
+          AutoSize = false
+        };
+        var Error_Label = new Label
+        {
+          Name = $"Error_{S.Address}",
+          Text = "Err:000",
+          Location = new Point ( 242, Y ),
+          Size = new Size ( 65, 18 ),
+          Font = new Font ( "Consolas", 7.5f ),
+          ForeColor = Color.Green,
           AutoSize = false
         };
 
@@ -5424,18 +5341,20 @@ Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
         {
           Name = $"Value_{S.Address}",
           Text = "---",
-          Location = new Point ( 22, Y + 16 ),
-          Size = new Size ( 160, 16 ),
-          Font = new Font ( "Consolas", 8.5f, FontStyle.Bold ),
+          Location = new Point ( 18, Y + 20 ),
+          Size = new Size ( 290, 20 ),
+          Font = new Font ( "Consolas", 9f, FontStyle.Bold ),
           ForeColor = _Theme.Foreground,
           AutoSize = false
         };
 
         Current_Values_Panel.Controls.Add ( Dot );
         Current_Values_Panel.Controls.Add ( Name_Label );
+        Current_Values_Panel.Controls.Add ( Time_Label );
+        Current_Values_Panel.Controls.Add ( Error_Label );
         Current_Values_Panel.Controls.Add ( Value_Label );
 
-        Y += 38;
+        Y += 42;   // two rows: header row + value row
       }
 
       Current_Values_Panel.ResumeLayout ( );
@@ -5443,244 +5362,6 @@ Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
 
 
 
-    private void Draw_Histogram ( Graphics G,
-     int W, int H, int Margin_Left, int Margin_Right,
-     int Margin_Top, int Margin_Bottom,
-     int Chart_W, int Chart_H )
-    {
-      using var Block = Trace_Block.Start_If_Enabled ( );
-
-      int Count = _Readings.Count;
-      double Min_V = _Readings.Min ( );
-      double Max_V = _Readings.Max ( );
-      double Range = Max_V - Min_V;
-
-      int Num_Bins = Get_Bin_Count ( Count );
-
-      // Handle all-same-value case
-      if ( Range < 1e-12 )
-      {
-        Range = Math.Abs ( Max_V ) * 0.1;
-        if ( Range < 1e-12 )
-          Range = 1.0;
-        Min_V -= Range / 2;
-        Max_V += Range / 2;
-        Range = Max_V - Min_V;
-      }
-
-      double Bin_Width = Range / Num_Bins;
-
-      // Count readings per bin
-      int [ ] Bin_Counts = new int [ Num_Bins ];
-      foreach ( double V in _Readings )
-      {
-        int Bin = (int) ( ( V - Min_V ) / Bin_Width );
-        if ( Bin >= Num_Bins )
-          Bin = Num_Bins - 1;
-        if ( Bin < 0 )
-          Bin = 0;
-        Bin_Counts [ Bin ]++;
-      }
-
-      int Max_Count = Bin_Counts.Max ( );
-      if ( Max_Count == 0 )
-        Max_Count = 1;
-
-      // Pad Y range slightly
-      double Y_Max = Max_Count * 1.1;
-
-      // Draw grid and Y-axis labels (frequency)
-      using var Grid_Pen = new Pen ( _Theme.Grid, 1f );
-      using var Label_Font = new Font ( "Consolas", 7.5F );
-      using var Label_Brush =
-        new SolidBrush ( _Theme.Labels );
-
-      int Num_Grid_Lines = 5;
-      for ( int I = 0; I <= Num_Grid_Lines; I++ )
-      {
-        double Fraction = (double) I / Num_Grid_Lines;
-        int Y_Pos = H - Margin_Bottom -
-          (int) ( Fraction * Chart_H );
-
-        G.DrawLine ( Grid_Pen,
-          Margin_Left, Y_Pos,
-          W - Margin_Right, Y_Pos );
-
-        int Label_Val = (int) Math.Round (
-          Fraction * Y_Max );
-        string Label_Text = Label_Val.ToString ( );
-        var Label_Size = G.MeasureString (
-          Label_Text, Label_Font );
-        G.DrawString ( Label_Text, Label_Font,
-          Label_Brush,
-          Margin_Left - Label_Size.Width - 6,
-          Y_Pos - Label_Size.Height / 2 );
-      }
-
-      // Draw bars
-      float Bar_Spacing = Chart_W / (float) Num_Bins;
-      float Bar_W = Bar_Spacing * 0.8f;
-      float Gap = Bar_Spacing * 0.1f;
-
-      Color Bar_Color = _Theme.Line_Colors [ 0 ];
-      using var Bar_Brush = new SolidBrush ( Bar_Color );
-      using var Bar_Border_Pen = new Pen (
-        Color.FromArgb (
-          (int) ( Bar_Color.R * 0.7 ),
-          (int) ( Bar_Color.G * 0.7 ),
-          (int) ( Bar_Color.B * 0.7 ) ), 1f );
-
-      float Baseline = H - Margin_Bottom;
-
-      for ( int I = 0; I < Num_Bins; I++ )
-      {
-        float X = Margin_Left + I * Bar_Spacing + Gap;
-        float Bar_H = (float) (
-          ( Bin_Counts [ I ] / Y_Max ) * Chart_H );
-        if ( Bar_H < 1 && Bin_Counts [ I ] > 0 )
-          Bar_H = 1;
-
-        RectangleF Rect = new RectangleF (
-          X, Baseline - Bar_H, Bar_W, Bar_H );
-        G.FillRectangle ( Bar_Brush, Rect );
-        G.DrawRectangle ( Bar_Border_Pen,
-          Rect.X, Rect.Y, Rect.Width, Rect.Height );
-
-        // Frequency label above bar
-        if ( Bin_Counts [ I ] > 0 )
-        {
-          string Freq_Text = Bin_Counts [ I ].ToString ( );
-          var Freq_Size = G.MeasureString (
-            Freq_Text, Label_Font );
-          G.DrawString ( Freq_Text, Label_Font,
-            Label_Brush,
-            X + Bar_W / 2 - Freq_Size.Width / 2,
-            Baseline - Bar_H - Freq_Size.Height - 2 );
-        }
-      }
-
-      // Normal distribution curve overlay
-      double Mean = _Readings.Average ( );
-      double Sum_Sq = 0;
-      foreach ( double V in _Readings )
-      {
-        double D = V - Mean;
-        Sum_Sq += D * D;
-      }
-      double Std_Dev = Math.Sqrt ( Sum_Sq / Count );
-
-      if ( Std_Dev > 1e-15 )
-      {
-        Color Curve_Color = _Theme.Line_Colors [ 1 ];
-        using var Curve_Pen = new Pen (
-          Curve_Color, 2.5f );
-
-        int Num_Pts = 100;
-        PointF [ ] Curve_Pts = new PointF [ Num_Pts ];
-        double Scale = Bin_Width * Count;
-
-        for ( int I = 0; I < Num_Pts; I++ )
-        {
-          double X_Val = Min_V +
-            ( I / (double) ( Num_Pts - 1 ) ) * Range;
-          double Z = ( X_Val - Mean ) / Std_Dev;
-          double PDF = ( 1.0 / ( Std_Dev *
-            Math.Sqrt ( 2.0 * Math.PI ) ) ) *
-            Math.Exp ( -0.5 * Z * Z );
-          double Freq = PDF * Scale;
-
-          float Px = Margin_Left +
-            (float) ( ( X_Val - Min_V ) / Range *
-              Chart_W );
-          float Py = Baseline -
-            (float) ( ( Freq / Y_Max ) * Chart_H );
-
-          Curve_Pts [ I ] = new PointF ( Px, Py );
-        }
-
-        G.DrawLines ( Curve_Pen, Curve_Pts );
-
-        // Mean line (dashed)
-        Color Mean_Color = _Theme.Line_Colors [ 2 ];
-        using var Mean_Pen = new Pen (
-          Mean_Color, 2f );
-        Mean_Pen.DashStyle =
-          System.Drawing.Drawing2D.DashStyle.Dash;
-
-        float Mean_X = Margin_Left +
-          (float) ( ( Mean - Min_V ) / Range *
-            Chart_W );
-        G.DrawLine ( Mean_Pen, Mean_X, Margin_Top,
-          Mean_X, Baseline );
-
-        // Sigma lines
-        using var Sigma_Pen = new Pen (
-          Color.FromArgb ( 120, Mean_Color ), 1.5f );
-        Sigma_Pen.DashStyle =
-          System.Drawing.Drawing2D.DashStyle.Dot;
-
-        using var Sigma_Font =
-          new Font ( "Consolas", 7F );
-        using var Sigma_Brush =
-          new SolidBrush ( Mean_Color );
-
-        // Label for mean
-        G.DrawString ( "\u03bc", Sigma_Font,
-          Sigma_Brush,
-          Mean_X + 3, Margin_Top + 2 );
-
-        double [ ] Sigmas = { -2, -1, 1, 2 };
-        string [ ] Sigma_Labels =
-          { "-2\u03c3", "-1\u03c3",
-            "+1\u03c3", "+2\u03c3" };
-
-        for ( int I = 0; I < Sigmas.Length; I++ )
-        {
-          double Sv = Mean + Sigmas [ I ] * Std_Dev;
-          if ( Sv < Min_V || Sv > Max_V )
-            continue;
-
-          float Sx = Margin_Left +
-            (float) ( ( Sv - Min_V ) / Range *
-              Chart_W );
-          G.DrawLine ( Sigma_Pen, Sx, Margin_Top,
-            Sx, Baseline );
-          G.DrawString ( Sigma_Labels [ I ],
-            Sigma_Font, Sigma_Brush,
-            Sx + 3, Margin_Top + 2 );
-        }
-      }
-
-      // X-axis labels (bin center values)
-      using var X_Font = new Font ( "Consolas", 6.5F );
-      int Label_Step = Math.Max ( 1,
-        Num_Bins / 8 );
-
-      for ( int I = 0; I < Num_Bins; I += Label_Step )
-      {
-        double Bin_Center = Min_V +
-          ( I + 0.5 ) * Bin_Width;
-        string X_Label = Multimeter_Common_Helpers_Class.Format_Value (
-          Bin_Center, Current_Unit, _Selected_Meter );
-        var X_Size = G.MeasureString (
-          X_Label, X_Font );
-        float X_Pos = Margin_Left +
-          I * Bar_Spacing + Bar_Spacing / 2;
-        G.DrawString ( X_Label, X_Font, Label_Brush,
-          X_Pos - X_Size.Width / 2,
-          H - Margin_Bottom + 4 );
-      }
-
-      // Title label
-      using var Title_Font = new Font ( "Segoe UI", 7.5F );
-      string Title = $"Distribution  ({Count} readings)";
-      var Title_Size = G.MeasureString (
-        Title, Title_Font );
-      G.DrawString ( Title, Title_Font, Label_Brush,
-        Margin_Left + Chart_W / 2 -
-          Title_Size.Width / 2,
-        H - Margin_Bottom + 18 );
-    }
 
     private void Draw_Pie_Chart ( Graphics G,
       int W, int H, int Margin_Left, int Margin_Right,
@@ -5736,8 +5417,8 @@ Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
           double Bin_High = Bin_Low + Bin_Width_Temp;
           double Pct = 100.0 * Bin_Counts [ I ] / Count;
           string Entry_Text =
-            $"{Multimeter_Common_Helpers_Class.Format_Value ( Bin_Low, Current_Unit, _Selected_Meter )}" +
-            $" - {Multimeter_Common_Helpers_Class.Format_Value ( Bin_High, Current_Unit, _Selected_Meter )}" +
+            $"{Multimeter_Common_Helpers_Class.Format_Value ( Bin_Low, Current_Unit, _Selected_Meter, _Settings.Display_Digits )}" +
+            $" - {Multimeter_Common_Helpers_Class.Format_Value ( Bin_High, Current_Unit, _Selected_Meter, _Settings.Display_Digits )}" +
             $"  ({Pct:F1}%)";
           int Entry_W = (int) Temp_G.MeasureString ( Entry_Text, Temp_Font ).Width;
           if ( Entry_W > Legend_W )
@@ -5827,8 +5508,8 @@ Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
           double Pct = 100.0 * Bin_Counts [ I ] / Count;
 
           string Entry_Text =
-            $"{Multimeter_Common_Helpers_Class.Format_Value ( Bin_Low, Current_Unit, _Selected_Meter )}" +
-            $" - {Multimeter_Common_Helpers_Class.Format_Value ( Bin_High, Current_Unit, _Selected_Meter )}" +
+            $"{Multimeter_Common_Helpers_Class.Format_Value ( Bin_Low, Current_Unit, _Selected_Meter, _Settings.Display_Digits )}" +
+            $" - {Multimeter_Common_Helpers_Class.Format_Value ( Bin_High, Current_Unit, _Selected_Meter, _Settings.Display_Digits )}" +
             $"  ({Pct:F1}%)";
 
           G.DrawString ( Entry_Text, Legend_Font,
@@ -5845,7 +5526,7 @@ Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
 
     private void Draw_Line_Chart ( Graphics G,
       PointF [ ] Points, int Count, Pen Line_Pen,
-      Brush Dot_Brush, int Margin_Top, float Baseline )
+      Brush Dot_Brush, float Baseline )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
 
@@ -5863,7 +5544,7 @@ Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
         using var Fill_Brush =
           new System.Drawing.Drawing2D
             .LinearGradientBrush (
-              new PointF ( 0, Margin_Top ),
+              new PointF ( 0, _Chart_Margin_Top ),
               new PointF ( 0, Baseline ),
               Color.FromArgb ( 60,
                 Line_Pen.Color ),
@@ -5890,7 +5571,7 @@ Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
     }
 
     private void Draw_Bar_Chart ( Graphics G,
-      PointF [ ] Points, int Count, int Margin_Left,
+      PointF [ ] Points, int Count,
       int Chart_W, float Baseline )
     {
 
@@ -5950,7 +5631,7 @@ Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
 
     private void Draw_Step_Chart ( Graphics G,
       PointF [ ] Points, int Count, Pen Line_Pen,
-      int Margin_Top, float Baseline )
+       float Baseline )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
 
@@ -5988,7 +5669,7 @@ Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
       using var Fill_Brush =
         new System.Drawing.Drawing2D
           .LinearGradientBrush (
-            new PointF ( 0, Margin_Top ),
+            new PointF ( 0, _Chart_Margin_Top ),
             new PointF ( 0, Baseline ),
             Color.FromArgb ( 60,
               Line_Pen.Color ),
@@ -6029,83 +5710,6 @@ Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
         Math.Min ( 255, C.B + Shift ) );
     }
 
-    private void Draw_Grid_And_Axes ( Graphics G,
-  int W, int H, int Margin_Left, int Margin_Right,
-  int Margin_Top, int Margin_Bottom,
-  int Chart_W, int Chart_H,
-  double Min_V, double Max_V )
-    {
-      using var Block = Trace_Block.Start_If_Enabled ( );
-      using var Grid_Pen = new Pen ( _Theme.Grid, 1f );
-      using var Label_Brush = new SolidBrush ( _Theme.Labels );
-      using var Axis_Pen = new Pen ( _Theme.Separator, 1f );
-      using var Label_Font = new Font ( "Consolas", 7.5f );
-
-      float Baseline = H - Margin_Bottom;
-
-      // Horizontal grid lines and Y-axis labels
-      int Num_Grid_Lines = 5;
-      for ( int I = 0; I <= Num_Grid_Lines; I++ )
-      {
-        double Fraction = (double) I / Num_Grid_Lines;
-        int Y_Pos = H - Margin_Bottom - (int) ( Fraction * Chart_H );
-        double Y_Val = Min_V + Fraction * ( Max_V - Min_V );
-
-        G.DrawLine ( Grid_Pen,
-          Margin_Left, Y_Pos,
-          W - Margin_Right, Y_Pos );
-
-        string Y_Label = Multimeter_Common_Helpers_Class.Format_Value (
-          Y_Val, Current_Unit, _Selected_Meter );
-        var Label_Size = G.MeasureString ( Y_Label, Label_Font );
-        G.DrawString ( Y_Label, Label_Font, Label_Brush,
-          Margin_Left - Label_Size.Width - 4,
-          Y_Pos - Label_Size.Height / 2 );
-      }
-
-      // Vertical grid lines and X-axis time labels
-      int Num_V_Lines = 6;
-      for ( int I = 0; I <= Num_V_Lines; I++ )
-      {
-        int X_Pos = Margin_Left + (int) ( (double) I / Num_V_Lines * Chart_W );
-
-        G.DrawLine ( Grid_Pen,
-          X_Pos, Margin_Top,
-          X_Pos, Baseline );
-
-        // Time label from the series with most points
-        var Best_Series = _Series
-          .OrderByDescending ( s => s.Points.Count )
-          .FirstOrDefault ( );
-
-        if ( Best_Series != null && Best_Series.Points.Count >= 2 )
-        {
-          var (Start_Index, Visible_Count) = Multimeter_Common_Helpers_Class.Get_Visible_Range (
-            Best_Series.Points.Count, _Enable_Rolling,
-            _Max_Display_Points, _View_Offset );
-
-          int Actual_Count = Math.Min ( Visible_Count,
-            Best_Series.Points.Count - Start_Index );
-
-          if ( Actual_Count >= 2 )
-          {
-            int Pt_Index = Start_Index + (int) ( (double) I / Num_V_Lines * ( Actual_Count - 1 ) );
-            Pt_Index = Math.Clamp ( Pt_Index, 0, Best_Series.Points.Count - 1 );
-            DateTime Pt_Time = Best_Series.Points [ Pt_Index ].Time;
-            string X_Label = Pt_Time.ToString ( "HH:mm:ss" );
-            var X_Size = G.MeasureString ( X_Label, Label_Font );
-            G.DrawString ( X_Label, Label_Font, Label_Brush,
-              X_Pos - X_Size.Width / 2,
-              Baseline + 4 );
-          }
-        }
-      }
-
-      // Axis border
-      G.DrawRectangle ( Axis_Pen,
-        Margin_Left, Margin_Top,
-        Chart_W, Chart_H );
-    }
 
 
     private int Calculate_Y_Axis_Width ( Graphics G, double Min_V, double Max_V )
@@ -6119,7 +5723,7 @@ Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
         double Fraction = (double) I / Num_Grid_Lines;
         double Y_Val = Min_V + Fraction * ( Max_V - Min_V );
         string Y_Label = Multimeter_Common_Helpers_Class.Format_Value (
-          Y_Val, Current_Unit, _Selected_Meter );
+          Y_Val, Current_Unit, _Selected_Meter, _Settings.Display_Digits );
         float Label_W = G.MeasureString ( Y_Label, Measure_Font ).Width;
         if ( Label_W > Max_Label_Width )
           Max_Label_Width = Label_W;
@@ -6190,8 +5794,13 @@ Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
         new PointF ( 0, Sub_Bottom ),
         Fill_Top, Fill_Bottom );
       G.FillPolygon ( Fill_Brush, Fill_Points );
+
       // Line
-      using var Line_Pen = new Pen ( Line_Color, 2f );
+      Color Total_Line_Color = _Theme.Background.GetBrightness ( ) > 0.5f
+    ? Color.DodgerBlue      // dark line on light theme
+    : Color.White;          // white line on dark theme
+      using var Line_Pen = new Pen ( Total_Line_Color, 2f );
+
       G.DrawLines ( Line_Pen, SP );
     }
 
@@ -6232,20 +5841,22 @@ Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
     }
 
     private void Draw_Subplot_Histogram (
-    Graphics G,
-    List<(DateTime Time, double Value)> Raw_Points,
-    Color Line_Color,
-    int Margin_Left,
-    int Chart_W,
-    int Sub_Bottom,
-    int Label_Top,
-    double Display_Min,
-    double Display_Range )
+       Graphics G,
+       List<(DateTime Time, double Value)> Raw_Points,
+       Color Line_Color,
+       int W,
+       int Sub_Bottom,
+       int Label_Top,
+       double Display_Min,
+       double Display_Range )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
       int Count = Raw_Points.Count;
       if ( Count == 0 )
         return;
+
+      int Chart_W = W - _Chart_Margin_Left - _Chart_Margin_Right;
+      int Plot_H = Sub_Bottom - Label_Top;
 
       List<double> Values = Raw_Points.Select ( P => P.Value ).ToList ( );
       double Min_V = Values.Min ( );
@@ -6264,47 +5875,39 @@ Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
       }
 
       double Bin_Width = Range / Num_Bins;
-
       int [ ] Bin_Counts = new int [ Num_Bins ];
       foreach ( double V in Values )
       {
-        int Bin = (int) ( ( V - Min_V ) / Bin_Width );
-        Bin = Math.Clamp ( Bin, 0, Num_Bins - 1 );
+        int Bin = Math.Clamp ( (int) ( ( V - Min_V ) / Bin_Width ), 0, Num_Bins - 1 );
         Bin_Counts [ Bin ]++;
       }
 
       int Max_Count = Math.Max ( 1, Bin_Counts.Max ( ) );
       double Y_Max = Max_Count * 1.1;
-      int Plot_H = Sub_Bottom - Label_Top;
 
       using var Grid_Pen = new Pen ( _Theme.Grid, 1f );
       using var Label_Font = new Font ( "Consolas", 7.5F );
       using var Label_Brush = new SolidBrush ( _Theme.Labels );
 
-      // Y-axis grid lines
       int Num_Grid = 5;
       for ( int I = 0; I <= Num_Grid; I++ )
       {
         double Fraction = (double) I / Num_Grid;
         int Y_Pos = Sub_Bottom - (int) ( Fraction * Plot_H );
-        G.DrawLine ( Grid_Pen, Margin_Left, Y_Pos,
-          Margin_Left + Chart_W, Y_Pos );
-        int Label_Val = (int) Math.Round ( Fraction * Y_Max );
-        string Label_Text = Label_Val.ToString ( );
-        var Label_Size = G.MeasureString ( Label_Text, Label_Font );
-        G.DrawString ( Label_Text, Label_Font, Label_Brush,
-          Margin_Left - Label_Size.Width - 6,
-          Y_Pos - Label_Size.Height / 2 );
+        G.DrawLine ( Grid_Pen, _Chart_Margin_Left, Y_Pos, _Chart_Margin_Left + Chart_W, Y_Pos );
+        string Label = ( (int) Math.Round ( Fraction * Y_Max ) ).ToString ( );
+        var Label_Size = G.MeasureString ( Label, Label_Font );
+        G.DrawString ( Label, Label_Font, Label_Brush,
+            _Chart_Margin_Left - Label_Size.Width - 6,
+            Y_Pos - Label_Size.Height / 2 );
       }
 
-      // Bars
       float Bar_Spacing = Chart_W / (float) Num_Bins;
       float Bar_W = Bar_Spacing * 0.8f;
       float Gap = Bar_Spacing * 0.1f;
 
       using var Bar_Brush = new SolidBrush ( Line_Color );
-      using var Bar_Border_Pen = new Pen (
-        Color.FromArgb (
+      using var Bar_Border_Pen = new Pen ( Color.FromArgb (
           (int) ( Line_Color.R * 0.7 ),
           (int) ( Line_Color.G * 0.7 ),
           (int) ( Line_Color.B * 0.7 ) ), 1f );
@@ -6317,119 +5920,90 @@ Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
         if ( Bar_H < 1f )
           continue;
 
-        float X = Margin_Left + I * Bar_Spacing + Gap;
+        float X = _Chart_Margin_Left + I * Bar_Spacing + Gap;
         float Y = Sub_Bottom - Bar_H;
         RectangleF Rect = new ( X, Y, Bar_W, Bar_H );
         G.FillRectangle ( Bar_Brush, Rect );
-        G.DrawRectangle ( Bar_Border_Pen,
-          Rect.X, Rect.Y, Rect.Width, Rect.Height );
+        G.DrawRectangle ( Bar_Border_Pen, Rect.X, Rect.Y, Rect.Width, Rect.Height );
 
-        // Count label above bar
         if ( Bin_Counts [ I ] > 0 )
         {
           string Freq_Text = Bin_Counts [ I ].ToString ( );
           var Freq_Size = G.MeasureString ( Freq_Text, Label_Font );
           G.DrawString ( Freq_Text, Label_Font, Label_Brush,
-            X + Bar_W / 2 - Freq_Size.Width / 2,
-            Y - Freq_Size.Height - 2 );
+              X + Bar_W / 2 - Freq_Size.Width / 2,
+              Y - Freq_Size.Height - 2 );
         }
       }
 
-      // Bell curve overlay
       double Mean = Values.Average ( );
       double Sum_Sq = Values.Sum ( V => ( V - Mean ) * ( V - Mean ) );
       double Std_Dev = Math.Sqrt ( Sum_Sq / Count );
 
       if ( Std_Dev > 1e-15 )
       {
-        Color Curve_Color = _Theme.Line_Colors [
-          1 % _Theme.Line_Colors.Length ];
-        using var Curve_Pen = new Pen ( Curve_Color, 2.5f );
-
+        using var Curve_Pen = new Pen ( _Theme.Line_Colors [ 1 % _Theme.Line_Colors.Length ], 2.5f );
         int Num_Pts = 100;
         PointF [ ] Curve_Pts = new PointF [ Num_Pts ];
         double Scale = Bin_Width * Count;
 
         for ( int I = 0; I < Num_Pts; I++ )
         {
-          double X_Val = Min_V +
-            ( I / (double) ( Num_Pts - 1 ) ) * Range;
+          double X_Val = Min_V + ( I / (double) ( Num_Pts - 1 ) ) * Range;
           double Z = ( X_Val - Mean ) / Std_Dev;
-          double PDF = ( 1.0 / ( Std_Dev *
-            Math.Sqrt ( 2.0 * Math.PI ) ) ) *
-            Math.Exp ( -0.5 * Z * Z );
-          double Freq = PDF * Scale;
-
-          float Px = Margin_Left +
-            (float) ( ( X_Val - Min_V ) / Range * Chart_W );
-          float Py = Sub_Bottom -
-            (float) ( ( Freq / Y_Max ) * Plot_H );
-
+          double PDF = ( 1.0 / ( Std_Dev * Math.Sqrt ( 2.0 * Math.PI ) ) ) * Math.Exp ( -0.5 * Z * Z );
+          float Px = _Chart_Margin_Left + (float) ( ( X_Val - Min_V ) / Range * Chart_W );
+          float Py = Sub_Bottom - (float) ( ( PDF * Scale / Y_Max ) * Plot_H );
           Curve_Pts [ I ] = new PointF ( Px, Py );
         }
         G.DrawLines ( Curve_Pen, Curve_Pts );
 
-        // Mean line
-        Color Mean_Color = _Theme.Line_Colors [
-          2 % _Theme.Line_Colors.Length ];
+        Color Mean_Color = _Theme.Line_Colors [ 2 % _Theme.Line_Colors.Length ];
         using var Mean_Pen = new Pen ( Mean_Color, 2f );
-        Mean_Pen.DashStyle =
-          System.Drawing.Drawing2D.DashStyle.Dash;
-        float Mean_X = Margin_Left +
-          (float) ( ( Mean - Min_V ) / Range * Chart_W );
+        Mean_Pen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dash;
+        float Mean_X = _Chart_Margin_Left + (float) ( ( Mean - Min_V ) / Range * Chart_W );
         G.DrawLine ( Mean_Pen, Mean_X, Label_Top, Mean_X, Sub_Bottom );
 
-        // Sigma lines
-        using var Sigma_Pen = new Pen (
-          Color.FromArgb ( 120, Mean_Color ), 1.5f );
-        Sigma_Pen.DashStyle =
-          System.Drawing.Drawing2D.DashStyle.Dot;
+        using var Sigma_Pen = new Pen ( Color.FromArgb ( 120, Mean_Color ), 1.5f );
         using var Sigma_Font = new Font ( "Consolas", 7F );
         using var Sigma_Brush = new SolidBrush ( Mean_Color );
+        Sigma_Pen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dot;
 
-        G.DrawString ( "\u03bc", Sigma_Font, Sigma_Brush,
-          Mean_X + 3, Label_Top + 2 );
+        G.DrawString ( "\u03bc", Sigma_Font, Sigma_Brush, Mean_X + 3, Label_Top + 2 );
 
         double [ ] Sigmas = { -2, -1, 1, 2 };
-        string [ ] Sigma_Labels =
-          { "-2\u03c3", "-1\u03c3", "+1\u03c3", "+2\u03c3" };
+        string [ ] Sigma_Labels = { "-2\u03c3", "-1\u03c3", "+1\u03c3", "+2\u03c3" };
 
         for ( int I = 0; I < Sigmas.Length; I++ )
         {
           double Sv = Mean + Sigmas [ I ] * Std_Dev;
           if ( Sv < Min_V || Sv > Max_V )
             continue;
-          float Sx = Margin_Left +
-            (float) ( ( Sv - Min_V ) / Range * Chart_W );
+          float Sx = _Chart_Margin_Left + (float) ( ( Sv - Min_V ) / Range * Chart_W );
           G.DrawLine ( Sigma_Pen, Sx, Label_Top, Sx, Sub_Bottom );
-          G.DrawString ( Sigma_Labels [ I ], Sigma_Font,
-            Sigma_Brush, Sx + 3, Label_Top + 2 );
+          G.DrawString ( Sigma_Labels [ I ], Sigma_Font, Sigma_Brush, Sx + 3, Label_Top + 2 );
         }
       }
 
-      // X-axis bin labels
       using var X_Font = new Font ( "Consolas", 6.5F );
       int Label_Step = Math.Max ( 1, Num_Bins / 8 );
       for ( int I = 0; I < Num_Bins; I += Label_Step )
       {
         double Bin_Center = Min_V + ( I + 0.5 ) * Bin_Width;
         string X_Label = Multimeter_Common_Helpers_Class.Format_Value (
-          Bin_Center, Current_Unit, _Selected_Meter );
+            Bin_Center, Current_Unit, _Selected_Meter, _Settings.Display_Digits );
         var X_Size = G.MeasureString ( X_Label, X_Font );
-        float X_Pos = Margin_Left +
-          I * Bar_Spacing + Bar_Spacing / 2;
+        float X_Pos = _Chart_Margin_Left + I * Bar_Spacing + Bar_Spacing / 2;
         G.DrawString ( X_Label, X_Font, Label_Brush,
-          X_Pos - X_Size.Width / 2,
-          Sub_Bottom + 4 );
+            X_Pos - X_Size.Width / 2, Sub_Bottom + 4 );
       }
 
-      // Footer
       using var Title_Font = new Font ( "Segoe UI", 7.5F );
       string Title = $"Distribution  ({Count} readings)";
       var Title_Size = G.MeasureString ( Title, Title_Font );
       G.DrawString ( Title, Title_Font, Label_Brush,
-        Margin_Left + Chart_W / 2 - Title_Size.Width / 2,
-        Sub_Bottom + 18 );
+          _Chart_Margin_Left + Chart_W / 2 - Title_Size.Width / 2,
+          Sub_Bottom + 18 );
     }
 
     private void Delay_Numeric_ValueChanged ( object sender, EventArgs e )
@@ -6441,7 +6015,1379 @@ Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
 
     private void NPLC_Delay_Textbox_TextChanged ( object sender, EventArgs e )
     {
+
+      using var Block = Trace_Block.Start_If_Enabled ( );
       Update_Settle_Display ( );
+    }
+
+
+
+
+
+
+    private void Flush_Comm ( )
+    {
+      try
+      {
+        _Comm.Send_Prologix_Command ( "++clr" );
+        Thread.Sleep ( 100 );
+        _Comm.Send_Prologix_Command ( "++auto 0" );
+        Thread.Sleep ( 100 );
+      }
+      catch ( Exception Ex )
+      {
+        Capture_Trace.Write ( $"Flush error: {Ex.Message}" );
+      }
+    }
+
+    private void Flush_Serial_Port ( )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
+      try
+      {
+        if ( _Comm.Is_Connected )
+        {
+          _Comm.Discard_IO_Buffers ( );
+
+          Thread.Sleep ( 200 );
+          // Send a device clear to unstick the instrument
+          _Comm.Send_Prologix_Command ( "++clr" );
+          Thread.Sleep ( 100 );
+        }
+      }
+      catch { /* ignore errors during flush */ }
+    }
+
+
+    private void Reopen_Serial_Port ( int GPIB_Address )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
+      try
+      {
+        if ( _Comm.Is_Connected )
+        {
+          _Comm.Disconnect ( );
+          Thread.Sleep ( 500 );
+        }
+        _Comm.Connect ( );
+        Thread.Sleep ( 200 );
+        // Re-init Prologix after reopen
+        _Comm.Send_Prologix_Command ( "++mode 1" );
+        _Comm.Send_Prologix_Command ( "++savecfg 0" );  // ← add here too
+        _Comm.Send_Prologix_Command ( "++auto 0" );
+        _Comm.Send_Prologix_Command ( $"++addr {GPIB_Address}" );
+        Thread.Sleep ( 100 );
+      }
+      catch ( Exception Ex )
+      {
+        Capture_Trace.Write ( $"Port reopen failed: {Ex.Message}" );
+      }
+    }
+
+    public static string Format_Digits ( double Value, int Digits )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
+      if ( Value == 0 || Math.Abs ( Value ) < 1e-15 )
+        return "0." + new string ( '0', Digits - 1 );
+
+      double Abs = Math.Abs ( Value );
+
+      // Use scientific notation for very small or very large values
+      if ( Abs < 0.001 || Abs >= 1e12 )
+        return Value.ToString ( $"G8" );
+
+      int Integer_Digits = (int) Math.Floor ( Math.Log10 ( Abs ) ) + 1;
+      int Decimal_Places = Math.Max ( 0, Digits - Integer_Digits );
+      return Value.ToString ( $"F{Decimal_Places}" );
+    }
+
+
+
+
+
+
+
+    private async Task<int> Switch_GPIB_Address ( int Address, CancellationToken Token )
+    {
+      Capture_Trace.Write ( $"║  Switching to GPIB address {Address}" );
+      await Task.Run ( ( ) => _Comm.Change_GPIB_Address ( Address ), Token );
+      await Task.Delay ( 50, Token );
+      await Task.Run ( ( ) => _Comm.Send_Prologix_Command ( "++auto 0" ), Token );
+      await Task.Delay ( 50, Token );
+      return Address;
+    }
+
+
+    private void Write_Recording_Row ( )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
+      if ( !_Is_Recording )
+        return;
+
+      string Timestamp = DateTime.Now.ToString ( "yyyy-MM-dd HH:mm:ss.fff" );
+
+      // ── Instrument data (existing) ────────────────────────────────────
+      if ( _Recording_Writer != null )
+      {
+        var Values = _Series.Select ( S =>
+            S.Points.Count > 0
+                ? S.Points [ S.Points.Count - 1 ].Value.ToString ( "G10" )
+                : "" );
+        _Recording_Writer.WriteLine ( $"{Timestamp},{string.Join ( ",", Values )}" );
+      }
+
+      // ── Timing data (new) ─────────────────────────────────────────────
+      if ( _Timing_Writer != null )
+      {
+        // Read latest sample from ring buffer
+        if ( _Timing_Count > 0 )
+        {
+          int Idx = ( _Timing_Head - 1 + _Timing_Buffer_Size ) % _Timing_Buffer_Size;
+          var S = _Cycle_Timing [ Idx ];
+          _Timing_Writer.WriteLine (
+              $"{Timestamp}," +
+              $"{_Cycle_Count}," +
+              $"{S.Total_Ms:F1}," +
+              $"{S.Comm_Ms:F1}," +
+              $"{S.Address_Switch_Ms:F1}," +
+              $"{S.UI_Ms:F1}," +
+              $"{S.Record_Ms:F1}," +
+              $"{( S.Had_Error ? "1" : "0" )}" );
+        }
+      }
+
+      // ── Periodic flush (both files) ───────────────────────────────────
+      if ( _Cycle_Count % 100 == 0 )
+      {
+        _Recording_Writer?.FlushAsync ( );
+        _Timing_Writer?.FlushAsync ( );
+      }
+
+      Multimeter_Common_Helpers_Class.Check_Memory_Limit (
+          _Settings,
+          ( ) => _Series.Sum ( S => S.Points.Count ),
+          ( ) => this.Invoke ( Stop_Recording ),
+          ( Current, Max ) => this.Invoke ( ( ) => Show_Memory_Warning ( Current, Max ) ),
+          ref _Memory_Warning_Shown );
+    }
+
+
+    // ─── Logging Helpers ──────────────────────────────────────────────────────────
+
+    private void Log_Cycle_Header ( int Cycle_Count )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
+      Capture_Trace.Write ( $"" );
+      Capture_Trace.Write ( $"╔═══════════════════════════════════════╗" );
+      Capture_Trace.Write ( $"║  CYCLE {Cycle_Count}" );
+      Capture_Trace.Write ( $"╠═══════════════════════════════════════╣" );
+    }
+
+    private void Log_Cycle_Footer ( )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
+      Capture_Trace.Write ( $"╚═══════════════════════════════════════╝" );
+    }
+
+
+
+    private void Restore_GPIB_Address ( int Address )
+    {
+      try
+      {
+        _Comm.Change_GPIB_Address ( Address );
+      }
+      catch { }
+    }
+
+
+
+    private void Draw_Grid_And_Axes ( Graphics G, int W, int H, double Min_V, double Max_V )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+      int Chart_W = W - _Chart_Margin_Left - _Chart_Margin_Right;
+      int Chart_H = H - _Chart_Margin_Top - _Chart_Margin_Bottom;
+
+      using var Grid_Pen = new Pen ( _Theme.Grid, 1f );
+      using var Label_Brush = new SolidBrush ( _Theme.Labels );
+      using var Axis_Pen = new Pen ( _Theme.Separator, 1f );
+      using var Label_Font = new Font ( "Consolas", 7.5f );
+
+      float Baseline = H - _Chart_Margin_Bottom;
+
+      int Num_Grid_Lines = 5;
+      for ( int I = 0; I <= Num_Grid_Lines; I++ )
+      {
+        double Fraction = (double) I / Num_Grid_Lines;
+        int Y_Pos = H - _Chart_Margin_Bottom - (int) ( Fraction * Chart_H );
+        double Y_Val = Min_V + Fraction * ( Max_V - Min_V );
+
+        G.DrawLine ( Grid_Pen, _Chart_Margin_Left, Y_Pos, W - _Chart_Margin_Right, Y_Pos );
+
+        string Y_Label = Multimeter_Common_Helpers_Class.Format_Value (
+            Y_Val, Current_Unit, _Selected_Meter, _Settings.Display_Digits );
+        var Label_Size = G.MeasureString ( Y_Label, Label_Font );
+        G.DrawString ( Y_Label, Label_Font, Label_Brush,
+            _Chart_Margin_Left - Label_Size.Width - 4,
+            Y_Pos - Label_Size.Height / 2 );
+      }
+
+      int Num_V_Lines = 6;
+      for ( int I = 0; I <= Num_V_Lines; I++ )
+      {
+        int X_Pos = _Chart_Margin_Left + (int) ( (double) I / Num_V_Lines * Chart_W );
+
+        G.DrawLine ( Grid_Pen, X_Pos, _Chart_Margin_Top, X_Pos, Baseline );
+
+        var Best_Series = _Series
+            .OrderByDescending ( s => s.Points.Count )
+            .FirstOrDefault ( );
+
+        if ( Best_Series != null && Best_Series.Points.Count >= 2 )
+        {
+          var (Start_Index, Visible_Count) = Multimeter_Common_Helpers_Class.Get_Visible_Range (
+              Best_Series.Points.Count, _Enable_Rolling, _Max_Display_Points, _View_Offset );
+
+          int Actual_Count = Math.Min ( Visible_Count, Best_Series.Points.Count - Start_Index );
+
+          if ( Actual_Count >= 2 )
+          {
+            int Pt_Index = Start_Index + (int) ( (double) I / Num_V_Lines * ( Actual_Count - 1 ) );
+            Pt_Index = Math.Clamp ( Pt_Index, 0, Best_Series.Points.Count - 1 );
+            DateTime Pt_Time = Best_Series.Points [ Pt_Index ].Time;
+            string X_Label = Pt_Time.ToString ( "HH:mm:ss" );
+            var X_Size = G.MeasureString ( X_Label, Label_Font );
+            G.DrawString ( X_Label, Label_Font, Label_Brush,
+                X_Pos - X_Size.Width / 2, Baseline + 4 );
+          }
+        }
+      }
+
+      G.DrawRectangle ( Axis_Pen, _Chart_Margin_Left, _Chart_Margin_Top, Chart_W, Chart_H );
+    }
+
+
+    private void Draw_Y_Axis_Percentage ( Graphics G, int W, int H,
+        Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+      int Chart_H = H - _Chart_Margin_Top - _Chart_Margin_Bottom;
+
+      for ( int I = 0; I <= 4; I++ )
+      {
+        float Y_Ratio = I / 4f;
+        float Y = H - _Chart_Margin_Bottom - ( Y_Ratio * Chart_H );
+
+        G.DrawLine ( Grid_Pen, _Chart_Margin_Left, Y, W - _Chart_Margin_Right, Y );
+
+        string Label = $"{I * 25}%";
+        SizeF Label_Size = G.MeasureString ( Label, Label_Font );
+        G.DrawString ( Label, Label_Font, Label_Brush,
+            _Chart_Margin_Left - Label_Size.Width - 5,
+            Y - Label_Size.Height / 2 );
+      }
+    }
+
+
+    private void Draw_Combined_Scatter ( Graphics G, int W, int H,
+        DateTime Time_Min, double Time_Range_Sec,
+        Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+      int Chart_W = W - _Chart_Margin_Left - _Chart_Margin_Right;
+      int Chart_H = H - _Chart_Margin_Top - _Chart_Margin_Bottom;
+
+      double Global_Min = double.MaxValue;
+      double Global_Max = double.MinValue;
+
+      foreach ( var S in _Series.Where ( s => s.Visible && s.Points.Count > 0 ) )
+      {
+        var (Start_Index, Visible_Count) = Multimeter_Common_Helpers_Class.Get_Visible_Range (
+            S.Points.Count, _Enable_Rolling, _Max_Display_Points, _View_Offset );
+        if ( Visible_Count == 0 )
+          continue;
+        for ( int I = Start_Index; I < Start_Index + Visible_Count; I++ )
+        {
+          if ( S.Points [ I ].Value < Global_Min )
+            Global_Min = S.Points [ I ].Value;
+          if ( S.Points [ I ].Value > Global_Max )
+            Global_Max = S.Points [ I ].Value;
+        }
+      }
+
+      if ( Global_Min == double.MaxValue )
+        return;
+
+      double Range = Global_Max - Global_Min;
+      double Padding = Math.Max ( Range * 0.5, 0.0001 );
+      double Display_Min = Global_Min - Padding;
+      double Display_Max = Global_Max + Padding;
+      double Display_Range = Display_Max - Display_Min;
+      if ( Display_Range == 0 )
+        Display_Range = 0.001;
+
+      Draw_Y_Axis ( G, Display_Min, Display_Range, W, H, Grid_Pen, Label_Font, Label_Brush );
+
+      int Color_Index = 0;
+      foreach ( var S in _Series )
+      {
+        if ( !S.Visible || S.Points.Count == 0 )
+        {
+          Color_Index++;
+          continue;
+        }
+
+        Color Line_Color = _Theme.Line_Colors [ Color_Index % _Theme.Line_Colors.Length ];
+
+        var (Start_Index, Visible_Count) = Multimeter_Common_Helpers_Class.Get_Visible_Range (
+            S.Points.Count, _Enable_Rolling, _Max_Display_Points, _View_Offset );
+        if ( Visible_Count == 0 )
+        {
+          Color_Index++;
+          continue;
+        }
+
+        DateTime Visible_Time_Min = S.Points [ Start_Index ].Time;
+        DateTime Visible_Time_Max = S.Points [ Start_Index + Visible_Count - 1 ].Time;
+        double Visible_Time_Range = Math.Max (
+            ( Visible_Time_Max - Visible_Time_Min ).TotalSeconds, 0.001 );
+
+        float Dot_Size = Visible_Count > 100 ? 5f : Visible_Count > 50 ? 7f : 9f;
+
+        using var Dot_Brush = new SolidBrush ( Line_Color );
+        using var Ring_Pen = new Pen ( Line_Color, 1.5f );
+
+        for ( int I = 0; I < Visible_Count; I++ )
+        {
+          var P = S.Points [ Start_Index + I ];
+          float X = _Chart_Margin_Left + (float) (
+              ( P.Time - Visible_Time_Min ).TotalSeconds / Visible_Time_Range * Chart_W );
+          double Y_Norm = ( P.Value - Display_Min ) / Display_Range;
+          float Y = H - _Chart_Margin_Bottom - (float) ( Y_Norm * Chart_H );
+
+          G.FillEllipse ( Dot_Brush, X - Dot_Size / 2, Y - Dot_Size / 2, Dot_Size, Dot_Size );
+          G.DrawEllipse ( Ring_Pen,
+              X - Dot_Size / 2 - 1, Y - Dot_Size / 2 - 1,
+              Dot_Size + 2, Dot_Size + 2 );
+        }
+
+        Color_Index++;
+      }
+    }
+
+
+    private void Draw_Combined_Step ( Graphics G, int W, int H,
+        DateTime Time_Min, double Time_Range_Sec,
+        Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+      int Chart_W = W - _Chart_Margin_Left - _Chart_Margin_Right;
+      int Chart_H = H - _Chart_Margin_Top - _Chart_Margin_Bottom;
+
+      double Global_Min = double.MaxValue;
+      double Global_Max = double.MinValue;
+
+      foreach ( var S in _Series.Where ( s => s.Visible && s.Points.Count > 0 ) )
+      {
+        var (Start_Index, Visible_Count) = Multimeter_Common_Helpers_Class.Get_Visible_Range (
+            S.Points.Count, _Enable_Rolling, _Max_Display_Points, _View_Offset );
+        if ( Visible_Count == 0 )
+          continue;
+        for ( int I = Start_Index; I < Start_Index + Visible_Count; I++ )
+        {
+          if ( S.Points [ I ].Value < Global_Min )
+            Global_Min = S.Points [ I ].Value;
+          if ( S.Points [ I ].Value > Global_Max )
+            Global_Max = S.Points [ I ].Value;
+        }
+      }
+
+      if ( Global_Min == double.MaxValue )
+        return;
+
+      double Range = Global_Max - Global_Min;
+      double Padding = Math.Max ( Range * 0.5, 0.0001 );
+      double Display_Min = Global_Min - Padding;
+      double Display_Max = Global_Max + Padding;
+      double Display_Range = Display_Max - Display_Min;
+      if ( Display_Range == 0 )
+        Display_Range = 0.001;
+
+      Draw_Y_Axis ( G, Display_Min, Display_Range, W, H, Grid_Pen, Label_Font, Label_Brush );
+
+      int Color_Index = 0;
+      foreach ( var S in _Series )
+      {
+        if ( !S.Visible || S.Points.Count == 0 )
+        {
+          Color_Index++;
+          continue;
+        }
+
+        Color Line_Color = _Theme.Line_Colors [ Color_Index % _Theme.Line_Colors.Length ];
+
+        var (Start_Index, Visible_Count) = Multimeter_Common_Helpers_Class.Get_Visible_Range (
+            S.Points.Count, _Enable_Rolling, _Max_Display_Points, _View_Offset );
+        if ( Visible_Count == 0 )
+        {
+          Color_Index++;
+          continue;
+        }
+
+        DateTime Visible_Time_Min = S.Points [ Start_Index ].Time;
+        DateTime Visible_Time_Max = S.Points [ Start_Index + Visible_Count - 1 ].Time;
+        double Visible_Time_Range = Math.Max (
+            ( Visible_Time_Max - Visible_Time_Min ).TotalSeconds, 0.001 );
+
+        var Step_Points = new List<PointF> ( );
+
+        for ( int I = 0; I < Visible_Count; I++ )
+        {
+          var P = S.Points [ Start_Index + I ];
+          float X = _Chart_Margin_Left + (float) (
+              ( P.Time - Visible_Time_Min ).TotalSeconds / Visible_Time_Range * Chart_W );
+          double Y_Norm = ( P.Value - Display_Min ) / Display_Range;
+          float Y = H - _Chart_Margin_Bottom - (float) ( Y_Norm * Chart_H );
+
+          if ( I > 0 )
+            Step_Points.Add ( new PointF ( X, Step_Points [ Step_Points.Count - 1 ].Y ) );
+          Step_Points.Add ( new PointF ( X, Y ) );
+        }
+
+        if ( Step_Points.Count > 1 )
+        {
+          using var Line_Pen = new Pen ( Line_Color, 1.5f );
+          G.DrawLines ( Line_Pen, Step_Points.ToArray ( ) );
+        }
+
+        Color_Index++;
+      }
+    }
+
+
+    private void Draw_Combined_Normalized ( Graphics G, int W, int H,
+        DateTime Time_Min, double Time_Range_Sec,
+        Pen Grid_Pen, Font Label_Font, Brush Label_Brush )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+      int Chart_W = W - _Chart_Margin_Left - _Chart_Margin_Right;
+      int Chart_H = H - _Chart_Margin_Top - _Chart_Margin_Bottom;
+
+      Draw_Y_Axis_Percentage ( G, W, H, Grid_Pen, Label_Font, Label_Brush );
+
+      int Color_Index = 0;
+      foreach ( var S in _Series )
+      {
+        if ( !S.Visible || S.Points.Count == 0 )
+        {
+          Color_Index++;
+          continue;
+        }
+
+        var (Start_Index, Visible_Count) = Multimeter_Common_Helpers_Class.Get_Visible_Range (
+            S.Points.Count, _Enable_Rolling, _Max_Display_Points, _View_Offset );
+        if ( Visible_Count == 0 )
+        {
+          Color_Index++;
+          continue;
+        }
+
+        double Series_Min = double.MaxValue;
+        double Series_Max = double.MinValue;
+        for ( int I = Start_Index; I < Start_Index + Visible_Count; I++ )
+        {
+          if ( S.Points [ I ].Value < Series_Min )
+            Series_Min = S.Points [ I ].Value;
+          if ( S.Points [ I ].Value > Series_Max )
+            Series_Max = S.Points [ I ].Value;
+        }
+        double Series_Range = Series_Max - Series_Min;
+
+        Color Line_Color = _Theme.Line_Colors [ Color_Index % _Theme.Line_Colors.Length ];
+
+        using var Line_Pen = new Pen ( Line_Color, 1.5f );
+        var Points = new List<PointF> ( Visible_Count );
+
+        for ( int I = Start_Index; I < Start_Index + Visible_Count; I++ )
+        {
+          var Pt = S.Points [ I ];
+          double Elapsed_Sec = ( Pt.Time - Time_Min ).TotalSeconds;
+          float X = _Chart_Margin_Left + (float) ( Elapsed_Sec / Time_Range_Sec * Chart_W );
+          double Normalized = Series_Range > 0 ? ( Pt.Value - Series_Min ) / Series_Range : 0.5;
+          float Y = H - _Chart_Margin_Bottom - (float) ( Normalized * Chart_H );
+          Points.Add ( new PointF ( X, Y ) );
+        }
+
+        if ( Points.Count > 1 )
+          G.DrawLines ( Line_Pen, Points.ToArray ( ) );
+
+        using var Value_Brush = new SolidBrush ( Color.FromArgb ( 180, Line_Color ) );
+
+        string Top_Label = Format_Axis_Value ( Series_Max );
+        float Top_Y = H - _Chart_Margin_Bottom - Chart_H;
+        G.DrawString ( Top_Label, Label_Font, Value_Brush,
+            _Chart_Margin_Left + 4, Top_Y + Color_Index * 12 );
+
+        string Bot_Label = Format_Axis_Value ( Series_Min );
+        float Bot_Y = H - _Chart_Margin_Bottom - 12;
+        G.DrawString ( Bot_Label, Label_Font, Value_Brush,
+            _Chart_Margin_Left + 4, Bot_Y - Color_Index * 12 );
+
+        Color_Index++;
+      }
+    }
+
+
+    private void Draw_Histogram ( Graphics G, int W, int H )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+      int Chart_W = W - _Chart_Margin_Left - _Chart_Margin_Right;
+      int Chart_H = H - _Chart_Margin_Top - _Chart_Margin_Bottom;
+
+      int Count = _Readings.Count;
+      double Min_V = _Readings.Min ( );
+      double Max_V = _Readings.Max ( );
+      double Range = Max_V - Min_V;
+      int Num_Bins = Get_Bin_Count ( Count );
+
+      if ( Range < 1e-12 )
+      {
+        Range = Math.Abs ( Max_V ) * 0.1;
+        if ( Range < 1e-12 )
+          Range = 1.0;
+        Min_V -= Range / 2;
+        Max_V += Range / 2;
+        Range = Max_V - Min_V;
+      }
+
+      double Bin_Width = Range / Num_Bins;
+      int [ ] Bin_Counts = new int [ Num_Bins ];
+
+      foreach ( double V in _Readings )
+      {
+        int Bin = Math.Clamp ( (int) ( ( V - Min_V ) / Bin_Width ), 0, Num_Bins - 1 );
+        Bin_Counts [ Bin ]++;
+      }
+
+      int Max_Count = Math.Max ( 1, Bin_Counts.Max ( ) );
+      double Y_Max = Max_Count * 1.1;
+      float Baseline = H - _Chart_Margin_Bottom;
+
+      using var Grid_Pen = new Pen ( _Theme.Grid, 1f );
+      using var Label_Font = new Font ( "Consolas", 7.5F );
+      using var Label_Brush = new SolidBrush ( _Theme.Labels );
+
+      int Num_Grid_Lines = 5;
+      for ( int I = 0; I <= Num_Grid_Lines; I++ )
+      {
+        double Fraction = (double) I / Num_Grid_Lines;
+        int Y_Pos = H - _Chart_Margin_Bottom - (int) ( Fraction * Chart_H );
+        G.DrawLine ( Grid_Pen, _Chart_Margin_Left, Y_Pos, W - _Chart_Margin_Right, Y_Pos );
+        string Label = ( (int) Math.Round ( Fraction * Y_Max ) ).ToString ( );
+        var Label_Size = G.MeasureString ( Label, Label_Font );
+        G.DrawString ( Label, Label_Font, Label_Brush,
+            _Chart_Margin_Left - Label_Size.Width - 6,
+            Y_Pos - Label_Size.Height / 2 );
+      }
+
+      float Bar_Spacing = Chart_W / (float) Num_Bins;
+      float Bar_W = Bar_Spacing * 0.8f;
+      float Gap = Bar_Spacing * 0.1f;
+
+      Color Bar_Color = _Theme.Line_Colors [ 0 ];
+      using var Bar_Brush = new SolidBrush ( Bar_Color );
+      using var Bar_Border_Pen = new Pen ( Color.FromArgb (
+          (int) ( Bar_Color.R * 0.7 ),
+          (int) ( Bar_Color.G * 0.7 ),
+          (int) ( Bar_Color.B * 0.7 ) ), 1f );
+
+      for ( int I = 0; I < Num_Bins; I++ )
+      {
+        float Bar_H = (float) ( ( Bin_Counts [ I ] / Y_Max ) * Chart_H );
+        if ( Bar_H < 1 && Bin_Counts [ I ] > 0 )
+          Bar_H = 1;
+        float X = _Chart_Margin_Left + I * Bar_Spacing + Gap;
+        RectangleF Rect = new ( X, Baseline - Bar_H, Bar_W, Bar_H );
+        G.FillRectangle ( Bar_Brush, Rect );
+        G.DrawRectangle ( Bar_Border_Pen, Rect.X, Rect.Y, Rect.Width, Rect.Height );
+
+        if ( Bin_Counts [ I ] > 0 )
+        {
+          string Freq_Text = Bin_Counts [ I ].ToString ( );
+          var Freq_Size = G.MeasureString ( Freq_Text, Label_Font );
+          G.DrawString ( Freq_Text, Label_Font, Label_Brush,
+              X + Bar_W / 2 - Freq_Size.Width / 2,
+              Baseline - Bar_H - Freq_Size.Height - 2 );
+        }
+      }
+
+      double Mean = _Readings.Average ( );
+      double Sum_Sq = 0;
+      foreach ( double V in _Readings )
+      {
+        double D = V - Mean;
+        Sum_Sq += D * D;
+      }
+      double Std_Dev = Math.Sqrt ( Sum_Sq / Count );
+
+      if ( Std_Dev > 1e-15 )
+      {
+        using var Curve_Pen = new Pen ( _Theme.Line_Colors [ 1 ], 2.5f );
+        int Num_Pts = 100;
+        PointF [ ] Curve_Pts = new PointF [ Num_Pts ];
+        double Scale = Bin_Width * Count;
+
+        for ( int I = 0; I < Num_Pts; I++ )
+        {
+          double X_Val = Min_V + ( I / (double) ( Num_Pts - 1 ) ) * Range;
+          double Z = ( X_Val - Mean ) / Std_Dev;
+          double PDF = ( 1.0 / ( Std_Dev * Math.Sqrt ( 2.0 * Math.PI ) ) ) * Math.Exp ( -0.5 * Z * Z );
+          float Px = _Chart_Margin_Left + (float) ( ( X_Val - Min_V ) / Range * Chart_W );
+          float Py = Baseline - (float) ( ( PDF * Scale / Y_Max ) * Chart_H );
+          Curve_Pts [ I ] = new PointF ( Px, Py );
+        }
+        G.DrawLines ( Curve_Pen, Curve_Pts );
+
+        Color Mean_Color = _Theme.Line_Colors [ 2 ];
+        using var Mean_Pen = new Pen ( Mean_Color, 2f );
+        Mean_Pen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dash;
+        float Mean_X = _Chart_Margin_Left + (float) ( ( Mean - Min_V ) / Range * Chart_W );
+        G.DrawLine ( Mean_Pen, Mean_X, _Chart_Margin_Top, Mean_X, Baseline );
+
+        using var Sigma_Pen = new Pen ( Color.FromArgb ( 120, Mean_Color ), 1.5f );
+        using var Sigma_Font = new Font ( "Consolas", 7F );
+        using var Sigma_Brush = new SolidBrush ( Mean_Color );
+        Sigma_Pen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dot;
+
+        G.DrawString ( "\u03bc", Sigma_Font, Sigma_Brush, Mean_X + 3, _Chart_Margin_Top + 2 );
+
+        double [ ] Sigmas = { -2, -1, 1, 2 };
+        string [ ] Sigma_Labels = { "-2\u03c3", "-1\u03c3", "+1\u03c3", "+2\u03c3" };
+
+        for ( int I = 0; I < Sigmas.Length; I++ )
+        {
+          double Sv = Mean + Sigmas [ I ] * Std_Dev;
+          if ( Sv < Min_V || Sv > Max_V )
+            continue;
+          float Sx = _Chart_Margin_Left + (float) ( ( Sv - Min_V ) / Range * Chart_W );
+          G.DrawLine ( Sigma_Pen, Sx, _Chart_Margin_Top, Sx, Baseline );
+          G.DrawString ( Sigma_Labels [ I ], Sigma_Font, Sigma_Brush, Sx + 3, _Chart_Margin_Top + 2 );
+        }
+      }
+
+      using var X_Font = new Font ( "Consolas", 6.5F );
+      int Label_Step = Math.Max ( 1, Num_Bins / 8 );
+      for ( int I = 0; I < Num_Bins; I += Label_Step )
+      {
+        double Bin_Center = Min_V + ( I + 0.5 ) * Bin_Width;
+        string X_Label = Multimeter_Common_Helpers_Class.Format_Value (
+            Bin_Center, Current_Unit, _Selected_Meter, _Settings.Display_Digits );
+        var X_Size = G.MeasureString ( X_Label, X_Font );
+        float X_Pos = _Chart_Margin_Left + I * Bar_Spacing + Bar_Spacing / 2;
+        G.DrawString ( X_Label, X_Font, Label_Brush,
+            X_Pos - X_Size.Width / 2,
+            H - _Chart_Margin_Bottom + 4 );
+      }
+
+      using var Title_Font = new Font ( "Segoe UI", 7.5F );
+      string Title = $"Distribution  ({Count} readings)";
+      var Title_Size = G.MeasureString ( Title, Title_Font );
+      G.DrawString ( Title, Title_Font, Label_Brush,
+          _Chart_Margin_Left + Chart_W / 2 - Title_Size.Width / 2,
+          H - _Chart_Margin_Bottom + 18 );
+    }
+
+
+    private void Draw_Pie_Chart ( Graphics G, int W, int H )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
+      int Chart_W = W - _Chart_Margin_Left - _Chart_Margin_Right;
+      int Chart_H = H - _Chart_Margin_Top - _Chart_Margin_Bottom;
+
+      int Count = _Readings.Count;
+      double Min_V = _Readings.Min ( );
+      double Max_V = _Readings.Max ( );
+      double Range = Max_V - Min_V;
+      int Num_Bins = Get_Bin_Count ( Count );
+
+      if ( Range < 1e-12 )
+      {
+        Range = Math.Abs ( Max_V ) * 0.1;
+        if ( Range < 1e-12 )
+          Range = 1.0;
+        Min_V -= Range / 2;
+        Max_V += Range / 2;
+        Range = Max_V - Min_V;
+      }
+
+      double Bin_Width = Range / Num_Bins;
+      int [ ] Bin_Counts = new int [ Num_Bins ];
+      foreach ( double V in _Readings )
+      {
+        int Bin = Math.Clamp ( (int) ( ( V - Min_V ) / Bin_Width ), 0, Num_Bins - 1 );
+        Bin_Counts [ Bin ]++;
+      }
+
+      int Legend_W = 0;
+      using ( var Temp_Font = new Font ( "Consolas", 7.5F ) )
+      using ( var Temp_G = Graphics.FromHwnd ( IntPtr.Zero ) )
+      {
+        for ( int I = 0; I < Num_Bins; I++ )
+        {
+          if ( Bin_Counts [ I ] == 0 )
+            continue;
+          double Bin_Low = Min_V + I * Bin_Width;
+          double Bin_High = Bin_Low + Bin_Width;
+          double Pct = 100.0 * Bin_Counts [ I ] / Count;
+          string Entry =
+              $"{Multimeter_Common_Helpers_Class.Format_Value ( Bin_Low, Current_Unit, _Selected_Meter, _Settings.Display_Digits )}" +
+              $" - {Multimeter_Common_Helpers_Class.Format_Value ( Bin_High, Current_Unit, _Selected_Meter, _Settings.Display_Digits )}" +
+              $"  ({Pct:F1}%)";
+          int Entry_W = (int) Temp_G.MeasureString ( Entry, Temp_Font ).Width;
+          if ( Entry_W > Legend_W )
+            Legend_W = Entry_W;
+        }
+      }
+      Legend_W += 40;
+      int Pie_Area_W = Chart_W - Legend_W;
+      if ( Pie_Area_W < 100 )
+      {
+        Pie_Area_W = Chart_W;
+        Legend_W = 0;
+      }
+
+      int Diameter = Math.Max ( 40, Math.Min ( Pie_Area_W, Chart_H ) - 20 );
+      int Pie_X = _Chart_Margin_Left + ( Pie_Area_W - Diameter ) / 2;
+      int Pie_Y = _Chart_Margin_Top + ( Chart_H - Diameter ) / 2;
+      Rectangle Pie_Rect = new ( Pie_X, Pie_Y, Diameter, Diameter );
+
+      float Start_Angle = -90f;
+      using var Outline_Pen = new Pen ( _Theme.Background, 2f );
+
+      for ( int I = 0; I < Num_Bins; I++ )
+      {
+        if ( Bin_Counts [ I ] == 0 )
+          continue;
+        float Sweep = 360f * Bin_Counts [ I ] / Count;
+        using var Slice_Brush = new SolidBrush ( Get_Bin_Color ( I ) );
+        G.FillPie ( Slice_Brush, Pie_Rect, Start_Angle, Sweep );
+        G.DrawPie ( Outline_Pen, Pie_Rect, Start_Angle, Sweep );
+        Start_Angle += Sweep;
+      }
+
+      if ( Legend_W > 0 )
+      {
+        using var Legend_Font = new Font ( "Consolas", 7.5F );
+        using var Label_Brush = new SolidBrush ( _Theme.Labels );
+        using var Title_Font = new Font ( "Segoe UI", 8F, FontStyle.Bold );
+
+        int Leg_X = _Chart_Margin_Left + Pie_Area_W + 10;
+        int Leg_Y = _Chart_Margin_Top + 10;
+        int Row_H = 20;
+
+        G.DrawString ( "Distribution", Title_Font, Label_Brush, Leg_X, Leg_Y );
+        Leg_Y += Row_H + 4;
+
+        for ( int I = 0; I < Num_Bins; I++ )
+        {
+          if ( Bin_Counts [ I ] == 0 )
+            continue;
+          if ( Leg_Y + Row_H > H - _Chart_Margin_Bottom )
+            break;
+
+          using var Swatch_Brush = new SolidBrush ( Get_Bin_Color ( I ) );
+          G.FillRectangle ( Swatch_Brush, Leg_X, Leg_Y + 2, 12, 12 );
+
+          double Bin_Low = Min_V + I * Bin_Width;
+          double Bin_High = Bin_Low + Bin_Width;
+          double Pct = 100.0 * Bin_Counts [ I ] / Count;
+          string Entry =
+              $"{Multimeter_Common_Helpers_Class.Format_Value ( Bin_Low, Current_Unit, _Selected_Meter, _Settings.Display_Digits )}" +
+              $" - {Multimeter_Common_Helpers_Class.Format_Value ( Bin_High, Current_Unit, _Selected_Meter, _Settings.Display_Digits )}" +
+              $"  ({Pct:F1}%)";
+          G.DrawString ( Entry, Legend_Font, Label_Brush, Leg_X + 18, Leg_Y );
+          Leg_Y += Row_H;
+        }
+      }
+    }
+
+    private void Draw_Single_Histogram ( Graphics G, int W, int H, int Chart_W, int Chart_H )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
+      var Saved = _Readings;
+      _Readings = Get_Single_Series_Readings ( );
+      Draw_Histogram ( G, W, H );
+      _Readings = Saved;
+    }
+
+    private void Draw_Single_Pie ( Graphics G, int W, int H, int Chart_W, int Chart_H )
+    {
+
+      using var Block = Trace_Block.Start_If_Enabled ( );
+      var Saved = _Readings;
+      _Readings = Get_Single_Series_Readings ( );
+      Draw_Pie_Chart ( G, W, H );
+      _Readings = Saved;
+    }
+
+    private (double Min, double Max, double Range) Calculate_Y_Range (
+        List<(DateTime Time, double Value)> Points )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
+    
+      double Min_V = double.MaxValue;
+      double Max_V = double.MinValue;
+
+      foreach ( var P in Points )
+      {
+        if ( P.Value < Min_V )
+          Min_V = P.Value;
+        if ( P.Value > Max_V )
+          Max_V = P.Value;
+      }
+
+      double Range = Max_V - Min_V;
+      if ( Range < 1e-12 )
+      {
+        Range = Math.Abs ( Max_V ) * 0.001;  // 0.1% of value
+        if ( Range < 1e-12 )
+          Range = 1.0;
+      }
+
+      double Padded_Min = Min_V - Range * 0.5;
+      double Padded_Max = Max_V + Range * 0.5;
+      double Padded_Range = Padded_Max - Padded_Min;
+
+      Capture_Trace.Write ( $"Y range: Min={Min_V:G10} Max={Max_V:G10} Range={Range:G10} Padded={Padded_Min:G10} to {Padded_Max:G10}" );
+
+      return (Padded_Min, Padded_Max, Padded_Range);
+    }
+
+    private void Initialize_Chart_Refresh_Timer ( )
+    {
+      _Chart_Refresh_Timer?.Stop ( );
+      _Chart_Refresh_Timer?.Dispose ( );
+
+      _Chart_Refresh_Timer = new System.Windows.Forms.Timer ( );
+      _Chart_Refresh_Timer.Interval = Math.Max ( 50, _Settings.Chart_Refresh_Rate_Ms );
+      _Chart_Refresh_Timer.Tick += ( s, e ) =>
+      {
+        Chart_Panel.Invalidate ( );
+        Update_Legend ( );
+        Update_Current_Values_Display ( );
+      };
+    }
+
+
+
+    private void Record_Cycle_Timing ( DateTime Time, double Duration_Ms, bool Had_Error )
+    {
+      // Overload for simple callers - phases all zero
+      Record_Cycle_Timing ( Time, Duration_Ms, 0, 0, 0, 0, Had_Error );
+    }
+
+    private void Record_Cycle_Timing (
+        DateTime Time,
+        double Duration_Ms,
+        double Comm_Ms,
+        double Addr_Ms,
+        double UI_Ms,
+        double Record_Ms,
+        bool Had_Error )
+    {
+
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
+      // Ring buffer write — no lock needed (single writer: poll loop)
+      int Idx = _Timing_Head % _Timing_Buffer_Size;
+      _Cycle_Timing [ Idx ] = new Poll_Cycle_Sample
+      {
+        Cycle_Time = Time,
+        Total_Ms = Duration_Ms,
+        Comm_Ms = Comm_Ms,
+        Address_Switch_Ms = Addr_Ms,
+        UI_Ms = UI_Ms,
+        Record_Ms = Record_Ms,
+        Instrument_Count = _Series.Count,
+        Had_Error = Had_Error
+      };
+      _Timing_Head++;
+      if ( _Timing_Count < _Timing_Buffer_Size )
+        _Timing_Count++;
+    }
+  
+
+    private void Record_Disconnect ( string Instrument_Name, int Cycle_Number )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
+      // Called from Handle_Read_Error when Consecutive_Errors == 1
+      lock ( _Disconnect_Events )
+      {
+        _Disconnect_Events.Add ( new Disconnect_Event
+        {
+          Time = DateTime.Now,
+          Instrument_Name = Instrument_Name,
+          Cycle_Number = Cycle_Number
+        } );
+      }
+
+      // ── Write to timing file immediately ─────────────────────────────
+      if ( _Is_Recording && _Timing_Writer != null )
+      {
+        // Write a clearly marked disconnect row
+        _Timing_Writer.WriteLine (
+            $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}," +
+            $"{Cycle_Number}," +
+            $"DISCONNECT,,,,," +
+            $"{Instrument_Name}" );
+        _Timing_Writer.Flush ( );  // flush immediately so disconnect is never lost
+      }
+    }
+
+    private void Draw_Poll_Timing_Chart ( Graphics G, int W, int H )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
+      const int Title_H = 20;
+      int Top = _Chart_Margin_Top + Title_H;
+
+      int Chart_W = W - _Chart_Margin_Left - _Chart_Margin_Right;
+      int Chart_H = H - _Chart_Margin_Top - _Chart_Margin_Bottom;
+
+      G.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+
+      if ( _Timing_Count < 2 || Chart_W < 20 || Chart_H < 20 )
+      {
+        Draw_Empty_State ( G, W, H, "No timing data yet. Start polling first." );
+        return;
+      }
+
+      int Total_Samples = Math.Min ( _Timing_Count, _Timing_Buffer_Size );
+      int Sample_Count = Math.Min ( Total_Samples, _Max_Display_Points );
+      int Start = ( _Timing_Head - Sample_Count - _Timing_View_Offset
+                            + _Timing_Buffer_Size * 2 ) % _Timing_Buffer_Size;
+
+      // ── Find Y range ──────────────────────────────────────────────────
+      double Max_Ms = 0, Min_Ms = double.MaxValue;
+      for ( int i = 0; i < Sample_Count; i++ )
+      {
+        double D = _Cycle_Timing [ ( Start + i ) % _Timing_Buffer_Size ].Total_Ms;
+        if ( D > Max_Ms )
+          Max_Ms = D;
+        if ( D < Min_Ms )
+          Min_Ms = D;
+      }
+      double Ms_Range = Math.Max ( Max_Ms - Min_Ms, 20.0 );
+      double Pad = Ms_Range * 0.15;
+      double Y_Min = Math.Max ( 0, Min_Ms - Pad );
+      double Y_Max = Max_Ms + Pad;
+      double Y_Range = Y_Max - Y_Min;
+
+      // ── Grid & Y-axis ─────────────────────────────────────────────────
+      using var Grid_Pen = new Pen ( _Theme.Grid, 1f );
+      using var Label_Font = new Font ( "Consolas", 7.5f );
+      using var Label_Brush = new SolidBrush ( _Theme.Labels );
+
+      int Num_Grid = 5;
+      for ( int i = 0; i <= Num_Grid; i++ )
+      {
+        double Frac = (double) i / Num_Grid;
+        int Y = H - _Chart_Margin_Bottom - (int) ( Frac * Chart_H );
+        double Val = Y_Min + Frac * Y_Range;
+
+        G.DrawLine ( Grid_Pen, _Chart_Margin_Left, Y, W - _Chart_Margin_Right, Y );
+        string Lbl = $"{Val:F0} ms";
+        var Sz = G.MeasureString ( Lbl, Label_Font );
+        G.DrawString ( Lbl, Label_Font, Label_Brush,
+            _Chart_Margin_Left - Sz.Width - 4, Y - Sz.Height / 2 );
+      }
+
+      // ── Phase bands (drawn before the total line so line sits on top) ─
+      bool Has_Phases = _Cycle_Timing [ Start ].Comm_Ms > 0;
+      if ( Has_Phases )
+      {
+        // Stacked from bottom up: Addr → Comm → UI → Record
+        Draw_Phase_Band ( G, Start, Sample_Count, Chart_W, H,
+       s => s.Address_Switch_Ms,
+       Y_Min, Y_Range,
+       Color.FromArgb ( 70, Color.Gold ), "Addr" );
+
+        Draw_Phase_Band ( G, Start, Sample_Count, Chart_W, H,
+            s => s.Address_Switch_Ms + s.Comm_Ms,
+            Y_Min, Y_Range,
+            Color.FromArgb ( 70, Color.DodgerBlue ), "Comm" );
+
+        Draw_Phase_Band ( G, Start, Sample_Count, Chart_W, H,
+            s => s.Address_Switch_Ms + s.Comm_Ms + s.UI_Ms,
+            Y_Min, Y_Range,
+            Color.FromArgb ( 70, Color.LimeGreen ), "UI" );
+
+        Draw_Phase_Band ( G, Start, Sample_Count, Chart_W, H,
+            s => s.Address_Switch_Ms + s.Comm_Ms + s.UI_Ms + s.Record_Ms,
+            Y_Min, Y_Range,
+            Color.FromArgb ( 70, Color.Tomato ), "Rec" );
+      }
+
+      // ── Total cycle line (drawn on top of phase bands) ────────────────
+      var Line_Pts = new PointF [ Sample_Count ];
+      for ( int i = 0; i < Sample_Count; i++ )
+      {
+        var Samp = _Cycle_Timing [ ( Start + i ) % _Timing_Buffer_Size ];
+        float X = _Chart_Margin_Left + (float) i / ( Sample_Count - 1 ) * Chart_W;
+        float Y = H - _Chart_Margin_Bottom
+                     - (float) ( ( Samp.Total_Ms - Y_Min ) / Y_Range * Chart_H );
+        Line_Pts [ i ] = new PointF ( X, Y );
+      }
+
+      // Fill under total line
+      var Fill_Pts = new PointF [ Sample_Count + 2 ];
+      Array.Copy ( Line_Pts, Fill_Pts, Sample_Count );
+      Fill_Pts [ Sample_Count ] = new PointF ( Line_Pts [ Sample_Count - 1 ].X, H - _Chart_Margin_Bottom );
+      Fill_Pts [ Sample_Count + 1 ] = new PointF ( Line_Pts [ 0 ].X, H - _Chart_Margin_Bottom );
+
+      using var Fill_Brush = new System.Drawing.Drawing2D.LinearGradientBrush (
+          new PointF ( 0, _Chart_Margin_Top ),
+          new PointF ( 0, H - _Chart_Margin_Bottom ),
+          Color.FromArgb ( 30, Color.White ),
+          Color.FromArgb ( 5, Color.White ) );
+      G.FillPolygon ( Fill_Brush, Fill_Pts );
+
+      using var Line_Pen = new Pen ( Color.White, 2f );
+      G.DrawLines ( Line_Pen, Line_Pts );
+
+      // ── Disconnect markers ────────────────────────────────────────────
+      long First_Cycle = _Cycle_Count - Sample_Count + 1;
+
+      using var Disc_Pen = new Pen ( Color.OrangeRed, 1.5f ) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dash };
+      using var Disc_Font = new Font ( "Segoe UI", 7.5f );
+      using var Disc_Brush = new SolidBrush ( Color.OrangeRed );
+
+      lock ( _Disconnect_Events )
+      {
+        foreach ( var Evt in _Disconnect_Events )
+        {
+          long Offset = Evt.Cycle_Number - First_Cycle;
+          if ( Offset < 0 || Offset >= Sample_Count )
+            continue;
+
+          float Disc_X = _Chart_Margin_Left + (float) Offset / ( Sample_Count - 1 ) * Chart_W;
+          G.DrawLine ( Disc_Pen, Disc_X, _Chart_Margin_Top, Disc_X, H - _Chart_Margin_Bottom );
+
+          string Tag = Evt.Instrument_Name.Length > 8
+         ? Evt.Instrument_Name [ ..8 ] : Evt.Instrument_Name;
+          var Tag_Size = G.MeasureString ( Tag, Disc_Font );
+
+
+          // The flip condition already handles this since W - _Chart_Margin_Right
+          // is now 140px from the right — labels will flip much earlier
+          float Tag_X = ( Disc_X + Tag_Size.Width + 4 > W - _Chart_Margin_Right )
+              ? Disc_X - Tag_Size.Width - 2
+              : Disc_X + 2;
+
+       
+          G.DrawString ( Tag, Disc_Font, Disc_Brush, Tag_X, _Chart_Margin_Top + 2 );
+        }
+      }
+
+      // ── X-axis time labels ────────────────────────────────────────────
+      int Num_X = Math.Min ( 8, Chart_W / 80 );
+      for ( int i = 0; i <= Num_X; i++ )
+      {
+        double Frac = (double) i / Num_X;
+        int X_Pos = _Chart_Margin_Left + (int) ( Frac * Chart_W );
+        int S_Idx = (int) ( Frac * ( Sample_Count - 1 ) );
+        var Samp = _Cycle_Timing [ ( Start + S_Idx ) % _Timing_Buffer_Size ];
+
+        string X_Lbl = Samp.Cycle_Time.ToString ( "HH:mm:ss" );
+        var X_Sz = G.MeasureString ( X_Lbl, Label_Font );
+        G.DrawString ( X_Lbl, Label_Font, Label_Brush,
+            X_Pos - X_Sz.Width / 2, H - _Chart_Margin_Bottom + 6 );
+        G.DrawLine ( Grid_Pen, X_Pos, _Chart_Margin_Top, X_Pos, H - _Chart_Margin_Bottom );
+      }
+
+      // ── Phase legend (bottom right) ───────────────────────────────────
+      if ( Has_Phases )
+      {
+        using var Leg_Font = new Font ( "Segoe UI", 7.5f );
+
+        (string Label, Color C) [ ] Legend_Items =
+        {
+        ( "Addr Switch", Color.FromArgb ( 70, Color.Gold )                     ),
+        ( "Comm",        Color.FromArgb ( 70, Color.FromArgb ( 0, 100, 200 ) ) ),
+        ( "UI Update",   Color.FromArgb ( 70, Color.LimeGreen )                ),
+        ( "Record",      Color.FromArgb ( 70, Color.Tomato )                   ),
+        ( "Total",       Color.FromArgb ( 70, Color.DeepSkyBlue )              ),
+    };
+
+        // Measure widest col1 label to set col2 position dynamically
+        float Max_Col1_W = 0;
+        for ( int I = 0; I < Legend_Items.Length; I += 2 )  // col1 = even indices
+        {
+          float Lw = G.MeasureString ( Legend_Items [ I ].Label, Leg_Font ).Width;
+          if ( Lw > Max_Col1_W )
+            Max_Col1_W = Lw;
+        }
+
+        int Col1_X = _Chart_Margin_Left + 10;
+        int Col2_X = Col1_X + 12 + 4 + (int) Max_Col1_W + 12;  // swatch + gap + label + padding
+        int Leg_Y = _Chart_Margin_Top + 10;
+        int Row_H = 20;
+
+        for ( int I = 0; I < Legend_Items.Length; I++ )
+        {
+          var (Label, C) = Legend_Items [ I ];
+
+          int Leg_X = ( I % 2 == 0 ) ? Col1_X : Col2_X;
+          int Item_Y = Leg_Y + ( I / 2 ) * Row_H;
+
+          using var Swatch = new SolidBrush ( C );
+          using var Border = new Pen ( Color.FromArgb ( 180, C.R, C.G, C.B ), 1f );
+          using var Text = new SolidBrush ( _Theme.Labels );
+
+          G.FillRectangle ( Swatch, Leg_X, Item_Y + 2, 12, 12 );
+          G.DrawRectangle ( Border, Leg_X, Item_Y + 2, 12, 12 );
+          G.DrawString ( Label, Leg_Font, Text, Leg_X + 16, Item_Y );
+        }
+      }
+
+      // ── Title ─────────────────────────────────────────────────────────
+      Color Title_Color = _Theme.Background.GetBrightness ( ) > 0.5f
+          ? Color.FromArgb ( 40, 40, 40 )
+          : Color.WhiteSmoke;
+      using var Title_Font = new Font ( "Segoe UI", 9f, FontStyle.Bold );
+      using var Title_Brush = new SolidBrush ( Title_Color );
+
+      double Avg_Ms = 0;
+      for ( int i = 0; i < Sample_Count; i++ )
+        Avg_Ms += _Cycle_Timing [ ( Start + i ) % _Timing_Buffer_Size ].Total_Ms;
+      Avg_Ms /= Sample_Count;
+      double Rate = Avg_Ms > 0 ? 1000.0 / Avg_Ms : 0;
+
+      // Replace the title DrawString:
+      string Title = $"Poll Cycle Duration  |  Avg: {Avg_Ms:F0} ms  ({Rate:F2} cyc/s)  " +
+                $"|  Last: {_Cycle_Timing [ ( _Timing_Head - 1 + _Timing_Buffer_Size ) % _Timing_Buffer_Size ].Total_Ms:F0} ms  " +
+                $"|  Disc: {_Disconnect_Events.Count}";
+
+      // Clip to available width
+      int Available_W = W - _Chart_Margin_Left - _Chart_Margin_Right;
+      var Title_Size = G.MeasureString ( Title, Title_Font );
+      if ( Title_Size.Width > Available_W )
+      {
+        // Trim to shorter version
+        Title = $"Avg: {Avg_Ms:F0} ms  ({Rate:F2} cyc/s)  |  Last: {_Cycle_Timing [ ( _Timing_Head - 1 + _Timing_Buffer_Size ) % _Timing_Buffer_Size ].Total_Ms:F0} ms  |  Disc: {_Disconnect_Events.Count}";
+      }
+
+      G.DrawString ( Title, Title_Font, Title_Brush,
+          _Chart_Margin_Left, _Chart_Margin_Top - 8 );
+    }
+
+
+    private void Draw_Phase_Band (
+    Graphics G,
+    int Start, int Sample_Count,
+    int Chart_W, int H,
+    Func<Poll_Cycle_Sample, double> Value_Selector,
+    double Y_Min, double Y_Range,
+    Color Fill_Color,
+    string Label )
+    {
+      if ( Sample_Count < 2 )
+        return;
+
+      int Top = _Chart_Margin_Top;
+      int Bottom = H - _Chart_Margin_Bottom;
+      int Plot_H = Bottom - Top;
+
+      var Pts = new PointF [ Sample_Count ];
+      for ( int I = 0; I < Sample_Count; I++ )
+      {
+        var S = _Cycle_Timing [ ( Start + I ) % _Timing_Buffer_Size ];
+        float X = _Chart_Margin_Left + (float) I / ( Sample_Count - 1 ) * Chart_W;
+        float Y = Bottom - (float) ( ( Value_Selector ( S ) - Y_Min ) / Y_Range * Plot_H );
+        Pts [ I ] = new PointF ( X, Y );
+      }
+
+      // Fill down to baseline
+      var Fill = new PointF [ Sample_Count + 2 ];
+      Array.Copy ( Pts, Fill, Sample_Count );
+      Fill [ Sample_Count ] = new PointF ( Pts [ Sample_Count - 1 ].X, Bottom );
+      Fill [ Sample_Count + 1 ] = new PointF ( Pts [ 0 ].X, Bottom );
+
+      using var Brush = new SolidBrush ( Fill_Color );
+      G.FillPolygon ( Brush, Fill );
+
+   
+    }
+
+
+    private void Poll_Speed_Button_Click ( object sender, EventArgs e )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
+      _Show_Timing_View = !_Show_Timing_View;
+      Poll_Speed_Button.Text = _Show_Timing_View ? "Data View" : "Poll Speed";
+      Chart_Panel.Invalidate ( );
+    }
+
+
+
+    private void Update_Data_Scrollbar ( int Total_Points )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
+      if ( Total_Points <= _Max_Display_Points )
+      {
+        Pan_Scrollbar.Enabled = false;
+        Pan_Scrollbar.Value = 0;
+        return;
+      }
+
+      int Max_Offset = Total_Points - _Max_Display_Points;
+
+      // LargeChange must be proportional so the thumb is visible
+      // Thumb ratio = LargeChange / Maximum
+      // We want thumb to represent the visible window fraction
+      int Large_Change = Math.Max ( 10, _Max_Display_Points );
+      int Scroll_Max = Max_Offset + Large_Change;  // Maximum = range + LargeChange
+
+      Pan_Scrollbar.Enabled = true;
+      Pan_Scrollbar.Minimum = 0;
+      Pan_Scrollbar.LargeChange = Large_Change;
+      Pan_Scrollbar.SmallChange = Math.Max ( 1, Max_Offset / 100 );
+      Pan_Scrollbar.Maximum = Scroll_Max;         // ← set AFTER LargeChange
+
+      if ( _Auto_Scroll )
+      {
+        _View_Offset = 0;
+        Pan_Scrollbar.Value = 0;
+      }
+      else
+      {
+        _View_Offset = Math.Min ( _View_Offset, Max_Offset );
+        int Usable = Scroll_Max - Large_Change;  // = Max_Offset
+        Pan_Scrollbar.Value = Usable > 0
+            ? (int) ( (double) _View_Offset / Max_Offset * Usable )
+            : 0;
+      }
+    }
+
+    private void Update_Timing_Scrollbar ( )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
+      int Total_Samples = Math.Min ( _Timing_Count, _Timing_Buffer_Size );
+
+      if ( Total_Samples <= _Max_Display_Points )
+      {
+        Pan_Scrollbar.Enabled = false;
+        Pan_Scrollbar.Value = 0;
+        _Timing_View_Offset = 0;
+        return;
+      }
+
+      int Max_Offset = Total_Samples - _Max_Display_Points;
+      int Large_Change = Math.Max ( 10, _Max_Display_Points );
+      int Scroll_Max = Max_Offset + Large_Change;
+
+      Pan_Scrollbar.Enabled = true;
+      Pan_Scrollbar.Minimum = 0;
+      Pan_Scrollbar.LargeChange = Large_Change;
+      Pan_Scrollbar.SmallChange = Math.Max ( 1, Max_Offset / 100 );
+      Pan_Scrollbar.Maximum = Scroll_Max;
+
+      _Timing_View_Offset = 0;
+      Pan_Scrollbar.Value = 0;
+    }
+
+    private void Load_Timing_File ( string File_Path )
+    {
+      var Lines = File.ReadAllLines ( File_Path );
+      if ( Lines.Length < 2 )
+        return;
+
+      // Clear existing timing buffer
+      _Timing_Head = 0;
+      _Timing_Count = 0;
+      _Disconnect_Events.Clear ( );
+
+      foreach ( var Line in Lines.Skip ( 1 ) )  // skip header
+      {
+        if ( string.IsNullOrWhiteSpace ( Line ) )
+          continue;
+
+        var Parts = Line.Split ( ',' );
+
+        // ── Disconnect row ────────────────────────────────────────────
+        if ( Parts.Length >= 2 && Parts [ 2 ] == "DISCONNECT" )
+        {
+          if ( DateTime.TryParse ( Parts [ 0 ], out DateTime Disc_Time ) &&
+               int.TryParse ( Parts [ 1 ], out int Disc_Cycle ) )
+          {
+            lock ( _Disconnect_Events )
+            {
+              _Disconnect_Events.Add ( new Disconnect_Event
+              {
+                Time = Disc_Time,
+                Instrument_Name = Parts.Length >= 8 ? Parts [ 7 ] : "Unknown",
+                Cycle_Number = Disc_Cycle
+              } );
+            }
+          }
+          continue;
+        }
+
+        // ── Normal timing row ─────────────────────────────────────────
+        if ( Parts.Length < 8 )
+          continue;
+
+        if ( !DateTime.TryParse ( Parts [ 0 ], out DateTime T ) )
+          continue;
+
+        var Sample = new Poll_Cycle_Sample
+        {
+          Cycle_Time = T,
+          Total_Ms = Parse_Double ( Parts [ 2 ] ),
+          Comm_Ms = Parse_Double ( Parts [ 3 ] ),
+          Address_Switch_Ms = Parse_Double ( Parts [ 4 ] ),
+          UI_Ms = Parse_Double ( Parts [ 5 ] ),
+          Record_Ms = Parse_Double ( Parts [ 6 ] ),
+          Had_Error = Parts [ 7 ] == "1"
+        };
+
+        int Idx = _Timing_Head % _Timing_Buffer_Size;
+        _Cycle_Timing [ Idx ] = Sample;
+        _Timing_Head++;
+        if ( _Timing_Count < _Timing_Buffer_Size )
+          _Timing_Count++;
+      }
+
+      // Switch to timing view automatically
+      _Show_Timing_View = true;
+
+      int Loaded = Math.Min ( _Timing_Count, _Timing_Buffer_Size );
+      Show_Progress ( $"Loaded {Loaded} timing samples, {_Disconnect_Events.Count} disconnects",
+                      _Foreground_Color );
+
+      Update_Timing_Scrollbar ( );
+      Chart_Panel.Invalidate ( );
+    }
+
+    private static double Parse_Double ( string S )
+    {
+      return double.TryParse ( S,
+          System.Globalization.NumberStyles.Float,
+          System.Globalization.CultureInfo.InvariantCulture,
+          out double V ) ? V : 0;
     }
   }
 }

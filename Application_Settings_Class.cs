@@ -8,8 +8,13 @@ namespace Multimeter_Controller
   public class Application_Settings
   {
     // In Application_Settings:
-    public Chart_Theme Current_Theme { get; set; } = new Chart_Theme ( ); // default theme
-    
+
+
+
+    [JsonIgnore]
+    public Chart_Theme Current_Theme { get; set; } = Chart_Theme.Load ( );
+   
+
     public int Default_Prologic_Port { get; set; } = 1234;
 
 
@@ -62,7 +67,10 @@ namespace Multimeter_Controller
 
     // ===== CHART/DISPLAY SETTINGS =====
 
-    
+
+
+    [JsonPropertyName ( "display_digits" )]
+    public int Display_Digits { get; set; } = 10;
 
     [JsonPropertyName ( "tooltip_distance_threshold" )]
     public int Tooltip_Distance_Threshold { get; set; } = 50;
@@ -97,18 +105,25 @@ namespace Multimeter_Controller
     [JsonPropertyName ( "show_legend_on_startup" )]
     public bool Show_Legend_On_Startup { get; set; } = false;
 
-    [JsonPropertyName ( "default_max_display_points" )]
-    public int Default_Max_Display_Points { get; set; } = 100;
-
+  
 
 
     // ===== POLLING/DATA COLLECTION =====
 
+    [JsonPropertyName ( "max_display_points" )]
+    public int Max_Display_Points { get; set; } = 1_000_000;
+
+
     [JsonPropertyName ( "default_poll_delay_ms" )]
     public int Default_Poll_Delay_Ms { get; set; } = 500;
 
- [JsonPropertyName ( "default_nplc" )]
-public string Default_NPLC { get; set; } = "0.02";
+    [JsonPropertyName ( "stop_polling_at_max_display_points" )]
+    public bool Stop_Polling_At_Max_Display_Points { get; set; } = false;  // default = warn only
+
+
+
+    [JsonPropertyName ( "default_nplc" )]
+public string Default_NPLC { get; set; } = "1";
 
     [JsonPropertyName ( "default_measurement_type" )]
     public string Default_Measurement_Type { get; set; } = "DC Voltage";
@@ -131,7 +146,11 @@ public string Default_NPLC { get; set; } = "0.02";
     [JsonPropertyName ( "retry_delay_seconds" )]
     public int Retry_Delay_Seconds { get; set; } = 5;
 
+    [JsonPropertyName ( "skew_warning_threshold_seconds" )]
+    public double Skew_Warning_Threshold_Seconds { get; set; } = 1.0;
 
+    [JsonPropertyName ( "stale_data_threshold_seconds" )]
+    public double Stale_Data_Threshold_Seconds { get; set; } = 3.0;
 
 
 
@@ -245,7 +264,7 @@ public string Default_NPLC { get; set; } = "0.02";
     // ===== LOAD/SAVE METHODS =====
 
 
-    // In Application_Settings:
+
     public event EventHandler? Theme_Changed;
 
     public void Set_Theme ( Chart_Theme New_Theme )
@@ -253,6 +272,8 @@ public string Default_NPLC { get; set; } = "0.02";
       Current_Theme = New_Theme;
       Theme_Changed?.Invoke ( this, EventArgs.Empty );
     }
+
+
 
     private static string Get_Settings_File_Path ( )
     {
@@ -270,6 +291,7 @@ public string Default_NPLC { get; set; } = "0.02";
       {
         var Default_Settings = new Application_Settings ( );
         Default_Settings.Initialize_Default_Save_Folder ( );
+        Default_Settings.Current_Theme = Chart_Theme.Load ( );
         return Default_Settings;
       }
 
@@ -282,25 +304,24 @@ public string Default_NPLC { get; set; } = "0.02";
         {
           var Default_Settings = new Application_Settings ( );
           Default_Settings.Initialize_Default_Save_Folder ( );
+          Default_Settings.Current_Theme = Chart_Theme.Load ( );
           return Default_Settings;
         }
 
-        // Ensure save folder exists
         if ( string.IsNullOrEmpty ( Settings.Default_Save_Folder ) )
-        {
           Settings.Initialize_Default_Save_Folder ( );
-        }
 
+        Settings.Current_Theme = Chart_Theme.Load ( );  // always load from theme file
         return Settings;
       }
       catch
       {
         var Default_Settings = new Application_Settings ( );
         Default_Settings.Initialize_Default_Save_Folder ( );
+        Default_Settings.Current_Theme = Chart_Theme.Load ( );
         return Default_Settings;
       }
     }
-
     public void Save ( )
     {
       string File_Path = Get_Settings_File_Path ( );
@@ -354,12 +375,21 @@ public string Default_NPLC { get; set; } = "0.02";
       Chart_Refresh_Rate_Ms = Math.Max ( 16, Math.Min ( 1000, Chart_Refresh_Rate_Ms ) );
       Data_Dot_Size = Math.Max ( 1, Math.Min ( 10, Data_Dot_Size ) );
       Line_Thickness = Math.Max ( 1, Math.Min ( 10, Line_Thickness ) );
-      Default_Max_Display_Points = Math.Max ( 10, Math.Min ( 100000, Default_Max_Display_Points ) );
+   //   Default_Max_Display_Points = Math.Max ( 10, Math.Min ( 100000, Default_Max_Display_Points ) );
 
       // Default subnet to empty so Get_Local_Subnet auto-detects
       if ( Network_Scan_Subnet == null )
         Network_Scan_Subnet = "";
 
+      Skew_Warning_Threshold_Seconds = Math.Max ( 0.2, Math.Min ( 10.0, Skew_Warning_Threshold_Seconds ) );
+      Stale_Data_Threshold_Seconds = Math.Max ( 0.2, Math.Min ( 60.0, Stale_Data_Threshold_Seconds ) );
+
+      // Stale must always be greater than skew
+      if ( Stale_Data_Threshold_Seconds <= Skew_Warning_Threshold_Seconds )
+        Stale_Data_Threshold_Seconds = Skew_Warning_Threshold_Seconds + 1.0;
+
+      Display_Digits = Math.Max ( 4, Math.Min ( 10, Display_Digits ) );
+      Max_Display_Points = Math.Clamp ( Max_Display_Points, 10, 1_000_000 );
 
       // Poll delay: 50ms to 60000ms (0.05s to 60s)
       Default_Poll_Delay_Ms = Math.Max ( 50, Math.Min ( 60000, Default_Poll_Delay_Ms ) );
