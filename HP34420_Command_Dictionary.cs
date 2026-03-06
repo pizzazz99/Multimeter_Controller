@@ -1,8 +1,14 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
 // ============================================================================
-// File:        HP_34401A_Command_Dictionary_Class.cs
-// Project:     Keysight 3458A Multimeter Controller
-// Description: Command reference dictionary for the HP / Agilent / Keysight
-//              34401A 6.5-digit digital multimeter. Uses standard SCPI
+// File:        HP34420A_Command_Dictionary_Class.cs
+// Project:     HP3458 Multimeter Controller
+// Description: Command reference dictionary for the HP / Agilent HP 34420A
+//              7.5-digit nano-volt / micro-ohm meter. Uses standard SCPI
 //              command syntax.
 //
 // Author:       Mike
@@ -11,7 +17,7 @@
 
 namespace Multimeter_Controller
 {
-  public static class HP_34401A_Command_Dictionary_Class
+  public static class HP34420_Command_Dictionary_Class
   {
     public static List<Command_Entry> Get_All_Commands ( )
     {
@@ -25,38 +31,18 @@ namespace Multimeter_Controller
           Category:Command_Category.Measurement,
           Parameters:"range: 0.1|1|10|100|1000|MIN|MAX|DEF, resolution: MIN|MAX|DEF",
           Query_Form:"MEAS:VOLT:DC?",
-          Default_Value: "AUTO range, default resolution",
-          Example: "MEAS:VOLT:DC? 10,0.001" ),
+          Default_Value:"AUTO range, default resolution",
+          Example:"MEAS:VOLT:DC? 1,MIN" ),
 
         new Command_Entry (
-          Command:"MEAS:VOLT:AC?",
-          Syntax:"MEASure:VOLTage:AC? [<range>[,<resolution>]]",
-          Description:"Measure AC voltage (RMS) and return reading",
+          Command:"MEAS:VOLT:DC:RAT?",
+          Syntax:"MEASure:VOLTage:DC:RATio? [<range>[,<resolution>]]",
+          Description:"Measure DC voltage ratio (input/sense) and return reading",
           Category:Command_Category.Measurement,
-          Parameters:"range: 0.1|1|10|100|750|MIN|MAX|DEF, resolution: MIN|MAX|DEF",
-          Query_Form:"MEAS:VOLT:AC?",
-          Default_Value: "AUTO range, default resolution",
-          Example: "MEAS:VOLT:AC? 10,0.001" ),
-
-        new Command_Entry (
-          Command:"MEAS:CURR:DC?",
-          Syntax:"MEASure:CURRent:DC? [<range>[,<resolution>]]",
-          Description:"Measure DC current and return reading",
-          Category:Command_Category.Measurement,
-          Parameters:"range: 0.01|0.1|1|3|MIN|MAX|DEF, resolution: MIN|MAX|DEF",
-          Query_Form:"MEAS:CURR:DC?",
-          Default_Value: "AUTO range, default resolution",
-          Example: "MEAS:CURR:DC? 1,0.0001" ),
-
-        new Command_Entry (
-          Command:"MEAS:CURR:AC?",
-          Syntax:"MEASure:CURRent:AC? [<range>[,<resolution>]]",
-          Description:"Measure AC current (RMS) and return reading",
-          Category:Command_Category.Measurement,
-          Parameters:"range: 0.01|0.1|1|3|MIN|MAX|DEF, resolution: MIN|MAX|DEF",
-          Query_Form:"MEAS:CURR:AC?",
-          Default_Value: "AUTO range, default resolution",
-          Example: "MEAS:CURR:AC? 1,0.001" ),
+          Parameters:"range: 0.1|1|10|100|1000|MIN|MAX|DEF, resolution: MIN|MAX|DEF",
+          Query_Form:"MEAS:VOLT:DC:RAT?",
+          Default_Value:"AUTO range, default resolution",
+          Example:"MEAS:VOLT:DC:RAT? 1,MIN" ),
 
         new Command_Entry (
           Command:"MEAS:RES?",
@@ -65,8 +51,8 @@ namespace Multimeter_Controller
           Category:Command_Category.Measurement,
           Parameters:"range: 100|1e3|10e3|100e3|1e6|10e6|100e6|MIN|MAX|DEF",
           Query_Form:"MEAS:RES?",
-          Default_Value: "AUTO range, default resolution",
-          Example: "MEAS:RES? 1e3,0.1" ),
+          Default_Value:"AUTO range, default resolution",
+          Example:"MEAS:RES? 1e3,MIN" ),
 
         new Command_Entry (
           Command:"MEAS:FRES?",
@@ -75,48 +61,8 @@ namespace Multimeter_Controller
           Category:Command_Category.Measurement,
           Parameters:"range: 100|1e3|10e3|100e3|1e6|10e6|100e6|MIN|MAX|DEF",
           Query_Form:"MEAS:FRES?",
-          Default_Value: "AUTO range, default resolution",
-          Example: "MEAS:FRES? 1e3,0.1" ),
-
-        new Command_Entry (
-          Command:"MEAS:FREQ?",
-          Syntax:"MEASure:FREQuency? [<range>[,<resolution>]]",
-          Description:"Measure frequency and return reading",
-          Category:Command_Category.Measurement,
-          Parameters:"range: signal voltage range, resolution: MIN|MAX|DEF",
-          Query_Form:"MEAS:FREQ?",
-          Default_Value: "AUTO range, default resolution",
-          Example: "MEAS:FREQ? 1,MIN" ),
-
-        new Command_Entry (
-          Command:"MEAS:PER?",
-          Syntax:"MEASure:PERiod? [<range>[,<resolution>]]",
-          Description:"Measure period and return reading",
-          Category:Command_Category.Measurement,
-          Parameters:"range: signal voltage range, resolution: MIN|MAX|DEF",
-          Query_Form:"MEAS:PER?",
-          Default_Value: "AUTO range, default resolution",
-          Example: "MEAS:PER? 1,MIN" ),
-
-        new Command_Entry (
-          Command:"MEAS:CONT?",
-          Syntax:"MEASure:CONTinuity?",
-          Description:"Measure continuity and return reading (fixed 1 kOhm range)",
-          Category:Command_Category.Measurement,
-          Parameters:"None (fixed range, fixed 5.5 digit resolution)",
-          Query_Form:"MEAS:CONT?",
-          Default_Value: "1 kOhm range",
-          Example: "MEAS:CONT?" ),
-
-        new Command_Entry (
-          Command:"MEAS:DIOD?",
-          Syntax:"MEASure:DIODe?",
-          Description:"Measure diode forward voltage and return reading",
-          Category:Command_Category.Measurement,
-          Parameters:"None (fixed 1 VDC range, 1 mA test current)",
-          Query_Form:"MEAS:DIOD?",
-          Default_Value: "1 VDC range",
-          Example: "MEAS:DIOD?" ),
+          Default_Value:"AUTO range, default resolution",
+          Example:"MEAS:FRES? 1e3,MIN" ),
 
         new Command_Entry (
           Command:"READ?",
@@ -125,8 +71,8 @@ namespace Multimeter_Controller
           Category:Command_Category.Measurement,
           Parameters:"None (uses current configuration)",
           Query_Form:"READ?",
-          Default_Value: "N/A",
-          Example: "READ?" ),
+          Default_Value:"N/A",
+          Example:"READ?" ),
 
         new Command_Entry (
           Command:"FETCH?",
@@ -135,8 +81,8 @@ namespace Multimeter_Controller
           Category:Command_Category.Measurement,
           Parameters:"None",
           Query_Form:"FETCH?",
-          Default_Value: "N/A",
-          Example: "FETCH?" ),
+          Default_Value:"N/A",
+          Example:"FETCH?" ),
 
         // ===== Configuration Commands =====
         new Command_Entry (
@@ -146,38 +92,18 @@ namespace Multimeter_Controller
           Category:Command_Category.Configuration,
           Parameters:"range: 0.1|1|10|100|1000|MIN|MAX|DEF, resolution: MIN|MAX|DEF",
           Query_Form:"CONF:VOLT:DC?",
-          Default_Value: "AUTO range, default resolution",
-          Example: "CONF:VOLT:DC 10,0.001" ),
+          Default_Value:"AUTO range, default resolution",
+          Example:"CONF:VOLT:DC 1,MIN" ),
 
         new Command_Entry (
-          Command:"CONF:VOLT:AC",
-          Syntax:"CONFigure:VOLTage:AC [<range>[,<resolution>]]",
-          Description:"Configure AC voltage measurement (does not trigger)",
+          Command:"CONF:VOLT:DC:RAT",
+          Syntax:"CONFigure:VOLTage:DC:RATio [<range>[,<resolution>]]",
+          Description:"Configure DC voltage ratio measurement (does not trigger)",
           Category:Command_Category.Configuration,
-          Parameters:"range: 0.1|1|10|100|750|MIN|MAX|DEF, resolution: MIN|MAX|DEF",
-          Query_Form:"CONF:VOLT:AC?",
-          Default_Value: "AUTO range, default resolution",
-          Example: "CONF:VOLT:AC 10" ),
-
-        new Command_Entry (
-          Command:"CONF:CURR:DC",
-          Syntax:"CONFigure:CURRent:DC [<range>[,<resolution>]]",
-          Description:"Configure DC current measurement (does not trigger)",
-          Category:Command_Category.Configuration,
-          Parameters:"range: 0.01|0.1|1|3|MIN|MAX|DEF, resolution: MIN|MAX|DEF",
-          Query_Form:"CONF:CURR:DC?",
-          Default_Value: "AUTO range, default resolution",
-          Example: "CONF:CURR:DC 1" ),
-
-        new Command_Entry (
-          Command:"CONF:CURR:AC",
-          Syntax:"CONFigure:CURRent:AC [<range>[,<resolution>]]",
-          Description:"Configure AC current measurement (does not trigger)",
-          Category:Command_Category.Configuration,
-          Parameters:"range: 0.01|0.1|1|3|MIN|MAX|DEF, resolution: MIN|MAX|DEF",
-          Query_Form:"CONF:CURR:AC?",
-          Default_Value: "AUTO range, default resolution",
-          Example: "CONF:CURR:AC 1" ),
+          Parameters:"range: 0.1|1|10|100|1000|MIN|MAX|DEF, resolution: MIN|MAX|DEF",
+          Query_Form:"CONF:VOLT:DC:RAT?",
+          Default_Value:"AUTO range, default resolution",
+          Example:"CONF:VOLT:DC:RAT 1,MIN" ),
 
         new Command_Entry (
           Command:"CONF:RES",
@@ -186,8 +112,8 @@ namespace Multimeter_Controller
           Category:Command_Category.Configuration,
           Parameters:"range: 100|1e3|10e3|100e3|1e6|10e6|100e6|MIN|MAX|DEF",
           Query_Form:"CONF:RES?",
-          Default_Value: "AUTO range, default resolution",
-          Example: "CONF:RES 1e3" ),
+          Default_Value:"AUTO range, default resolution",
+          Example:"CONF:RES 1e3" ),
 
         new Command_Entry (
           Command:"CONF:FRES",
@@ -196,48 +122,8 @@ namespace Multimeter_Controller
           Category:Command_Category.Configuration,
           Parameters:"range: 100|1e3|10e3|100e3|1e6|10e6|100e6|MIN|MAX|DEF",
           Query_Form:"CONF:FRES?",
-          Default_Value: "AUTO range, default resolution",
-          Example: "CONF:FRES 1e3" ),
-
-        new Command_Entry (
-          Command:"CONF:FREQ",
-          Syntax:"CONFigure:FREQuency [<range>[,<resolution>]]",
-          Description:"Configure frequency measurement (does not trigger)",
-          Category:Command_Category.Configuration,
-          Parameters:"range: signal voltage range, resolution: MIN|MAX|DEF",
-          Query_Form:"CONF:FREQ?",
-          Default_Value: "AUTO range, default resolution",
-          Example: "CONF:FREQ 1,MIN" ),
-
-        new Command_Entry (
-          Command:"CONF:PER",
-          Syntax:"CONFigure:PERiod [<range>[,<resolution>]]",
-          Description:"Configure period measurement (does not trigger)",
-          Category:Command_Category.Configuration,
-          Parameters:"range: signal voltage range, resolution: MIN|MAX|DEF",
-          Query_Form:"CONF:PER?",
-          Default_Value: "AUTO range, default resolution",
-          Example: "CONF:PER 1,MIN" ),
-
-        new Command_Entry (
-          Command:"CONF:CONT",
-          Syntax:"CONFigure:CONTinuity",
-          Description:"Configure continuity measurement (does not trigger)",
-          Category:Command_Category.Configuration,
-          Parameters:"None (fixed 1 kOhm range)",
-          Query_Form:"CONF:CONT?",
-          Default_Value: "1 kOhm range",
-          Example: "CONF:CONT" ),
-
-        new Command_Entry (
-          Command:"CONF:DIOD",
-          Syntax:"CONFigure:DIODe",
-          Description:"Configure diode test (does not trigger)",
-          Category:Command_Category.Configuration,
-          Parameters:"None (fixed 1 VDC range, 1 mA test current)",
-          Query_Form:"CONF:DIOD?",
-          Default_Value: "1 VDC range",
-          Example: "CONF:DIOD" ),
+          Default_Value:"AUTO range, default resolution",
+          Example:"CONF:FRES 1e3" ),
 
         new Command_Entry (
           Command:"VOLT:DC:RANG",
@@ -246,8 +132,8 @@ namespace Multimeter_Controller
           Category:Command_Category.Configuration,
           Parameters:"range: 0.1|1|10|100|1000|MIN|MAX",
           Query_Form:"VOLT:DC:RANG?",
-          Default_Value: "AUTO",
-          Example: "VOLT:DC:RANG 10" ),
+          Default_Value:"AUTO",
+          Example:"VOLT:DC:RANG 1" ),
 
         new Command_Entry (
           Command:"VOLT:DC:RANG:AUTO",
@@ -256,8 +142,8 @@ namespace Multimeter_Controller
           Category:Command_Category.Configuration,
           Parameters:"mode: ON|OFF|ONCE",
           Query_Form:"VOLT:DC:RANG:AUTO?",
-          Default_Value: "ON",
-          Example: "VOLT:DC:RANG:AUTO ON" ),
+          Default_Value:"ON",
+          Example:"VOLT:DC:RANG:AUTO ON" ),
 
         new Command_Entry (
           Command:"VOLT:DC:NPLC",
@@ -266,8 +152,8 @@ namespace Multimeter_Controller
           Category:Command_Category.Configuration,
           Parameters:"nplc: 0.02|0.2|1|10|100|MIN|MAX",
           Query_Form:"VOLT:DC:NPLC?",
-          Default_Value: "10",
-          Example: "VOLT:DC:NPLC 10" ),
+          Default_Value:"10",
+          Example:"VOLT:DC:NPLC 100" ),
 
         new Command_Entry (
           Command:"VOLT:DC:RES",
@@ -276,18 +162,68 @@ namespace Multimeter_Controller
           Category:Command_Category.Configuration,
           Parameters:"resolution: in volts, MIN|MAX",
           Query_Form:"VOLT:DC:RES?",
-          Default_Value: "Depends on range and NPLC",
-          Example: "VOLT:DC:RES 0.0001" ),
+          Default_Value:"Depends on range and NPLC",
+          Example:"VOLT:DC:RES MIN" ),
 
         new Command_Entry (
-          Command:"INP:IMP:AUTO",
-          Syntax:"INPut:IMPedance:AUTO <mode>",
-          Description:"Enable or disable high-impedance (>10 GOhm) input for DCV",
+          Command:"RES:NPLC",
+          Syntax:"RESistance:NPLCycles <nplc>",
+          Description:"Set resistance integration time in power line cycles",
           Category:Command_Category.Configuration,
-          Parameters:"mode: ON|OFF (ON = >10 GOhm on 100mV, 1V, 10V ranges)",
-          Query_Form:"INP:IMP:AUTO?",
-          Default_Value: "OFF (10 MOhm on all ranges)",
-          Example: "INP:IMP:AUTO ON" ),
+          Parameters:"nplc: 0.02|0.2|1|10|100|MIN|MAX",
+          Query_Form:"RES:NPLC?",
+          Default_Value:"10",
+          Example:"RES:NPLC 10" ),
+
+        new Command_Entry (
+          Command:"RES:RANG",
+          Syntax:"RESistance:RANGe <range>",
+          Description:"Set 2-wire resistance range",
+          Category:Command_Category.Configuration,
+          Parameters:"range: 100|1e3|10e3|100e3|1e6|10e6|100e6|MIN|MAX",
+          Query_Form:"RES:RANG?",
+          Default_Value:"AUTO",
+          Example:"RES:RANG 1e3" ),
+
+        new Command_Entry (
+          Command:"RES:RANG:AUTO",
+          Syntax:"RESistance:RANGe:AUTO <mode>",
+          Description:"Enable or disable resistance autoranging",
+          Category:Command_Category.Configuration,
+          Parameters:"mode: ON|OFF|ONCE",
+          Query_Form:"RES:RANG:AUTO?",
+          Default_Value:"ON",
+          Example:"RES:RANG:AUTO ON" ),
+
+        new Command_Entry (
+          Command:"FRES:NPLC",
+          Syntax:"FRESistance:NPLCycles <nplc>",
+          Description:"Set 4-wire resistance integration time in power line cycles",
+          Category:Command_Category.Configuration,
+          Parameters:"nplc: 0.02|0.2|1|10|100|MIN|MAX",
+          Query_Form:"FRES:NPLC?",
+          Default_Value:"10",
+          Example:"FRES:NPLC 10" ),
+
+        new Command_Entry (
+          Command:"FRES:RANG",
+          Syntax:"FRESistance:RANGe <range>",
+          Description:"Set 4-wire resistance range",
+          Category:Command_Category.Configuration,
+          Parameters:"range: 100|1e3|10e3|100e3|1e6|10e6|100e6|MIN|MAX",
+          Query_Form:"FRES:RANG?",
+          Default_Value:"AUTO",
+          Example:"FRES:RANG 1e3" ),
+
+        new Command_Entry (
+          Command:"FRES:RANG:AUTO",
+          Syntax:"FRESistance:RANGe:AUTO <mode>",
+          Description:"Enable or disable 4-wire resistance autoranging",
+          Category:Command_Category.Configuration,
+          Parameters:"mode: ON|OFF|ONCE",
+          Query_Form:"FRES:RANG:AUTO?",
+          Default_Value:"ON",
+          Example:"FRES:RANG:AUTO ON" ),
 
         new Command_Entry (
           Command:"ZERO:AUTO",
@@ -296,18 +232,38 @@ namespace Multimeter_Controller
           Category:Command_Category.Configuration,
           Parameters:"mode: ON|OFF|ONCE",
           Query_Form:"ZERO:AUTO?",
-          Default_Value: "ON",
-          Example: "ZERO:AUTO ON" ),
+          Default_Value:"ON",
+          Example:"ZERO:AUTO ON" ),
 
         new Command_Entry (
-          Command:"DET:BAND",
-          Syntax:"DETector:BANDwidth <bandwidth>",
-          Description:"Set AC signal filter bandwidth",
+          Command:"VOLT:DC:AVER:TCON",
+          Syntax:"VOLTage:DC:AVERage:TCONtrol <type>",
+          Description:"Set digital filter type for DC voltage",
           Category:Command_Category.Configuration,
-          Parameters:"bandwidth: 3|20|200|MIN|MAX (Hz)",
-          Query_Form:"DET:BAND?",
-          Default_Value: "20",
-          Example: "DET:BAND 20" ),
+          Parameters:"type: MOVing|REPeat",
+          Query_Form:"VOLT:DC:AVER:TCON?",
+          Default_Value:"MOVing",
+          Example:"VOLT:DC:AVER:TCON MOVing" ),
+
+        new Command_Entry (
+          Command:"VOLT:DC:AVER:COUN",
+          Syntax:"VOLTage:DC:AVERage:COUNt <count>",
+          Description:"Set digital filter count for DC voltage averaging",
+          Category:Command_Category.Configuration,
+          Parameters:"count: 2 to 100|MIN|MAX",
+          Query_Form:"VOLT:DC:AVER:COUN?",
+          Default_Value:"10",
+          Example:"VOLT:DC:AVER:COUN 10" ),
+
+        new Command_Entry (
+          Command:"VOLT:DC:AVER:STAT",
+          Syntax:"VOLTage:DC:AVERage:STATe <mode>",
+          Description:"Enable or disable digital filter for DC voltage",
+          Category:Command_Category.Configuration,
+          Parameters:"mode: ON|OFF",
+          Query_Form:"VOLT:DC:AVER:STAT?",
+          Default_Value:"OFF",
+          Example:"VOLT:DC:AVER:STAT ON" ),
 
         // ===== Trigger Commands =====
         new Command_Entry (
@@ -317,8 +273,8 @@ namespace Multimeter_Controller
           Category:Command_Category.Trigger,
           Parameters:"source: IMMediate|BUS|EXTernal",
           Query_Form:"TRIG:SOUR?",
-          Default_Value: "IMMediate",
-          Example: "TRIG:SOUR BUS" ),
+          Default_Value:"IMMediate",
+          Example:"TRIG:SOUR BUS" ),
 
         new Command_Entry (
           Command:"TRIG:DEL",
@@ -327,8 +283,8 @@ namespace Multimeter_Controller
           Category:Command_Category.Trigger,
           Parameters:"seconds: 0 to 3600|MIN|MAX",
           Query_Form:"TRIG:DEL?",
-          Default_Value: "AUTO",
-          Example: "TRIG:DEL 0.5" ),
+          Default_Value:"AUTO",
+          Example:"TRIG:DEL 0.5" ),
 
         new Command_Entry (
           Command:"TRIG:DEL:AUTO",
@@ -337,8 +293,8 @@ namespace Multimeter_Controller
           Category:Command_Category.Trigger,
           Parameters:"mode: ON|OFF",
           Query_Form:"TRIG:DEL:AUTO?",
-          Default_Value: "ON",
-          Example: "TRIG:DEL:AUTO ON" ),
+          Default_Value:"ON",
+          Example:"TRIG:DEL:AUTO ON" ),
 
         new Command_Entry (
           Command:"TRIG:COUN",
@@ -347,8 +303,8 @@ namespace Multimeter_Controller
           Category:Command_Category.Trigger,
           Parameters:"count: 1 to 50000|MIN|MAX|INFinity",
           Query_Form:"TRIG:COUN?",
-          Default_Value: "1",
-          Example: "TRIG:COUN 10" ),
+          Default_Value:"1",
+          Example:"TRIG:COUN 10" ),
 
         new Command_Entry (
           Command:"SAMP:COUN",
@@ -357,8 +313,8 @@ namespace Multimeter_Controller
           Category:Command_Category.Trigger,
           Parameters:"count: 1 to 50000|MIN|MAX",
           Query_Form:"SAMP:COUN?",
-          Default_Value: "1",
-          Example: "SAMP:COUN 5" ),
+          Default_Value:"1",
+          Example:"SAMP:COUN 5" ),
 
         new Command_Entry (
           Command:"INIT",
@@ -366,9 +322,9 @@ namespace Multimeter_Controller
           Description:"Change trigger state from idle to wait-for-trigger",
           Category:Command_Category.Trigger,
           Parameters:"None",
-          Query_Form:"INIT?",
-          Default_Value: "N/A",
-          Example: "INIT" ),
+          Query_Form:"",
+          Default_Value:"N/A",
+          Example:"INIT" ),
 
         new Command_Entry (
           Command:"*TRG",
@@ -377,8 +333,8 @@ namespace Multimeter_Controller
           Category:Command_Category.Trigger,
           Parameters:"None (requires TRIG:SOUR BUS)",
           Query_Form:"",
-          Default_Value: "N/A",
-          Example: "*TRG" ),
+          Default_Value:"N/A",
+          Example:"*TRG" ),
 
         // ===== Math Commands =====
         new Command_Entry (
@@ -388,8 +344,8 @@ namespace Multimeter_Controller
           Category:Command_Category.Math,
           Parameters:"function: NULL|DB|DBM|AVERage|MIN|MAX|LIMit",
           Query_Form:"CALC:FUNC?",
-          Default_Value: "NULL",
-          Example: "CALC:FUNC NULL" ),
+          Default_Value:"NULL",
+          Example:"CALC:FUNC NULL" ),
 
         new Command_Entry (
           Command:"CALC:STAT",
@@ -398,8 +354,8 @@ namespace Multimeter_Controller
           Category:Command_Category.Math,
           Parameters:"mode: ON|OFF",
           Query_Form:"CALC:STAT?",
-          Default_Value: "OFF",
-          Example: "CALC:STAT ON" ),
+          Default_Value:"OFF",
+          Example:"CALC:STAT ON" ),
 
         new Command_Entry (
           Command:"CALC:NULL:OFFS",
@@ -408,28 +364,8 @@ namespace Multimeter_Controller
           Category:Command_Category.Math,
           Parameters:"value: -1e15 to +1e15|MIN|MAX",
           Query_Form:"CALC:NULL:OFFS?",
-          Default_Value: "0",
-          Example: "CALC:NULL:OFFS 0.5" ),
-
-        new Command_Entry (
-          Command:"CALC:DB:REF",
-          Syntax:"CALCulate:DB:REFerence <value>",
-          Description:"Set dB reference value",
-          Category:Command_Category.Math,
-          Parameters:"value: -200 to +200 dBm|MIN|MAX",
-          Query_Form:"CALC:DB:REF?",
-          Default_Value: "0",
-          Example: "CALC:DB:REF 1.0" ),
-
-        new Command_Entry (
-          Command:"CALC:DBM:REF",
-          Syntax:"CALCulate:DBM:REFerence <impedance>",
-          Description:"Set dBm reference impedance",
-          Category:Command_Category.Math,
-          Parameters:"impedance: 50 to 8000 ohms|MIN|MAX",
-          Query_Form:"CALC:DBM:REF?",
-          Default_Value: "600",
-          Example: "CALC:DBM:REF 50" ),
+          Default_Value:"0",
+          Example:"CALC:NULL:OFFS 0.000001" ),
 
         new Command_Entry (
           Command:"CALC:LIM:LOW",
@@ -438,8 +374,8 @@ namespace Multimeter_Controller
           Category:Command_Category.Math,
           Parameters:"value: -1e15 to +1e15|MIN|MAX",
           Query_Form:"CALC:LIM:LOW?",
-          Default_Value: "0",
-          Example: "CALC:LIM:LOW 0.9" ),
+          Default_Value:"0",
+          Example:"CALC:LIM:LOW -0.000001" ),
 
         new Command_Entry (
           Command:"CALC:LIM:UPP",
@@ -448,8 +384,8 @@ namespace Multimeter_Controller
           Category:Command_Category.Math,
           Parameters:"value: -1e15 to +1e15|MIN|MAX",
           Query_Form:"CALC:LIM:UPP?",
-          Default_Value: "0",
-          Example: "CALC:LIM:UPP 1.1" ),
+          Default_Value:"0",
+          Example:"CALC:LIM:UPP 0.000001" ),
 
         new Command_Entry (
           Command:"CALC:AVER:MIN?",
@@ -458,8 +394,8 @@ namespace Multimeter_Controller
           Category:Command_Category.Math,
           Parameters:"None",
           Query_Form:"CALC:AVER:MIN?",
-          Default_Value: "N/A",
-          Example: "CALC:AVER:MIN?" ),
+          Default_Value:"N/A",
+          Example:"CALC:AVER:MIN?" ),
 
         new Command_Entry (
           Command:"CALC:AVER:MAX?",
@@ -468,8 +404,8 @@ namespace Multimeter_Controller
           Category:Command_Category.Math,
           Parameters:"None",
           Query_Form:"CALC:AVER:MAX?",
-          Default_Value: "N/A",
-          Example: "CALC:AVER:MAX?" ),
+          Default_Value:"N/A",
+          Example:"CALC:AVER:MAX?" ),
 
         new Command_Entry (
           Command:"CALC:AVER:AVER?",
@@ -478,8 +414,8 @@ namespace Multimeter_Controller
           Category:Command_Category.Math,
           Parameters:"None",
           Query_Form:"CALC:AVER:AVER?",
-          Default_Value: "N/A",
-          Example: "CALC:AVER:AVER?" ),
+          Default_Value:"N/A",
+          Example:"CALC:AVER:AVER?" ),
 
         new Command_Entry (
           Command:"CALC:AVER:COUN?",
@@ -488,8 +424,8 @@ namespace Multimeter_Controller
           Category:Command_Category.Math,
           Parameters:"None",
           Query_Form:"CALC:AVER:COUN?",
-          Default_Value: "N/A",
-          Example: "CALC:AVER:COUN?" ),
+          Default_Value:"N/A",
+          Example:"CALC:AVER:COUN?" ),
 
         // ===== System Commands =====
         new Command_Entry (
@@ -499,8 +435,8 @@ namespace Multimeter_Controller
           Category:Command_Category.System,
           Parameters:"None",
           Query_Form:"*IDN?",
-          Default_Value: "N/A",
-          Example: "*IDN?" ),
+          Default_Value:"N/A",
+          Example:"*IDN?" ),
 
         new Command_Entry (
           Command:"*RST",
@@ -509,8 +445,8 @@ namespace Multimeter_Controller
           Category:Command_Category.System,
           Parameters:"None",
           Query_Form:"",
-          Default_Value: "N/A",
-          Example: "*RST" ),
+          Default_Value:"N/A",
+          Example:"*RST" ),
 
         new Command_Entry (
           Command:"*CLS",
@@ -519,8 +455,8 @@ namespace Multimeter_Controller
           Category:Command_Category.System,
           Parameters:"None",
           Query_Form:null,
-          Default_Value: "N/A",
-          Example: "*CLS" ),
+          Default_Value:"N/A",
+          Example:"*CLS" ),
 
         new Command_Entry (
           Command:"*OPC?",
@@ -529,8 +465,8 @@ namespace Multimeter_Controller
           Category:Command_Category.System,
           Parameters:"None",
           Query_Form:"*OPC?",
-          Default_Value: "N/A",
-          Example: "*OPC?" ),
+          Default_Value:"N/A",
+          Example:"*OPC?" ),
 
         new Command_Entry (
           Command:"*OPC",
@@ -539,18 +475,18 @@ namespace Multimeter_Controller
           Category:Command_Category.System,
           Parameters:"None",
           Query_Form:"",
-          Default_Value: "N/A",
-          Example: "*OPC" ),
+          Default_Value:"N/A",
+          Example:"*OPC" ),
 
         new Command_Entry (
           Command:"*TST?",
           Syntax:"*TST?",
           Description:"Perform self-test and return result (0 = pass)",
           Category:Command_Category.System,
-          Parameters:"None (returns 0 for pass, 1 for fail)",
+          Parameters:"None (returns 0 for pass, non-zero for fail)",
           Query_Form:"*TST?",
-          Default_Value: "N/A",
-          Example: "*TST?" ),
+          Default_Value:"N/A",
+          Example:"*TST?" ),
 
         new Command_Entry (
           Command:"SYST:ERR?",
@@ -559,19 +495,28 @@ namespace Multimeter_Controller
           Category:Command_Category.System,
           Parameters:"None (returns error number and message)",
           Query_Form:"SYST:ERR?",
-          Default_Value: "N/A",
-          Example: "SYST:ERR?" ),
+          Default_Value:"N/A",
+          Example:"SYST:ERR?" ),
 
-
-           new Command_Entry (
+        new Command_Entry (
           Command:"SYST:REM",
-          Syntax:"SYSTem:REMote?",
-          Description:"Set remote mode",
+          Syntax:"SYSTem:REMote",
+          Description:"Set instrument to remote mode",
           Category:Command_Category.System,
-          Parameters:"None (returns error number and message)",
+          Parameters:"None",
           Query_Form:"",
-          Default_Value: "N/A",
-          Example: "SYST:REM" ),
+          Default_Value:"N/A",
+          Example:"SYST:REM" ),
+
+        new Command_Entry (
+          Command:"SYST:LOC",
+          Syntax:"SYSTem:LOCal",
+          Description:"Return instrument to local (front panel) control",
+          Category:Command_Category.System,
+          Parameters:"None",
+          Query_Form:"",
+          Default_Value:"N/A",
+          Example:"SYST:LOC" ),
 
         new Command_Entry (
           Command:"SYST:VERS?",
@@ -580,8 +525,8 @@ namespace Multimeter_Controller
           Category:Command_Category.System,
           Parameters:"None",
           Query_Form:"SYST:VERS?",
-          Default_Value: "N/A",
-          Example: "SYST:VERS?" ),
+          Default_Value:"N/A",
+          Example:"SYST:VERS?" ),
 
         new Command_Entry (
           Command:"*STB?",
@@ -590,8 +535,8 @@ namespace Multimeter_Controller
           Category:Command_Category.System,
           Parameters:"None (returns decimal value of status byte)",
           Query_Form:"*STB?",
-          Default_Value: "N/A",
-          Example: "*STB?" ),
+          Default_Value:"N/A",
+          Example:"*STB?" ),
 
         new Command_Entry (
           Command:"*SRE",
@@ -600,8 +545,8 @@ namespace Multimeter_Controller
           Category:Command_Category.System,
           Parameters:"value: 0-255 (bit mask)",
           Query_Form:"*SRE?",
-          Default_Value: "0",
-          Example: "*SRE 32" ),
+          Default_Value:"0",
+          Example:"*SRE 32" ),
 
         new Command_Entry (
           Command:"*ESE",
@@ -610,8 +555,8 @@ namespace Multimeter_Controller
           Category:Command_Category.System,
           Parameters:"value: 0-255 (bit mask)",
           Query_Form:"*ESE?",
-          Default_Value: "0",
-          Example: "*ESE 1" ),
+          Default_Value:"0",
+          Example:"*ESE 1" ),
 
         new Command_Entry (
           Command:"*ESR?",
@@ -620,10 +565,30 @@ namespace Multimeter_Controller
           Category:Command_Category.System,
           Parameters:"None (returns decimal value of register)",
           Query_Form:"*ESR?",
-          Default_Value: "N/A",
-          Example: "*ESR?" ),
+          Default_Value:"N/A",
+          Example:"*ESR?" ),
 
-        // ===== IO Commands =====
+        new Command_Entry (
+          Command:"*SAV",
+          Syntax:"*SAV <register>",
+          Description:"Save current instrument state to memory register",
+          Category:Command_Category.System,
+          Parameters:"register: 0|1|2",
+          Query_Form:"",
+          Default_Value:"N/A",
+          Example:"*SAV 1" ),
+
+        new Command_Entry (
+          Command:"*RCL",
+          Syntax:"*RCL <register>",
+          Description:"Recall instrument state from memory register",
+          Category:Command_Category.System,
+          Parameters:"register: 0|1|2",
+          Query_Form:null,
+          Default_Value:"N/A",
+          Example:"*RCL 1" ),
+
+        // ===== IO / Display Commands =====
         new Command_Entry (
           Command:"DISP",
           Syntax:"DISPlay <mode>",
@@ -631,8 +596,8 @@ namespace Multimeter_Controller
           Category:Command_Category.IO,
           Parameters:"mode: ON|OFF",
           Query_Form:"DISP?",
-          Default_Value: "ON",
-          Example: "DISP ON" ),
+          Default_Value:"ON",
+          Example:"DISP ON" ),
 
         new Command_Entry (
           Command:"DISP:TEXT",
@@ -641,8 +606,8 @@ namespace Multimeter_Controller
           Category:Command_Category.IO,
           Parameters:"string: up to 12 characters in quotes",
           Query_Form:"DISP:TEXT?",
-          Default_Value: "N/A",
-          Example: "DISP:TEXT \"HELLO\"" ),
+          Default_Value:"N/A",
+          Example:"DISP:TEXT \"HELLO\"" ),
 
         new Command_Entry (
           Command:"DISP:TEXT:CLE",
@@ -650,9 +615,9 @@ namespace Multimeter_Controller
           Description:"Clear the displayed text message",
           Category:Command_Category.IO,
           Parameters:"None",
-          Query_Form:"DISP:TEXT:CLE?",
-          Default_Value: "N/A",
-          Example: "DISP:TEXT:CLE" ),
+          Query_Form:"",
+          Default_Value:"N/A",
+          Example:"DISP:TEXT:CLE" ),
 
         new Command_Entry (
           Command:"SYST:BEEP",
@@ -660,19 +625,19 @@ namespace Multimeter_Controller
           Description:"Issue a single beep from the front panel",
           Category:Command_Category.IO,
           Parameters:"None",
-          Query_Form: null,
-          Default_Value: "N/A",
-          Example: "SYST:BEEP" ),
+          Query_Form:null,
+          Default_Value:"N/A",
+          Example:"SYST:BEEP" ),
 
         new Command_Entry (
           Command:"SYST:BEEP:STAT",
           Syntax:"SYSTem:BEEPer:STATe <mode>",
-          Description:"Enable or disable beeper for limit test and continuity",
+          Description:"Enable or disable beeper",
           Category:Command_Category.IO,
           Parameters:"mode: ON|OFF",
-          Query_Form: null,
-          Default_Value: "ON",
-          Example: "SYST:BEEP:STAT ON" ),
+          Query_Form:"SYST:BEEP:STAT?",
+          Default_Value:"ON",
+          Example:"SYST:BEEP:STAT ON" ),
 
         new Command_Entry (
           Command:"ROUT:TERM?",
@@ -681,8 +646,8 @@ namespace Multimeter_Controller
           Category:Command_Category.IO,
           Parameters:"None (returns FRON or REAR)",
           Query_Form:"ROUT:TERM?",
-          Default_Value: "N/A",
-          Example: "ROUT:TERM?" ),
+          Default_Value:"N/A",
+          Example:"ROUT:TERM?" ),
 
         new Command_Entry (
           Command:"FORM",
@@ -691,8 +656,8 @@ namespace Multimeter_Controller
           Category:Command_Category.IO,
           Parameters:"type: ASCii|REAL,32|REAL,64",
           Query_Form:"FORM?",
-          Default_Value: "ASCii",
-          Example: "FORM ASC" ),
+          Default_Value:"ASCii",
+          Example:"FORM ASC" ),
 
         // ===== Memory / Data Commands =====
         new Command_Entry (
@@ -702,18 +667,8 @@ namespace Multimeter_Controller
           Category:Command_Category.Memory,
           Parameters:"None",
           Query_Form:"DATA:POIN?",
-          Default_Value: "N/A",
-          Example: "DATA:POIN?" ),
-
-        new Command_Entry (
-          Command:"DATA:COUNt?",
-          Syntax:"DATA:COUNt?",
-          Description:"Query number of readings stored in internal memory",
-          Category:Command_Category.Memory,
-          Parameters:"None",
-          Query_Form:"DATA:COUN?",
-          Default_Value: "N/A",
-          Example: "DATA:COUN?" ),
+          Default_Value:"N/A",
+          Example:"DATA:POIN?" ),
 
         new Command_Entry (
           Command:"DATA:FEED",
@@ -722,48 +677,8 @@ namespace Multimeter_Controller
           Category:Command_Category.Memory,
           Parameters:"destination: RDG_STORE,\"\" (disable) | RDG_STORE,\"CALC\" (enable)",
           Query_Form:"DATA:FEED?",
-          Default_Value: "Disabled",
-          Example: "DATA:FEED RDG_STORE,\"CALC\"" ),
-
-        new Command_Entry (
-          Command:"DATA:DEL?",
-          Syntax:"DATA:DELete?",
-          Description:"Remove all readings from memory",
-          Category:Command_Category.Memory,
-          Parameters:"None",
-          Query_Form:"DATA:DEL?",
-          Default_Value: "N/A",
-          Example: "DATA:DEL" ),
-
-        new Command_Entry (
-          Command:"MEMory:STATe:NAME?",
-          Syntax:"MEMory:STATe:NAME?",
-          Description:"Query stored instrument state name",
-          Category:Command_Category.Memory,
-          Parameters:"None",
-          Query_Form:"MEM:STAT:NAME?",
-          Default_Value: "N/A",
-          Example: "MEM:STAT:NAME?" ),
-
-        new Command_Entry (
-          Command:"*SAV",
-          Syntax:"*SAV <register>",
-          Description:"Save current instrument state to memory register",
-          Category:Command_Category.Memory,
-          Parameters:"register: 0|1|2",
-          Query_Form:"*SAV?",
-          Default_Value: "N/A",
-          Example: "*SAV 1" ),
-
-        new Command_Entry (
-          Command:"*RCL",
-          Syntax:"*RCL <register>",
-          Description:"Recall instrument state from memory register",
-          Category:Command_Category.Memory,
-          Parameters:"register: 0|1|2",
-          Query_Form:null,
-          Default_Value: "N/A",
-          Example: "*RCL 1" ),
+          Default_Value:"Disabled",
+          Example:"DATA:FEED RDG_STORE,\"CALC\"" ),
 
         // ===== Calibration Commands =====
         new Command_Entry (
@@ -773,18 +688,18 @@ namespace Multimeter_Controller
           Category:Command_Category.Calibration,
           Parameters:"mode: ON|OFF, code: security code string",
           Query_Form:"CAL:SEC:STAT?",
-          Default_Value: "OFF",
-          Example: "CAL:SEC:STAT ON,HP034401" ),
+          Default_Value:"OFF",
+          Example:"CAL:SEC:STAT ON,HP034420" ),
 
         new Command_Entry (
-          Command:"CAL:COUN",
+          Command:"CAL:COUN?",
           Syntax:"CALibration:COUNt?",
           Description:"Query the number of times the instrument has been calibrated",
           Category:Command_Category.Calibration,
           Parameters:"None",
           Query_Form:"CAL:COUN?",
-          Default_Value: "N/A",
-          Example: "CAL:COUN?" ),
+          Default_Value:"N/A",
+          Example:"CAL:COUN?" ),
 
         new Command_Entry (
           Command:"CAL:STR",
@@ -793,8 +708,8 @@ namespace Multimeter_Controller
           Category:Command_Category.Calibration,
           Parameters:"message: up to 40 characters in quotes",
           Query_Form:"CAL:STR?",
-          Default_Value: "N/A",
-          Example: "CAL:STR \"Cal 2026-02-06\"" ),
+          Default_Value:"N/A",
+          Example:"CAL:STR \"Cal 2026-02-06\"" ),
       };
 
       Commands.Sort ( ( A, B ) =>

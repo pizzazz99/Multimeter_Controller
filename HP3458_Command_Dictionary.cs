@@ -6,8 +6,23 @@ using System.Threading.Tasks;
 
 namespace Multimeter_Controller
 {
-  public static class Keysight_3458A_Command_Dictionary_Class
+  public static class HP3458_Command_Dictionary_Class
   {
+  public static Command_Entry? Get_Command_By_Name(string Command_Name)
+{
+    if (string.IsNullOrWhiteSpace(Command_Name))
+        return null;
+
+    Command_Name = Command_Name.Trim();
+
+    return Get_All_Commands()
+        .FirstOrDefault(c =>
+            string.Equals(c.Command, Command_Name,
+                StringComparison.OrdinalIgnoreCase)
+         || string.Equals(c.Query_Form, Command_Name,
+                StringComparison.OrdinalIgnoreCase));
+}
+
     public static List<Command_Entry> Get_All_Commands ( )
     {
       var Commands = new List<Command_Entry>
@@ -155,7 +170,7 @@ namespace Multimeter_Controller
 
         // ===== Configuration Commands =====
         new Command_Entry (
-          Command:"RANGE",
+          Command:"RANGE?",
           Syntax:"RANGE [<range>]",
           Description:"Set or query the measurement range",
           Category:Command_Category.Configuration,
@@ -457,7 +472,7 @@ namespace Multimeter_Controller
           Example: "STAT ON" ),
 
         new Command_Entry (
-          Command:"RMATH",
+          Command:"RMATH?",
           Syntax:"RMATH",
           Description:"Query math register (accumulated stats result)",
           Category:Command_Category.Math,
@@ -498,7 +513,7 @@ namespace Multimeter_Controller
           Example: "PRESET" ),
 
         new Command_Entry (
-          Command:"ID",
+          Command:"ID?",
           Syntax:"ID?",
           Description:"Query instrument identification string",
           Category:Command_Category.System,
@@ -508,7 +523,7 @@ namespace Multimeter_Controller
           Example: "ID?" ),
 
         new Command_Entry (
-          Command:"ERR",
+          Command:"ERR?",
           Syntax:"ERR?",
           Description:"Query and clear error register",
           Category:Command_Category.System,
@@ -518,7 +533,7 @@ namespace Multimeter_Controller
           Example: "ERR?" ),
 
         new Command_Entry (
-          Command:"ERRSTR",
+          Command:"ERRSTR?",
           Syntax:"ERRSTR?",
           Description:"Query error string description for last error",
           Category:Command_Category.System,
@@ -528,7 +543,7 @@ namespace Multimeter_Controller
           Example: "ERRSTR?" ),
 
         new Command_Entry (
-          Command:"AUXERR",
+          Command:"AUXERR?",
           Syntax:"AUXERR?",
           Description:"Query auxiliary error register for additional detail",
           Category:Command_Category.System,
@@ -538,7 +553,7 @@ namespace Multimeter_Controller
           Example: "AUXERR?" ),
 
         new Command_Entry (
-          Command:"STB",
+          Command:"STB?",
           Syntax:"STB?",
           Description:"Query status byte register",
           Category:Command_Category.System,
@@ -578,7 +593,7 @@ namespace Multimeter_Controller
           Example: "END ON" ),
 
         new Command_Entry (
-          Command:"LINE",
+          Command:"LINE?",
           Syntax:"LINE?",
           Description:"Query measured power line frequency",
           Category:Command_Category.System,
@@ -588,7 +603,7 @@ namespace Multimeter_Controller
           Example: "LINE?" ),
 
         new Command_Entry (
-          Command:"TEMP",
+          Command:"TEMP?",
           Syntax:"TEMP?",
           Description:"Query internal instrument temperature",
           Category:Command_Category.System,
@@ -598,7 +613,7 @@ namespace Multimeter_Controller
           Example: "TEMP?" ),
 
         new Command_Entry (
-          Command:"REV",
+          Command:"REV?",
           Syntax:"REV?",
           Description:"Query firmware revision string",
           Category:Command_Category.System,
@@ -608,7 +623,7 @@ namespace Multimeter_Controller
           Example: "REV?" ),
 
         new Command_Entry (
-          Command:"OPT",
+          Command:"OPT?",
           Syntax:"OPT?",
           Description:"Query installed options",
           Category:Command_Category.System,
@@ -669,7 +684,7 @@ namespace Multimeter_Controller
           Example: "RMEM 1,100" ),
 
         new Command_Entry (
-          Command:"MCOUNT",
+          Command:"MCOUNT?",
           Syntax:"MCOUNT?",
           Description:"Query number of readings stored in memory",
           Category:Command_Category.Memory,
@@ -811,7 +826,7 @@ namespace Multimeter_Controller
           Example: "CAL 1" ),
 
         new Command_Entry (
-          Command:"CALNUM",
+          Command:"CALNUM?",
           Syntax:"CALNUM?",
           Description:"Query calibration count (number of calibrations performed)",
           Category:Command_Category.Calibration,

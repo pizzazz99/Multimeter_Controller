@@ -1,6 +1,6 @@
 // ============================================================================
-// File:        HP_33120A_Command_Dictionary_Class.cs
-// Project:     Keysight 3458A Multimeter Controller
+// File:        HP33120_Command_Dictionary_Class.cs
+// Project:     HP3458 Multimeter Controller
 // Description: Command reference dictionary for the HP / Agilent 33120A
 //              15 MHz Function / Arbitrary Waveform Generator. Uses standard
 //              SCPI command syntax.
@@ -10,8 +10,8 @@
 // ============================================================================
 
 // ============================================================================
-// File:        HP33120A_Command_Dictionary.cs
-// Project:     Keysight 3458A Multimeter Controller
+// File:        HP33120_Command_Dictionary.cs
+// Project:     HP3458 Multimeter Controller
 // Description: Command reference dictionary for the HP / Agilent 33120A
 //              15 MHz Function / Arbitrary Waveform Generator. Uses standard
 //              SCPI command syntax.
@@ -22,7 +22,7 @@
 
 namespace Multimeter_Controller
 {
-  public static class HP_33120A_Command_Dictionary_Class
+  public static class HP33120_Command_Dictionary_Class
   {
     public static List<Command_Entry> Get_All_Commands ( )
     {
