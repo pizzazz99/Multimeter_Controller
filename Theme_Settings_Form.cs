@@ -10,11 +10,7 @@ namespace Multimeter_Controller
       DesignerSerializationVisibility.Hidden )]
     public Chart_Theme Result { get; private set; } = null!;
 
-    public Theme_Settings_Form ( )
-    {
-      InitializeComponent ( );
-      _Working = new Chart_Theme ( );
-    }
+ 
 
     public Theme_Settings_Form ( Chart_Theme Current )
     {
@@ -29,6 +25,7 @@ namespace Multimeter_Controller
     private void Update_Swatches ( )
     {
       Bg_Swatch.BackColor = _Working.Background;
+      Fg_Swatch.BackColor = _Working.Foreground;
       Grid_Swatch.BackColor = _Working.Grid;
       Labels_Swatch.BackColor = _Working.Labels;
       Separator_Swatch.BackColor = _Working.Separator;
@@ -37,6 +34,44 @@ namespace Multimeter_Controller
       Line3_Swatch.BackColor = _Working.Line_Colors [ 2 ];
       Line4_Swatch.BackColor = _Working.Line_Colors [ 3 ];
     }
+
+    private void Fg_Swatch_Click ( object? Sender, EventArgs E )
+    {
+      _Working.Foreground = Pick_Color ( _Working.Foreground );
+      Fg_Swatch.BackColor = _Working.Foreground;
+    }
+
+    private void Light_Blue_Preset_Button_Click ( object? Sender, EventArgs E )
+    {
+      _Working.Copy_From ( Chart_Theme.Light_Blue_Preset ( ) );
+      Update_Swatches ( );
+    }
+
+    private void Brown_Preset_Button_Click ( object? Sender, EventArgs E )
+    {
+      _Working.Copy_From ( Chart_Theme.Brown_Preset ( ) );
+      Update_Swatches ( );
+    }
+
+    private void Grey_Preset_Button_Click ( object? Sender, EventArgs E )
+    {
+      _Working.Copy_From ( Chart_Theme.Grey_Preset ( ) );
+      Update_Swatches ( );
+    }
+
+    private void Golden_Preset_Button_Click ( object? Sender, EventArgs E )
+    {
+      _Working.Copy_From ( Chart_Theme.Golden_Preset ( ) );
+      Update_Swatches ( );
+    }
+
+    private void Light_Yellow_Preset_Button_Click ( object? Sender, EventArgs E )
+    {
+      _Working.Copy_From ( Chart_Theme.Light_Yellow_Preset ( ) );
+      Update_Swatches ( );
+    }
+
+
 
     private Color Pick_Color ( Color Current )
     {

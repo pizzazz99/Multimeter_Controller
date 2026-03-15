@@ -1,0 +1,159 @@
+================================================================================
+ SUPPORTED METER TYPES
+================================================================================
+
+--------------------------------------------------------------------------------
+ HP 3458A  —  8.5-Digit Multimeter
+--------------------------------------------------------------------------------
+Manufacturer : Hewlett-Packard / Agilent
+Interface    : GPIB (IEEE-488)
+Resolution   : 8.5 digits
+Category     : Reference-grade DC voltmeter
+
+Description:
+  The HP 3458A is the gold standard for precision DC voltage measurement.
+  It is capable of 8.5-digit resolution with extremely low noise and drift,
+  making it suitable for metrology, standards labs, and long-term stability
+  measurements. It supports DC voltage, AC voltage, resistance (2-wire and
+  4-wire), DC current, AC current, frequency, and period.
+
+  Key features:
+    - Sub-ppm linearity and noise performance
+    - Selectable NPLC from 0.001 to 1000 for speed/accuracy tradeoff
+    - Autozero, autorange, and high-stability reference
+    - GPIB-only interface (no RS-232 or USB)
+    - Trigger modes: AUTO, HOLD, SGL, EXT, LEVEL, LINE
+
+  Typical use in this application:
+    - Primary voltage reference measurements
+    - Long-duration stability and drift logging
+    - Multi-instrument comparison against a secondary meter
+
+--------------------------------------------------------------------------------
+ HP 34401A  —  6.5-Digit Multimeter
+--------------------------------------------------------------------------------
+Manufacturer : Hewlett-Packard / Agilent / Keysight
+Interface    : GPIB (IEEE-488) + RS-232
+Resolution   : 6.5 digits
+Category     : General-purpose bench multimeter
+
+Description:
+  The HP 34401A is one of the most widely used bench multimeters ever made.
+  It offers excellent accuracy at 6.5 digits with a fast reading rate and
+  broad measurement capability. It supports DC voltage, AC voltage, 2-wire
+  and 4-wire resistance, DC current, AC current, frequency, period,
+  continuity, and diode test.
+
+  Key features:
+    - Up to 1000 readings/second at 4.5 digits
+    - SCPI command set (standard with this application)
+    - Internal reading memory (up to 512 readings)
+    - Math functions: null, dB, dBm, min/max, limit test
+    - RS-232 and GPIB interfaces
+
+  Typical use in this application:
+    - Secondary or reference measurements alongside the HP 3458A
+    - Monitoring a second signal or channel simultaneously
+    - General-purpose voltage, resistance, or current logging
+
+--------------------------------------------------------------------------------
+ HP 34420A  —  7.5-Digit Nano-Volt / Micro-Ohm Meter
+--------------------------------------------------------------------------------
+Manufacturer : Hewlett-Packard / Agilent / Keysight
+Interface    : GPIB (IEEE-488) + RS-232
+Resolution   : 7.5 digits
+Category     : Low-level DC measurement, nanovolt sensitivity
+
+Description:
+  The HP 34420A is a specialized instrument designed for low-level DC voltage
+  and resistance measurements with nanovolt and micro-ohm sensitivity. It
+  features a differential input (Input HI/LO and Sense HI/LO) allowing
+  voltage ratio measurements. It is ideal for measuring thermocouple EMFs,
+  contact resistance, and low-level signal sources.
+
+  Key features:
+    - Nanovolt sensitivity on the 100 mV range
+    - Voltage ratio measurement (Input / Sense)
+    - 2-wire and 4-wire resistance down to micro-ohm level
+    - Digital filter (moving/repeat) with configurable count
+    - NPLC up to 100 for maximum noise rejection
+
+  Typical use in this application:
+    - Thermocouple or low-level voltage source monitoring
+    - Contact or cable resistance measurement
+    - Paired with HP 3458A for cross-validation at nanovolt levels
+
+--------------------------------------------------------------------------------
+ HP 33120A  —  15 MHz Function / Arbitrary Waveform Generator
+--------------------------------------------------------------------------------
+Manufacturer : Hewlett-Packard / Agilent / Keysight
+Interface    : GPIB (IEEE-488) + RS-232
+Frequency    : 100 µHz to 15 MHz
+Category     : Signal source / waveform generator
+
+Description:
+  The HP 33120A is a function and arbitrary waveform generator capable of
+  producing sine, square, triangle, ramp, noise, and user-defined waveforms.
+  It is commonly used as a stimulus source in measurement setups, providing
+  a known reference signal for meter verification or frequency response
+  testing.
+
+  Key features:
+    - Sine, square, triangle, ramp, noise, and ARB waveforms
+    - Amplitude modulation (AM) and frequency modulation (FM)
+    - Frequency sweep and burst mode
+    - Internal 16k-point arbitrary waveform memory
+    - SCPI command set
+
+  Typical use in this application:
+    - Providing a stable AC or DC reference signal for meter input
+    - Frequency source for counter verification
+    - Stimulus for automated measurement sequences
+
+--------------------------------------------------------------------------------
+ HP 53132A  —  225 MHz Universal Counter
+--------------------------------------------------------------------------------
+Manufacturer : Hewlett-Packard / Agilent / Keysight
+Interface    : GPIB (IEEE-488) + RS-232
+Frequency    : DC to 225 MHz (CH1/CH2), optional 3 GHz (CH3)
+Category     : Frequency / time interval counter
+
+Description:
+  The HP 53132A is a high-performance universal counter capable of measuring
+  frequency, period, pulse width, duty cycle, time interval, phase, and
+  totalize. It features a high-stability oven-controlled crystal oscillator
+  (OCXO) option for sub-ppb timebase accuracy, and supports Allan deviation
+  statistics for oscillator characterization.
+
+  Key features:
+    - Frequency resolution to 12 digits in 1 second gate time
+    - Time interval resolution to 75 ps single-shot, 20 ps RMS averaged
+    - Three input channels (CH1, CH2, optional CH3 at 3 GHz)
+    - Built-in statistics: mean, std dev, min, max, Allan deviation
+    - Configurable trigger level, slope, coupling, and attenuation per channel
+    - Internal reading memory up to 1,000,000 readings
+
+  Typical use in this application:
+    - Frequency measurement and logging of oscillator or signal sources
+    - Time interval or phase measurement between two signals
+    - Long-term frequency stability and Allan deviation analysis
+
+================================================================================
+ GPIB / PROLOGIX INTERFACE NOTES
+================================================================================
+
+  All instruments in this application communicate via GPIB (IEEE-488) using
+  a Prologix GPIB-ETHERNET or GPIB-USB controller. Each instrument must be
+  assigned a unique GPIB address (1-30).
+
+  Default addresses used in this application:
+    HP 3458A   : Address 10 (typical)
+    HP 34401A  : Address 22 (typical)
+    HP 34420A  : Address 5  (typical)
+    HP 33120A  : Address 11 (typical)
+    HP 53132A  : Address 7  (typical)
+
+  These addresses can be changed on the front panel of each instrument and
+  must match the address configured in this application.
+
+================================================================================

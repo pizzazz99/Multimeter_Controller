@@ -1,13 +1,19 @@
 using System.Text.Json;
+using System.Xml.Linq;
 
 namespace Multimeter_Controller
 {
   public class Chart_Theme
   {
+
     public Color Background
     {
       get; set;
     }
+    public Color Foreground
+    {
+      get; set;
+    }  // Add this
     public Color Grid
     {
       get; set;
@@ -20,7 +26,24 @@ namespace Multimeter_Controller
     {
       get; set;
     }
-    public Color [ ] Line_Colors { get; set; } = new Color [ 4 ];
+    public Color [ ] Line_Colors
+    {
+      get; set;
+    }
+
+    public string Name { get; set; } = "";
+
+    public void Copy_From ( Chart_Theme Other )
+    {
+      Background = Other.Background;
+      Foreground = Other.Foreground;  // Add this
+      Grid = Other.Grid;
+      Labels = Other.Labels;
+      Separator = Other.Separator;
+      Line_Colors = Other.Line_Colors;
+    }
+
+
 
     private static readonly string _File_Path =
       Path.Combine ( AppContext.BaseDirectory,
@@ -30,17 +53,19 @@ namespace Multimeter_Controller
     {
       return new Chart_Theme
       {
+        Name = "Dark",
         Background = Color.FromArgb ( 24, 27, 31 ),
+        Foreground = Color.FromArgb ( 220, 220, 220 ),
         Grid = Color.FromArgb ( 44, 50, 58 ),
         Labels = Color.FromArgb ( 140, 155, 170 ),
         Separator = Color.FromArgb ( 70, 80, 90 ),
         Line_Colors = new [ ]
         {
-          Color.FromArgb ( 115, 191, 105 ),
-          Color.FromArgb ( 110, 159, 232 ),
-          Color.FromArgb ( 242, 163, 68 ),
-          Color.FromArgb ( 184, 119, 217 ),
-        }
+      Color.FromArgb ( 115, 191, 105 ),
+      Color.FromArgb ( 110, 159, 232 ),
+      Color.FromArgb ( 242, 163, 68 ),
+      Color.FromArgb ( 184, 119, 217 ),
+    }
       };
     }
 
@@ -48,19 +73,120 @@ namespace Multimeter_Controller
     {
       return new Chart_Theme
       {
+        Name = "Light",
         Background = Color.FromArgb ( 245, 245, 248 ),
+        Foreground = Color.FromArgb ( 30, 30, 30 ),
         Grid = Color.FromArgb ( 210, 215, 220 ),
         Labels = Color.FromArgb ( 60, 70, 80 ),
         Separator = Color.FromArgb ( 180, 185, 190 ),
         Line_Colors = new [ ]
         {
-          Color.FromArgb ( 40, 140, 30 ),
-          Color.FromArgb ( 30, 100, 200 ),
-          Color.FromArgb ( 210, 120, 20 ),
-          Color.FromArgb ( 140, 60, 180 ),
+      Color.FromArgb ( 40, 140, 30 ),
+      Color.FromArgb ( 30, 100, 200 ),
+      Color.FromArgb ( 210, 120, 20 ),
+      Color.FromArgb ( 140, 60, 180 ),
+    }
+      };
+    }
+
+
+    public static Chart_Theme Brown_Preset ( )
+    {
+      return new Chart_Theme
+      {
+        Background = Color.FromArgb ( 45, 35, 25 ),
+        Foreground = Color.FromArgb ( 30, 30, 30 ),
+        Grid = Color.FromArgb ( 90, 70, 50 ),
+        Labels = Color.BurlyWood,
+        Separator = Color.SaddleBrown,
+        Line_Colors = new [ ]
+        {
+      Color.Peru,
+      Color.Chocolate,
+      Color.Tan,
+      Color.SandyBrown
+    }
+      };
+    }
+
+    public static Chart_Theme Grey_Preset ( )
+    {
+      return new Chart_Theme
+      {
+        Background = Color.FromArgb ( 40, 40, 40 ),
+        Foreground = Color.FromArgb ( 30, 30, 30 ),
+        Grid = Color.DimGray,
+        Labels = Color.Gainsboro,
+        Separator = Color.Gray,
+        Line_Colors = new [ ]
+        {
+      Color.LightGray,
+      Color.Silver,
+      Color.DarkGray,
+      Color.WhiteSmoke
+    }
+      };
+    }
+
+    public static Chart_Theme Golden_Preset ( )
+    {
+      return new Chart_Theme
+      {
+        Background = Color.FromArgb ( 30, 25, 10 ),
+        Foreground = Color.FromArgb ( 30, 30, 30 ),
+        Grid = Color.Goldenrod,
+        Labels = Color.Khaki,
+        Separator = Color.DarkGoldenrod,
+        Line_Colors = new [ ]
+        {
+      Color.Gold,
+      Color.Orange,
+      Color.Yellow,
+      Color.Khaki
+    }
+      };
+    }
+
+    public static Chart_Theme Light_Yellow_Preset ( )
+    {
+      return new Chart_Theme
+      {
+        Background = Color.LightYellow,
+        Foreground = Color.FromArgb ( 30, 30, 30 ),
+        Grid = Color.Goldenrod,
+        Labels = Color.Black,
+        Separator = Color.DarkKhaki,
+        Line_Colors = new [ ]
+        {
+      Color.Orange,
+      Color.Goldenrod,
+      Color.OliveDrab,
+      Color.DarkOrange
+    }
+      };
+    }
+
+
+    public static Chart_Theme Light_Blue_Preset ( )
+    {
+      return new Chart_Theme
+      {
+        Name = "Light Blue",
+        Background = Color.FromArgb ( 230, 240, 255 ),
+        Foreground = Color.FromArgb ( 20, 20, 60 ),
+        Grid = Color.FromArgb ( 180, 200, 230 ),
+        Labels = Color.FromArgb ( 40, 80, 140 ),
+        Separator = Color.FromArgb ( 140, 170, 210 ),
+        Line_Colors = new [ ]
+          {
+            Color.FromArgb(30, 100, 200),
+            Color.FromArgb(0, 160, 180),
+            Color.FromArgb(100, 60, 200),
+            Color.FromArgb(20, 140, 100),
         }
       };
     }
+
 
     public void Save ( )
     {
@@ -68,7 +194,9 @@ namespace Multimeter_Controller
       {
         var Data = new Theme_Data
         {
+          Name = Name,
           Background = To_Hex ( Background ),
+          Foreground = To_Hex ( Foreground ),
           Grid = To_Hex ( Grid ),
           Labels = To_Hex ( Labels ),
           Separator = To_Hex ( Separator ),
@@ -113,12 +241,14 @@ namespace Multimeter_Controller
 
         return new Chart_Theme
         {
+          Name = Data.Name,
           Background = From_Hex ( Data.Background ),
+          Foreground = From_Hex ( Data.Foreground ),  // ← add
           Grid = From_Hex ( Data.Grid ),
           Labels = From_Hex ( Data.Labels ),
           Separator = From_Hex ( Data.Separator ),
           Line_Colors = new [ ]
-          {
+     {
             From_Hex ( Data.Line_1 ),
             From_Hex ( Data.Line_2 ),
             From_Hex ( Data.Line_3 ),
@@ -132,17 +262,7 @@ namespace Multimeter_Controller
       }
     }
 
-    public void Copy_From ( Chart_Theme Other )
-    {
-      Background = Other.Background;
-      Grid = Other.Grid;
-      Labels = Other.Labels;
-      Separator = Other.Separator;
-      for ( int I = 0; I < 4; I++ )
-      {
-        Line_Colors [ I ] = Other.Line_Colors [ I ];
-      }
-    }
+
 
     private static string To_Hex ( Color C )
     {
@@ -165,7 +285,9 @@ namespace Multimeter_Controller
 
     private class Theme_Data
     {
+      public string Name { get; set; } = "";
       public string Background { get; set; } = "";
+      public string Foreground { get; set; } = "";  // ← add
       public string Grid { get; set; } = "";
       public string Labels { get; set; } = "";
       public string Separator { get; set; } = "";

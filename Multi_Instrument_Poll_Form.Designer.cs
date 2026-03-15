@@ -28,7 +28,6 @@ namespace Multimeter_Controller
       Continuous_Check = new CheckBox ( );
       Measurement_Combo = new ComboBox ( );
       Measurement_Label = new Label ( );
-      NPLC_Label = new Label ( );
       Cycles_Label = new Label ( );
       Cycles_Numeric = new NumericUpDown ( );
       Rolling_Check = new CheckBox ( );
@@ -45,7 +44,6 @@ namespace Multimeter_Controller
       Auto_Scroll_Check = new CheckBox ( );
       Reset_Errors_Button = new Button ( );
       Close_Button = new Button ( );
-      NPLC_Textbox = new TextBox ( );
       Current_Values_Panel = new Buffered_Panel ( );
       Graph_Style_Label = new Label ( );
       Graph_Style_Combo = new ComboBox ( );
@@ -53,6 +51,7 @@ namespace Multimeter_Controller
       label1 = new Label ( );
       Theme_Button = new Button ( );
       Poll_Speed_Button = new Button ( );
+      label2 = new Label ( );
       ( (System.ComponentModel.ISupportInitialize) Delay_Numeric ).BeginInit ( );
       ( (System.ComponentModel.ISupportInitialize) Cycles_Numeric ).BeginInit ( );
       ( (System.ComponentModel.ISupportInitialize) Max_Points_Numeric ).BeginInit ( );
@@ -175,15 +174,6 @@ namespace Multimeter_Controller
       Measurement_Label.Size = new Size ( 83, 15 );
       Measurement_Label.TabIndex = 14;
       Measurement_Label.Text = "Measurement:";
-      // 
-      // NPLC_Label
-      // 
-      NPLC_Label.AutoSize = true;
-      NPLC_Label.Location = new Point ( 8, 155 );
-      NPLC_Label.Name = "NPLC_Label";
-      NPLC_Label.Size = new Size ( 40, 15 );
-      NPLC_Label.TabIndex = 17;
-      NPLC_Label.Text = "NPLC:";
       // 
       // Cycles_Label
       // 
@@ -355,13 +345,6 @@ namespace Multimeter_Controller
       Close_Button.UseVisualStyleBackColor = true;
       Close_Button.Click +=  Close_Button_Click ;
       // 
-      // NPLC_Textbox
-      // 
-      NPLC_Textbox.Location = new Point ( 86, 152 );
-      NPLC_Textbox.Name = "NPLC_Textbox";
-      NPLC_Textbox.Size = new Size ( 70, 23 );
-      NPLC_Textbox.TabIndex = 37;
-      // 
       // Current_Values_Panel
       // 
       Current_Values_Panel.Anchor =   AnchorStyles.Top  |  AnchorStyles.Right ;
@@ -396,7 +379,6 @@ namespace Multimeter_Controller
       NPLC_Delay_Textbox.Name = "NPLC_Delay_Textbox";
       NPLC_Delay_Textbox.Size = new Size ( 70, 23 );
       NPLC_Delay_Textbox.TabIndex = 42;
-      NPLC_Delay_Textbox.TextChanged +=  NPLC_Delay_Textbox_TextChanged ;
       // 
       // label1
       // 
@@ -427,18 +409,27 @@ namespace Multimeter_Controller
       Poll_Speed_Button.UseVisualStyleBackColor = true;
       Poll_Speed_Button.Click +=  Poll_Speed_Button_Click ;
       // 
+      // label2
+      // 
+      label2.AutoSize = true;
+      label2.Location = new Point ( 16, 83 );
+      label2.Name = "label2";
+      label2.Size = new Size ( 39, 15 );
+      label2.TabIndex = 45;
+      label2.Text = "Zoom";
+      // 
       // Multi_Instrument_Poll_Form
       // 
       AutoScaleDimensions = new SizeF ( 7F, 15F );
       AutoScaleMode = AutoScaleMode.Font;
       ClientSize = new Size ( 943, 830 );
+      Controls.Add ( label2 );
       Controls.Add ( Poll_Speed_Button );
       Controls.Add ( Theme_Button );
       Controls.Add ( NPLC_Delay_Textbox );
       Controls.Add ( label1 );
       Controls.Add ( Graph_Style_Label );
       Controls.Add ( Graph_Style_Combo );
-      Controls.Add ( NPLC_Textbox );
       Controls.Add ( Close_Button );
       Controls.Add ( Auto_Scroll_Panel );
       Controls.Add ( Pan_Scrollbar );
@@ -454,7 +445,6 @@ namespace Multimeter_Controller
       Controls.Add ( Rolling_Check );
       Controls.Add ( Max_Points_Numeric );
       Controls.Add ( Title_Label );
-      Controls.Add ( NPLC_Label );
       Controls.Add ( Delay_Label );
       Controls.Add ( Delay_Numeric );
       Controls.Add ( Measurement_Label );
@@ -489,7 +479,6 @@ namespace Multimeter_Controller
     #endregion
 
     private System.Windows.Forms.Label Title_Label;
-    private System.Windows.Forms.Label NPLC_Label;
     private System.Windows.Forms.Label Delay_Label;
     private System.Windows.Forms.NumericUpDown Delay_Numeric;
     private System.Windows.Forms.Label Measurement_Label;
@@ -516,7 +505,6 @@ namespace Multimeter_Controller
     private Button Reset_Errors_Button;
     private HScrollBar Pan_Scrollbar;
     private Button Close_Button;
-    private TextBox NPLC_Textbox;
 
     private Buffered_Panel Current_Values_Panel;
     private Label Graph_Style_Label;
@@ -525,5 +513,6 @@ namespace Multimeter_Controller
     private Label label1;
     private Button Theme_Button;
     private Button Poll_Speed_Button;
+    private Label label2;
   }
 }

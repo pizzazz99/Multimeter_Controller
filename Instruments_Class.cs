@@ -26,6 +26,10 @@ namespace Multimeter_Controller
   {
 
     public string Name { get; set; } = "";
+
+
+    public string Meter_Roll { get; set; } = string.Empty;
+
     public int Address
     {
       get; set;
@@ -39,15 +43,15 @@ namespace Multimeter_Controller
       get; set;
     }
     public bool Visible { get; set; } = true;
-
-    public string Display => $"{Name}  (GPIB {Address}, {Type})";
+    public decimal NPLC { get; set; } = 1m;
+    public string Display => $"{Name}  (GPIB {Address})";
 
     public string DisplayString ( string Transport_Mode )
     {
       bool Is_GPIB = Transport_Mode == "Prologix_GPIB" || Transport_Mode == "Prologix_Ethernet";
       return Is_GPIB
-          ? $"{Name}  (GPIB {Address}, {Type})"
-          : $"{Name}  ({Type})";
+          ? $"{Name}  (GPIB {Address})"
+          : Name;
     }
 
   }
@@ -62,9 +66,18 @@ namespace Multimeter_Controller
     {
       get; set;
     }
+
+    public decimal NPLC
+    {
+      get => Instrument.NPLC;
+      set => Instrument.NPLC = value;
+    }
+
     public int Disconnect_Count { get; set; } = 0;
     public int Comm_Error_Count { get; set; } = 0;
     public string Name => Instrument.Name;
+
+    public string Role => Instrument.Meter_Roll;
     public int Address => Instrument.Address;
     public Meter_Type Type => Instrument.Type;
     public bool Visible
@@ -103,6 +116,22 @@ namespace Multimeter_Controller
       if ( Value > _Stat_Max )
         _Stat_Max = Value;
       _Stat_Sum_Sq += Value * Value;
+    }
+    public void Reset_Stats ( )
+    {
+      Points.Clear ( );
+      Points.Capacity = 0;
+      _Stat_N = 0;
+      _Stat_Mean = 0;
+      _Stat_M2 = 0;
+      _Stat_Min = double.MaxValue;
+      _Stat_Max = double.MinValue;
+      _Stat_Sum_Sq = 0;
+      Consecutive_Errors = 0;
+      Total_Errors = 0;
+      Disconnect_Count = 0;
+      Comm_Error_Count = 0;
+      File_Stats = null;
     }
 
     // ── O(1) stat accessors ──────────────────────────────────────────

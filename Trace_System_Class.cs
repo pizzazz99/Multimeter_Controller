@@ -468,9 +468,15 @@ namespace Trace_Execution_Namespace
         string Indent = Build_Tree_Indent ( Level );
         string Prefix = Level > 0 ? $"{Indent}-- " : "";
 
+   //     string Trace_Line = string.IsNullOrWhiteSpace ( Message )
+   //         ? $"{Prefix}{Caller}"
+   //         : $"{Prefix}{Caller} - {Message}";
+
+
         string Trace_Line = string.IsNullOrWhiteSpace ( Message )
-            ? $"{Prefix}{Caller}"
-            : $"{Prefix}{Caller} - {Message}";
+    ? $"{Prefix}{Caller}"
+    : $"{Prefix}{Message}";   // ← just the message, no caller prefix
+
 
         Execution_Logger.Write ( Trace_Line );
       }

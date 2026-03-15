@@ -6,15 +6,15 @@ namespace Multimeter_Controller
     private List<Command_Entry> _Filtered_Commands;
 
     public Dictionary_Form (
-      Meter_Type Meter = Meter_Type.Keysight_3458A )
+        Meter_Type Meter = Meter_Type.HP3458 )
     {
       InitializeComponent ( );
 
       string Meter_Name = Meter switch
       {
-        Meter_Type.HP_34401A => "HP 34401A",
-        Meter_Type.HP_33120A => "HP 33120A",
-        _ => "Keysight 3458A"
+        Meter_Type.HP34401 => "HP34401",
+        Meter_Type.HP33120 => "HP33120",
+        _ => "HP3458"
       };
 
       Text = $"{Meter_Name} - Command Dictionary";

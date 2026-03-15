@@ -69,18 +69,11 @@ namespace Multimeter_Controller
     // FILE / FOLDER HELPERS
     // ========================================================================
 
-    public static string Get_Graph_Captures_Folder ( string Default_Save_Folder )
+    public static string Get_Graph_Captures_Folder ( )
     {
-      // 1. Check settings first
-      if ( !string.IsNullOrWhiteSpace ( Default_Save_Folder ) )
-      {
-        Directory.CreateDirectory ( Default_Save_Folder );
-        return Default_Save_Folder;
-      }
-
-      // 2. Fall back: walk up from base directory
       string Base = AppContext.BaseDirectory;
       string? Dir = Base;
+
       while ( Dir != null )
       {
         string Candidate = Path.Combine ( Dir, "Graph_Captures" );
@@ -89,11 +82,26 @@ namespace Multimeter_Controller
         Dir = Directory.GetParent ( Dir )?.FullName;
       }
 
-      // 3. Last resort: create next to the executable
       string Fallback = Path.Combine ( Base, "Graph_Captures" );
       Directory.CreateDirectory ( Fallback );
       return Fallback;
     }
+
+    public static string Get_Filename_From_Pattern (
+      string Pattern,
+      string Function_Name )
+    {
+      string Filename = Pattern;
+      Filename = Filename.Replace ( "{date}", DateTime.Now.ToString ( "yyyy-MM-dd" ) );
+      Filename = Filename.Replace ( "{time}", DateTime.Now.ToString ( "HH-mm-ss" ) );
+      Filename = Filename.Replace ( "{function}", Function_Name );
+
+      if ( !Filename.EndsWith ( ".csv", StringComparison.OrdinalIgnoreCase ) )
+        Filename += ".csv";
+
+      return Filename;
+    }
+
 
     // ========================================================================
     // VALUE FORMATTING
@@ -376,10 +384,15 @@ namespace Multimeter_Controller
       bool Auto_Scroll,
       ref int View_Offset )
     {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
       if ( Pan_Scrollbar == null )
         return;
 
       int Max_Offset = Math.Max ( 0, Total_Points - Max_Display_Points );
+
+     
+
 
       if ( Max_Offset <= 0 || Total_Points <= Max_Display_Points )
       {
@@ -391,12 +404,24 @@ namespace Multimeter_Controller
         return;
       }
 
-      int Large_Change = Math.Max ( 5, Max_Offset / 20 );
+      int Large_Change = Math.Max ( 1, Max_Display_Points / 10 );  // thumb represents viewport size
       Pan_Scrollbar.Minimum = 0;
-      Pan_Scrollbar.Maximum = Max_Offset + Large_Change;
+      Pan_Scrollbar.Maximum = Max_Offset + Large_Change - 1;
       Pan_Scrollbar.LargeChange = Large_Change;
-      Pan_Scrollbar.SmallChange = Math.Max ( 1, Max_Offset / 100 );
+      Pan_Scrollbar.SmallChange = Math.Max ( 1, Max_Display_Points / 100 );
       Pan_Scrollbar.Enabled = true;
+
+      Capture_Trace.Write ( $"Scrollbar:" );
+      Capture_Trace.Write ( $"  Total       = {Total_Points}" );
+      Capture_Trace.Write ( $"  Max_Display = {Max_Display_Points}" );
+      Capture_Trace.Write ( $"  Max_Offset  = {Max_Offset}" );
+      Capture_Trace.Write ( $"  Min         = {Pan_Scrollbar.Minimum}" );
+      Capture_Trace.Write ( $"  Max         = {Pan_Scrollbar.Maximum}" );
+      Capture_Trace.Write ( $"  LargeChange = {Pan_Scrollbar.LargeChange}" );
+      Capture_Trace.Write ( $"  Value       = {Pan_Scrollbar.Value}" );
+      Capture_Trace.Write ( $"  Enabled     = {Pan_Scrollbar.Enabled}" );
+
+
 
       if ( Auto_Scroll )
       {
@@ -612,7 +637,7 @@ namespace Multimeter_Controller
       // Column headers
       Writer.Write ( "Timestamp" );
       foreach ( var (Name, _) in Series )
-        Writer.Write ( $",\"{Name}\"" );
+        Writer.Write ( $",{Name}" );
       Writer.WriteLine ( );
 
       // Merged timestamp rows
@@ -642,35 +667,50 @@ namespace Multimeter_Controller
     // Both forms call this then handle the data differently
     // ========================================================================
 
-    public static bool Load_CSV_Preamble (
-      string File_Path,
-      out string [ ] Lines,
-      out int Header_Index,
-      out Dictionary<string, string> Flat_Stats,
-      out Dictionary<string, Dictionary<string, string>> Sectioned_Stats )
-    {
-      Lines = Array.Empty<string> ( );
-      Header_Index = -1;
-      Flat_Stats = new Dictionary<string, string> ( );
-      Sectioned_Stats = new Dictionary<string, Dictionary<string, string>> ( );
 
+    public class CSV_Preamble_Result
+    {
+      public string [ ] Lines
+      {
+        get; init;
+      }
+      public int Header_Index
+      {
+        get; init;
+      }
+      public Dictionary<string, string> Flat_Stats
+      {
+        get; init;
+      }
+      public Dictionary<string, Dictionary<string, string>> Sectioned_Stats
+      {
+        get; init;
+      }
+    }
+
+
+
+
+    public static async Task<CSV_Preamble_Result?> Load_CSV_Preamble ( string File_Path )
+    {
       if ( !File.Exists ( File_Path ) )
       {
         MessageBox.Show ( "File not found.", "Load Error",
           MessageBoxButtons.OK, MessageBoxIcon.Warning );
-        return false;
+        return null;
       }
 
-      Lines = File.ReadAllLines ( File_Path );
+      string [ ] Lines = await File.ReadAllLinesAsync ( File_Path );
 
-      // Parse header comments
+      int Header_Index = -1;
+      var Flat_Stats = new Dictionary<string, string> ( );
+      var Sectioned_Stats = new Dictionary<string, Dictionary<string, string>> ( );
       string? Current_Section = null;
 
       foreach ( string Line in Lines )
       {
         if ( Line.StartsWith ( "# [" ) && Line.EndsWith ( "]" ) )
         {
-          // Sectioned stats: "# [Instrument Name]"
           Current_Section = Line.Substring ( 3, Line.Length - 4 );
           Sectioned_Stats [ Current_Section ] = new Dictionary<string, string> ( );
         }
@@ -686,8 +726,6 @@ namespace Multimeter_Controller
           {
             string Key = Stat.Substring ( 0, Colon_Idx ).Trim ( );
             string Value = Stat.Substring ( Colon_Idx + 1 ).Trim ( );
-
-            // Add to current section if in one, otherwise flat
             if ( Current_Section != null )
               Sectioned_Stats [ Current_Section ] [ Key ] = Value;
             else
@@ -696,7 +734,6 @@ namespace Multimeter_Controller
         }
       }
 
-      // Find first non-comment non-empty line (header row)
       for ( int I = 0; I < Lines.Length; I++ )
       {
         if ( !Lines [ I ].StartsWith ( "#" ) && !string.IsNullOrWhiteSpace ( Lines [ I ] ) )
@@ -710,12 +747,20 @@ namespace Multimeter_Controller
       {
         MessageBox.Show ( "No valid data found in file.", "Load Error",
           MessageBoxButtons.OK, MessageBoxIcon.Warning );
-        return false;
+        return null;
       }
 
-      return true;
+      return new CSV_Preamble_Result
+      {
+        Lines = Lines,
+        Header_Index = Header_Index,
+        Flat_Stats = Flat_Stats,
+        Sectioned_Stats = Sectioned_Stats
+      };
     }
 
+
+  
 
     // ========================================================================
     // CSV DATA ROW PARSING - SINGLE COLUMN
@@ -734,7 +779,7 @@ namespace Multimeter_Controller
         if ( string.IsNullOrEmpty ( Line ) || Line.StartsWith ( "#" ) )
           continue;
 
-        string [ ] Parts = Multimeter_Common_Helpers_Class.Parse_CSV_Line ( Line );
+        string [ ] Parts = Line.Split ( ',' );
         if ( Parts.Length < 2 )
           continue;
 
@@ -869,14 +914,10 @@ namespace Multimeter_Controller
         try
         {
           string IP = $"{Subnet}.{I}";
+          Trace?.Invoke ( $"  Trying {IP}" );
 
-          // Step 1: quick ping to skip dead hosts
-          using var Ping = new Ping ( );
-          var Reply = await Ping.SendPingAsync ( IP, Timeout_Ms / 2 );
-          if ( Reply.Status != IPStatus.Success )
-            return;
-
-          // Step 2: try to connect and identify as Prologix
+          // Skip ping - Prologix may not respond to ICMP
+          // Go straight to TCP connect on port 1234
           if ( await Is_Prologix ( IP, 1234, Timeout_Ms, Trace ) )
           {
             Trace?.Invoke ( $"  ✓ Confirmed Prologix at {IP}" );
@@ -907,6 +948,7 @@ namespace Multimeter_Controller
     {
       try
       {
+
         using var TCP = new TcpClient ( );
         using var CTS = new CancellationTokenSource ( Timeout_Ms );
 
@@ -914,7 +956,11 @@ namespace Multimeter_Controller
         {
           await TCP.ConnectAsync ( IP, Port, CTS.Token );
         }
-        catch { return false; }
+        
+        catch ( Exception Ex )
+        {
+          return false;
+        }
 
         if ( !TCP.Connected )
           return false;
@@ -941,6 +987,13 @@ namespace Multimeter_Controller
         int Bytes = Read_Task.Result;
         string Response = Encoding.ASCII.GetString ( Buf, 0, Bytes ).Trim ( );
         Trace?.Invoke ( $"  {IP} ver response: '{Response}'" );
+
+        if ( await Task.WhenAny ( Read_Task, Task.Delay ( Timeout_Ms ) ) != Read_Task )
+        {
+          Trace?.Invoke ( $"  {IP} read timed out" );
+          return false;
+        }
+
         return Response.Contains ( "Prologix", StringComparison.OrdinalIgnoreCase );
       }
       catch
@@ -952,6 +1005,20 @@ namespace Multimeter_Controller
 
 
 
+    public static Meter_Type Get_Meter_Type ( string Name )
+    {
+      if ( Name.Contains ( "34401" ) )
+        return Meter_Type.HP34401;
+      if ( Name.Contains ( "33120" ) )
+        return Meter_Type.HP33120;
+      if ( Name.Contains ( "34420" ) )
+        return Meter_Type.HP34420;
+      if ( Name.Contains ( "53132" ) )
+        return Meter_Type.HP53132;
+      if ( Name.Contains ( "3458" ) )
+        return Meter_Type.HP3458;
+      return Meter_Type.Generic_GPIB;
+    }
 
     public static int Calculate_Settle_Ms ( string NPLC_Value, double Safety_Factor = 2.0 )
     {
@@ -962,33 +1029,6 @@ namespace Multimeter_Controller
       double Measurement_Ms = NPLC * ( 1000.0 / 60.0 );
       return Math.Max ( 50, (int) ( Measurement_Ms * Safety_Factor ) );
     }
-
-
-    public static string [ ] Parse_CSV_Line ( string Line )
-    {
-      var Fields = new List<string> ( );
-      bool In_Quotes = false;
-      var Current = new System.Text.StringBuilder ( );
-      foreach ( char C in Line )
-      {
-        if ( C == '"' )
-        {
-          In_Quotes = !In_Quotes;
-        }
-        else if ( C == ',' && !In_Quotes )
-        {
-          Fields.Add ( Current.ToString ( ) );
-          Current.Clear ( );
-        }
-        else
-        {
-          Current.Append ( C );
-        }
-      }
-      Fields.Add ( Current.ToString ( ) );
-      return Fields.ToArray ( );
-    }
-
 
   }
 }

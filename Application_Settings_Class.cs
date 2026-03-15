@@ -20,6 +20,9 @@ namespace Multimeter_Controller
 
 
 
+    [JsonPropertyName ( "prologic_scan_timeout_ms" )]
+    public int Prologic_Scan_Timeout_MS { get; set; } = 50;
+
     [JsonPropertyName ( "prologic_mac_address" )]
     public string Prologic_MAC_Address { get; set; } = "00-21-69-01-3D-DD";
 
@@ -54,7 +57,7 @@ namespace Multimeter_Controller
     public string Default_Trig_Mode_3458 { get; set; } = "TRIG HOLD";
 
     [JsonPropertyName ( "prologix_auto_read" )]
-    public bool Prologix_Auto_Read { get; set; } = true;
+    public bool Prologix_Auto_Read { get; set; } = false;
 
     [JsonPropertyName ( "prologix_read_tmo_ms" )]
     public int Prologix_Read_Tmo_Ms { get; set; } = 5000;
@@ -111,7 +114,7 @@ namespace Multimeter_Controller
     // ===== POLLING/DATA COLLECTION =====
 
     [JsonPropertyName ( "max_display_points" )]
-    public int Max_Display_Points { get; set; } = 100_000;
+    public int Max_Display_Points { get; set; } = 50_000_000;
 
 
     [JsonPropertyName ( "default_poll_delay_ms" )]

@@ -1,8 +1,8 @@
 // ============================================================================
 // File:        Command_Dictionary_Class.cs
-// Project:     Keysight 3458A Multimeter Controller
-// Description: Complete command reference dictionary for the Keysight (HP)
-//              3458A 8.5-digit digital multimeter. Contains every supported
+// Project:     HP3458 Multimeter Controller
+// Description: Complete command reference dictionary for the HP (HP)
+//              3458 8.5-digit digital multimeter. Contains every supported
 //              GPIB command with its syntax, parameters, query form, default
 //              value, and usage example.
 //
@@ -51,7 +51,7 @@
 //     callers receive an independent copy.
 //
 // Data Source:
-//   Command definitions are based on the Keysight / HP 3458A User's Guide
+//   Command definitions are based on the HP / HP3458 User's Guide
 //   and Programming Reference (HP part number 03458-90014). Parameters,
 //   ranges, defaults, and syntax follow the instrument's GPIB command set.
 //
@@ -69,9 +69,12 @@ namespace Multimeter_Controller
 {
   public enum Meter_Type
   {
-    Keysight_3458A,
-    HP_34401A,
-    HP_33120A
+    HP3458,
+    HP34401,
+    HP33120,
+    HP34420,
+    HP53132,
+    Generic_GPIB
   }
 
   public enum Command_Category
@@ -131,12 +134,12 @@ namespace Multimeter_Controller
     {
       get
       {
-        string baseToken = GetBaseToken ( Command );
+        string Base_Token = GetBaseToken ( Command );
 
-        if ( baseToken.EndsWith ( "?" ) )
-          return baseToken;
+        if ( Base_Token.EndsWith ( "?" ) )
+          return Base_Token;
 
-        return baseToken + "?";
+        return Base_Token + "?";
       }
     }
 
@@ -144,12 +147,12 @@ namespace Multimeter_Controller
     {
       get
       {
-        string baseToken = GetBaseToken ( Command );
+        string Base_Token = GetBaseToken ( Command );
 
-        if ( baseToken.EndsWith ( "?" ) )
-          return baseToken.TrimEnd ( '?' );
+        if ( Base_Token.EndsWith ( "?" ) )
+          return Base_Token.TrimEnd ( '?' );
 
-        return baseToken;
+        return Base_Token;
       }
     }
 
@@ -235,17 +238,17 @@ namespace Multimeter_Controller
       return Command ?? Query_Form ?? "<unknown>";
     }
 
-    private string GetBaseToken ( string input )
+    private string GetBaseToken ( string Input )
     {
-      if ( string.IsNullOrWhiteSpace ( input ) )
+      if ( string.IsNullOrWhiteSpace ( Input ) )
         return string.Empty;
 
-      string trimmed = input.Trim ( );
+      string Trimmed = Input.Trim ( );
 
-      int spaceIndex = trimmed.IndexOf ( ' ' );
-      return spaceIndex > 0
-          ? trimmed.Substring ( 0, spaceIndex )
-          : trimmed;
+      int Space_Index = Trimmed.IndexOf ( ' ' );
+      return Space_Index > 0
+          ? Trimmed.Substring ( 0, Space_Index )
+          : Trimmed;
     }
 
     public bool Is_Query_Only ( )
@@ -318,79 +321,68 @@ namespace Multimeter_Controller
       return CommandMode.None;
     }
 
+  }
 
 
+  public static class Meter_Type_Extensions
+  {
+    public static readonly Meter_Type [ ] Combo_Order = new Meter_Type [ ]
+ {
+    Meter_Type.Generic_GPIB,
+    Meter_Type.HP34401,
+    Meter_Type.HP33120,
+    Meter_Type.HP34420,
+    Meter_Type.HP53132,
+    Meter_Type.HP3458,
+ };
 
-
-
-
-
-    public bool Supports_Query ( )
+    public static string Get_Name ( this Meter_Type type ) => type switch
     {
-      return !string.IsNullOrWhiteSpace ( Command );
-    }
+      Meter_Type.HP3458 => "HP 3458A",
+      Meter_Type.HP34401 => "HP 34401A",
+      Meter_Type.HP33120 => "HP 33120A",
+      Meter_Type.HP34420 => "HP 34420A",
+      Meter_Type.HP53132 => "HP 53132A",
+      Meter_Type.Generic_GPIB => "Generic GPIB",
+      _ => throw new ArgumentOutOfRangeException ( nameof ( type ) )
+    };
 
+    public static bool Is_Legacy_HP ( this Meter_Type type )
+        => type == Meter_Type.HP3458;
 
-
-
-
-
-
-
-    private bool Has_Real_Parameters ( string Parameters )
+    public static decimal [ ] Get_NPLC_Values ( this Meter_Type type ) => type switch
     {
-      return !string.IsNullOrWhiteSpace ( Parameters ) &&
-             !Parameters.Equals ( "None", StringComparison.OrdinalIgnoreCase );
-    }
+      Meter_Type.HP3458 => [ 0.001m, 0.01m, 0.1m, 1m, 10m, 100m ],
+      Meter_Type.HP34401 => [ 0.02m, 0.2m, 1m, 10m, 100m ],
+      Meter_Type.HP34420 => [ 0.02m, 0.2m, 1m, 10m, 100m ],
+      Meter_Type.HP53132 => [ 1m ],        // counter, NPLC not applicable
+      Meter_Type.HP33120 => [ 1m ],        // function gen, NPLC not applicable
+      Meter_Type.Generic_GPIB => [ 0.1m, 1m, 10m ],
+      _ => throw new ArgumentOutOfRangeException ( nameof ( type ) )
+    };
 
+    public static int To_Combo_Index ( this Meter_Type type )
+        => Array.IndexOf ( Combo_Order, type );
 
-
-
-    /*
-    public Command_Entry (
-      string Command,
-      string Syntax,
-      string Description,
-      Command_Category Category,
-      string Parameters = "",
-      string Query_Form = "",
-      string Default_Value = "",
-      string Example = "" )
-    {
-      this.Command = Command;
-      this.Syntax = Syntax;
-      this.Description = Description;
-      this.Category = Category;
-      this.Parameters = Parameters;
-      this.Query_Form = Query_Form;
-      this.Default_Value = Default_Value;
-      this.Example = Example;
-    }
-    */
+    public static Meter_Type From_Combo_Index ( int index )
+        => index >= 0 && index < Combo_Order.Length
+            ? Combo_Order [ index ]
+            : Meter_Type.Generic_GPIB;
   }
 
   public static class Command_Dictionary_Class
   {
-    public static List<Command_Entry> Get_All_Commands (
-      Meter_Type Meter = Meter_Type.Keysight_3458A )
-    {
-      switch ( Meter )
+    public static List<Command_Entry> Get_All_Commands ( Meter_Type Meter = Meter_Type.HP3458 )
+      => Meter switch
       {
-        case Meter_Type.HP_34401A:
-          return HP_34401A_Command_Dictionary_Class.Get_All_Commands ( );
-
-        case Meter_Type.HP_33120A:
-          return HP_33120A_Command_Dictionary_Class.Get_All_Commands ( );
-
-        case Meter_Type.Keysight_3458A:
-          return Keysight_3458A_Command_Dictionary_Class.Get_All_Commands ( );
-
-        default:
-          throw new ArgumentOutOfRangeException (
-              nameof ( Meter ),
-              Meter,
-              "Unsupported meter type" );
-      }
-    }
+        Meter_Type.HP3458 => HP3458_Command_Dictionary_Class.Get_All_Commands ( ),
+        Meter_Type.HP34401 => HP34401_Command_Dictionary_Class.Get_All_Commands ( ),
+        Meter_Type.HP33120 => HP33120_Command_Dictionary_Class.Get_All_Commands ( ),
+        Meter_Type.HP34420 => HP34420_Command_Dictionary_Class.Get_All_Commands ( ),
+        Meter_Type.HP53132 => HP53132_Command_Dictionary_Class.Get_All_Commands ( ),
+        Meter_Type.Generic_GPIB => [ ],
+        _ => throw new ArgumentOutOfRangeException ( nameof ( Meter ), Meter, "Unsupported meter type" )
+      };
   }
 }
+

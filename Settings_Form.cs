@@ -31,8 +31,8 @@ namespace Multimeter_Controller
     private ComboBox _NPLC_Combo;
     private ComboBox _Measurement_Type_Combo;
     private CheckBox _Continuous_Poll_Check;
-    private NumericUpDown _GPIB_Timeout_Numeric;        // ADD THIS
-    private NumericUpDown _Max_Retry_Attempts_Numeric;  // ADD THIS
+    private NumericUpDown _GPIB_Timeout_Numeric;
+    private NumericUpDown _Max_Retry_Attempts_Numeric;
     private NumericUpDown _Max_Errors_Numeric;
     private CheckBox _Auto_Retry_Check;
     private NumericUpDown _Retry_Delay_Numeric;
@@ -46,6 +46,8 @@ namespace Multimeter_Controller
     private TextBox _Prologix_IP_Textbox;
     private NumericUpDown _Prologix_Port_Numeric;
     private TextBox _Prologix_MAC_Textbox;
+    private TextBox _Prologic_Scan_Timeout_MS_Textbox;
+
 
     private NumericUpDown _Prologix_GPIB_Address_Numeric;
     private CheckBox _Prologix_Auto_Read_Check;
@@ -132,7 +134,7 @@ namespace Multimeter_Controller
     private void Build_Prologix_Tab ( )
     {
       int Left_Col = 15;
-      int Right_Col = 250;
+      int Right_Col = 180;
       int Y = 15;
       int Row_H = 30;
 
@@ -271,6 +273,29 @@ namespace Multimeter_Controller
         Value = _Settings.Prologix_Read_Tmo_Ms
       };
       Prologix_Tab.Controls.Add ( _Prologix_Read_Tmo_Numeric );
+
+      Y += Row_H;
+
+      // Prologix Scan Timeout
+      Prologix_Tab.Controls.Add ( new Label
+      {
+        Text = "Prologic Scan Timeout MS:",
+        Location = new Point ( Left_Col, Y ),
+        AutoSize = true
+      } );
+      _Prologic_Scan_Timeout_MS_Textbox = new TextBox
+      {
+        Location = new Point ( Right_Col, Y - 2 ),
+        Size = new Size ( 150, 23 )
+      };
+      Prologix_Tab.Controls.Add ( _Prologic_Scan_Timeout_MS_Textbox );
+      Prologix_Tab.Controls.Add ( new Label
+      {
+        Text = "(Value is milliseconds 1000 = 1 second)",
+        Location = new Point ( Right_Col + 160, Y ),
+        AutoSize = true,
+        ForeColor = SystemColors.GrayText
+      } );
 
       Y += Row_H;
 
@@ -1495,6 +1520,11 @@ namespace Multimeter_Controller
       _Prologix_Read_Tmo_Numeric.Value = _Settings.Prologix_Read_Tmo_Ms;
       _Prologix_Fetch_Numeric.Value = _Settings.Prologix_Fetch_Ms;
       _Prologix_Subnet_Textbox.Text = _Settings.Network_Scan_Subnet;
+      _Prologic_Scan_Timeout_MS_Textbox.Text = _Settings.Prologic_Scan_Timeout_MS.ToString();
+
+
+
+
       // Display tab
       _Tooltip_Distance_Numeric.Value = _Settings.Tooltip_Distance_Threshold;
       _Show_Tooltips_Check.Checked = _Settings.Show_Tooltips_On_Hover;
@@ -1591,6 +1621,10 @@ namespace Multimeter_Controller
       _Settings.Prologix_Read_Tmo_Ms = (int) _Prologix_Read_Tmo_Numeric.Value;
       _Settings.Prologix_Fetch_Ms = (int) _Prologix_Fetch_Numeric.Value;
       _Settings.Network_Scan_Subnet = _Prologix_Subnet_Textbox.Text.Trim ( ).TrimEnd ( '.' );
+      _Settings.Prologic_Scan_Timeout_MS = int.Parse ( _Prologic_Scan_Timeout_MS_Textbox.Text );
+
+
+
       // Display tab
       _Settings.Tooltip_Distance_Threshold = (int) _Tooltip_Distance_Numeric.Value;
       _Settings.Show_Tooltips_On_Hover = _Show_Tooltips_Check.Checked;
