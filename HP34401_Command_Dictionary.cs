@@ -1,13 +1,178 @@
-// ============================================================================
-// File:        HP34401_Command_Dictionary_Class.cs
-// Project:     HP3458 Multimeter Controller
-// Description: Command reference dictionary for the HP / Agilent / HP
-//              34401 6.5-digit digital multimeter. Uses standard SCPI
-//              command syntax.
+
+
+// =============================================================================
+// FILE:     HP34401_Command_Dictionary_Class.cs
+// PROJECT:  Multimeter_Controller
+// =============================================================================
 //
-// Author:       Mike
-// Framework:    .NET 9.0, Windows Forms
-// ============================================================================
+// DESCRIPTION:
+//   Static command dictionary for the HP / Agilent 34401A 6.5-digit multimeter.
+//   Provides a structured, searchable registry of all supported SCPI instrument
+//   commands, organized by functional category. Each entry captures the full
+//   command syntax, description, valid parameter ranges, query form, factory
+//   default value, and a usage example.
+//
+//   This class is the single source of truth for 34401A command metadata within
+//   the Multimeter_Controller namespace. It is designed to support command
+//   validation, UI population, documentation generation, and runtime lookup.
+//
+// -----------------------------------------------------------------------------
+// INSTRUMENT:
+//   HP / Agilent 34401A Multimeter
+//   Command Set:  SCPI (Standard Commands for Programmable Instruments)
+//   Interface:    GPIB (IEEE-488.2) / RS-232
+//   Resolution:   Up to 6.5 digits
+//
+// -----------------------------------------------------------------------------
+// COMMAND SET OVERVIEW:
+//   This dictionary uses SCPI long-form mnemonics with colon-separated node
+//   paths (e.g. "CONF:VOLT:DC", "CALC:LIM:UPP"). Both the short-form aliases
+//   and the long-form expansions are accepted by the instrument — this file
+//   registers the short-form as the Command field and shows the long-form in
+//   the Syntax field.
+//
+//   IMPORTANT — MEAS vs CONF vs READ/FETCH distinction:
+//     MEAS:xxxx?   Combines CONFigure + INITiate + FETCh into a single call.
+//                  Resets all settings to defaults for the selected function,
+//                  then returns one reading. Use for quick one-shot measurements.
+//     CONF:xxxx    Configures the function and range without triggering.
+//                  Follow with INIT (or READ?) to acquire readings.
+//     READ?        Equivalent to INIT + FETCH? — triggers the measurement
+//                  state machine and returns the result. Respects current config.
+//     FETCH?       Returns the last completed reading without re-triggering.
+//                  Only valid after INIT has been issued.
+//
+// -----------------------------------------------------------------------------
+// COMMAND CATEGORIES:
+//
+//   Measurement   — One-shot measurement queries (MEAS:VOLT:DC?, MEAS:RES?,
+//                   MEAS:FREQ?, MEAS:CONT?, MEAS:DIOD?, etc.) plus READ? and
+//                   FETCH?. These commands return a reading immediately or
+//                   retrieve the last triggered reading.
+//
+//   Configuration — Function setup commands (CONF:VOLT:DC, CONF:RES, etc.)
+//                   and per-function parameter commands including range
+//                   (VOLT:DC:RANG), autorange (VOLT:DC:RANG:AUTO), integration
+//                   time (VOLT:DC:NPLC), resolution (VOLT:DC:RES), input
+//                   impedance (INP:IMP:AUTO), autozero (ZERO:AUTO), and AC
+//                   detector bandwidth (DET:BAND).
+//
+//   Trigger       — Trigger source selection (TRIG:SOUR), trigger delay
+//                   (TRIG:DEL / TRIG:DEL:AUTO), trigger count (TRIG:COUN),
+//                   sample count per trigger (SAMP:COUN), trigger initiation
+//                   (INIT), and bus trigger (*TRG).
+//
+//   Math          — Math function selection (CALC:FUNC) and enable (CALC:STAT),
+//                   null offset (CALC:NULL:OFFS), dB reference (CALC:DB:REF),
+//                   dBm impedance (CALC:DBM:REF), limit test bounds
+//                   (CALC:LIM:LOW / CALC:LIM:UPP), and statistics queries
+//                   (CALC:AVER:MIN?, CALC:AVER:MAX?, CALC:AVER:AVER?,
+//                   CALC:AVER:COUN?).
+//
+//   System        — Identification (*IDN?), reset (*RST), clear status (*CLS),
+//                   operation complete (*OPC / *OPC?), self-test (*TST?),
+//                   error queue (SYST:ERR?), remote mode (SYST:REM), SCPI
+//                   version (SYST:VERS?), and status/event registers
+//                   (*STB?, *SRE, *ESE, *ESR?).
+//
+//   I/O           — Display enable/disable (DISP), custom display text
+//                   (DISP:TEXT / DISP:TEXT:CLE), beeper (SYST:BEEP /
+//                   SYST:BEEP:STAT), terminal query (ROUT:TERM?), and output
+//                   data format (FORM).
+//
+//   Memory        — Reading memory management (DATA:POINts?, DATA:COUNt?,
+//                   DATA:FEED, DATA:DEL?), state name query (MEMory:STATe:NAME?),
+//                   and instrument state save/recall (*SAV / *RCL, registers 0–2).
+//
+//   Calibration   — Calibration security (CAL:SEC:STAT), calibration count
+//                   query (CAL:COUN?), and calibration string label (CAL:STR).
+//
+// -----------------------------------------------------------------------------
+// KEY METHOD:
+//
+//   Get_All_Commands()
+//     Returns a List<Command_Entry> containing all registered commands,
+//     sorted alphabetically by Command name (case-insensitive). The list
+//     is rebuilt on every call — it is not cached.
+//
+//   NOTE: Unlike HP3458_Command_Dictionary_Class, this class does not implement
+//   Get_Command_By_Name(). If name-based lookup is needed, add it following the
+//   same pattern used in the 3458A dictionary (OrdinalIgnoreCase match against
+//   both Command and Query_Form fields).
+//
+// -----------------------------------------------------------------------------
+// DATA MODEL — Command_Entry fields:
+//
+//   Command       The primary SCPI short-form mnemonic (e.g. "CONF:VOLT:DC").
+//                 IEEE-488.2 common commands use the asterisk prefix (e.g. "*RST").
+//   Syntax        Full long-form syntax string including optional parameters.
+//   Description   Human-readable description of the command's purpose.
+//   Category      Command_Category enum value for grouping/filtering.
+//   Parameters    Enumeration of valid parameter values and their meanings.
+//   Query_Form    The query variant of the command (e.g. "CONF:VOLT:DC?"),
+//                 or null / empty string if no query form exists.
+//   Default_Value The factory default state for this setting after *RST.
+//   Example       A representative usage string suitable for direct GPIB/RS-232
+//                 transmission.
+//
+// -----------------------------------------------------------------------------
+// USAGE NOTES:
+//
+//   - Query_Form may be null (for commands with no query variant such as *CLS,
+//     SYST:BEEP, SYST:BEEP:STAT, and *RCL). Callers must null-check before use.
+//
+//   - Resistance ranges are expressed in engineering notation (e.g. "1e3",
+//     "10e6") matching the literal strings the instrument accepts and returns.
+//
+//   - DATA:POINts? and DATA:COUNt? are registered as separate entries because
+//     both mnemonics are present in the instrument's documentation and may be
+//     encountered in existing test code. They are functionally equivalent.
+//
+//   - SYST:REM places the instrument in remote mode (front panel locked). It
+//     has no query form; local mode is restored by asserting the GPIB GTL
+//     (Go To Local) line or issuing SYST:LOC (not registered here — the
+//     instrument typically asserts local automatically on GTL).
+//
+//   - *SAV / *RCL support registers 0, 1, and 2 only. Register 0 is the
+//     power-on default state recalled automatically at startup.
+//
+//   - DET:BAND controls the AC low-frequency cutoff filter. The three settings
+//     correspond to: 3 Hz (slow/accurate), 20 Hz (default), 200 Hz (fast).
+//     Selecting a lower bandwidth increases settling time significantly.
+//
+//   - INP:IMP:AUTO ON enables >10 GOhm input impedance only on the 100 mV,
+//     1 V, and 10 V DC voltage ranges. All other ranges remain at 10 MOhm.
+//
+//   - CALC:AVER:MIN?, CALC:AVER:MAX?, CALC:AVER:AVER?, and CALC:AVER:COUN?
+//     are read-only queries with no write counterpart; they are registered
+//     with the query form in the Command field.
+//
+// -----------------------------------------------------------------------------
+// DEPENDENCIES:
+//   System.Collections.Generic    List<T>
+//   System.StringComparison       OrdinalIgnoreCase
+//   Command_Entry                 Data record defined elsewhere in namespace
+//   Command_Category              Enum defined elsewhere in namespace
+//
+// -----------------------------------------------------------------------------
+// MAINTENANCE:
+//   To add a command: append a new Command_Entry to the list in
+//   Get_All_Commands(). The list is re-sorted alphabetically on every call,
+//   so insertion order does not matter.
+//
+//   To deprecate a command: add a note to the Description field rather than
+//   removing the entry, to preserve backward compatibility with any consumers
+//   relying on dictionary lookup.
+//
+//   To add name-based lookup: implement Get_Command_By_Name() following the
+//   pattern in HP3458_Command_Dictionary_Class, being mindful that Query_Form
+//   may be null in this dictionary (add a null guard before the Query_Form
+//   comparison).
+//
+// =============================================================================
+
+
+
 
 namespace Multimeter_Controller
 {

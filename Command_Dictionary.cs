@@ -64,6 +64,7 @@
 // ============================================================================
 
 using System.Data.SqlTypes;
+using System.Diagnostics;
 
 namespace Multimeter_Controller
 {
@@ -74,6 +75,7 @@ namespace Multimeter_Controller
     HP33120,
     HP34420,
     HP53132,
+    HP3456,
     Generic_GPIB
   }
 
@@ -333,6 +335,7 @@ namespace Multimeter_Controller
     Meter_Type.HP33120,
     Meter_Type.HP34420,
     Meter_Type.HP53132,
+    Meter_Type.HP3456,
     Meter_Type.HP3458,
  };
 
@@ -343,6 +346,7 @@ namespace Multimeter_Controller
       Meter_Type.HP33120 => "HP 33120A",
       Meter_Type.HP34420 => "HP 34420A",
       Meter_Type.HP53132 => "HP 53132A",
+      Meter_Type.HP3456 => "HP 3456A",
       Meter_Type.Generic_GPIB => "Generic GPIB",
       _ => throw new ArgumentOutOfRangeException ( nameof ( type ) )
     };
@@ -354,9 +358,10 @@ namespace Multimeter_Controller
     {
       Meter_Type.HP3458 => [ 0.001m, 0.01m, 0.1m, 1m, 10m, 100m ],
       Meter_Type.HP34401 => [ 0.02m, 0.2m, 1m, 10m, 100m ],
-      Meter_Type.HP34420 => [ 0.02m, 0.2m, 1m, 10m, 100m ],
+      Meter_Type.HP34420 => [ 0.02m, 0.2m, 1m, 2m, 10m, 20m, 100m, 200m ],
       Meter_Type.HP53132 => [ 1m ],        // counter, NPLC not applicable
       Meter_Type.HP33120 => [ 1m ],        // function gen, NPLC not applicable
+      Meter_Type.HP3456 => [ 1m, 2m, 4m, 8m, 16m, 32m, 64m, 100m ],
       Meter_Type.Generic_GPIB => [ 0.1m, 1m, 10m ],
       _ => throw new ArgumentOutOfRangeException ( nameof ( type ) )
     };
@@ -368,21 +373,61 @@ namespace Multimeter_Controller
         => index >= 0 && index < Combo_Order.Length
             ? Combo_Order [ index ]
             : Meter_Type.Generic_GPIB;
+
+
+
+
+    public static decimal Get_Default_NPLC ( Meter_Type Type )
+    {
+      switch ( Type )
+      {
+        case Meter_Type.HP3458:
+          return 10m;
+        case Meter_Type.HP34401:
+          return 10m;
+        case Meter_Type.HP34420:
+          return 10m;
+        case Meter_Type.HP3456:
+          return 1m;
+        case Meter_Type.HP33120:
+          return 1m;
+        case Meter_Type.HP53132:
+          return 1m;
+        default:
+          return 1m;
+      }
+    }
+
   }
 
-  public static class Command_Dictionary_Class
-  {
-    public static List<Command_Entry> Get_All_Commands ( Meter_Type Meter = Meter_Type.HP3458 )
-      => Meter switch
+    public static class Command_Dictionary_Class
+    {
+      public static List<Command_Entry> Get_All_Commands ( Meter_Type Meter = Meter_Type.HP3458 )
       {
-        Meter_Type.HP3458 => HP3458_Command_Dictionary_Class.Get_All_Commands ( ),
-        Meter_Type.HP34401 => HP34401_Command_Dictionary_Class.Get_All_Commands ( ),
-        Meter_Type.HP33120 => HP33120_Command_Dictionary_Class.Get_All_Commands ( ),
-        Meter_Type.HP34420 => HP34420_Command_Dictionary_Class.Get_All_Commands ( ),
-        Meter_Type.HP53132 => HP53132_Command_Dictionary_Class.Get_All_Commands ( ),
-        Meter_Type.Generic_GPIB => [ ],
-        _ => throw new ArgumentOutOfRangeException ( nameof ( Meter ), Meter, "Unsupported meter type" )
-      };
+        switch ( Meter )
+        {
+          case Meter_Type.HP3458:
+            return HP3458_Command_Dictionary_Class.Get_All_Commands ( );
+          case Meter_Type.HP34401:
+            return HP34401_Command_Dictionary_Class.Get_All_Commands ( );
+          case Meter_Type.HP33120:
+            return HP33120_Command_Dictionary_Class.Get_All_Commands ( );
+          case Meter_Type.HP34420:
+            return HP34420_Command_Dictionary_Class.Get_All_Commands ( );
+          case Meter_Type.HP53132:
+            return HP53132_Command_Dictionary_Class.Get_All_Commands ( );
+          case Meter_Type.HP3456:
+            return HP3456_Command_Dictionary_Class.Get_All_Commands ( );
+          case Meter_Type.Generic_GPIB:
+            return [ ];
+
+          default:
+            Debug.WriteLine ( $"[Command_Dictionary] Unsupported meter type: {Meter}" );
+            return [ ];
+        }
+      }
+    }
   }
-}
+
+
 

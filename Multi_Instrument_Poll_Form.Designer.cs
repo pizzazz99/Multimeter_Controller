@@ -8,7 +8,7 @@ namespace Multimeter_Controller
     {
       if ( disposing && ( components != null ) )
       {
-        components.Dispose ();
+        components.Dispose ( );
       }
       base.Dispose ( disposing );
     }
@@ -47,11 +47,12 @@ namespace Multimeter_Controller
       Current_Values_Panel = new Buffered_Panel ( );
       Graph_Style_Label = new Label ( );
       Graph_Style_Combo = new ComboBox ( );
-      NPLC_Delay_Textbox = new TextBox ( );
-      label1 = new Label ( );
       Theme_Button = new Button ( );
       Poll_Speed_Button = new Button ( );
       label2 = new Label ( );
+      Capture_Timing_Checkbox = new CheckBox ( );
+      Analyze_Data_Button = new Button ( );
+      NPLC_Summary_Button = new Button ( );
       ( (System.ComponentModel.ISupportInitialize) Delay_Numeric ).BeginInit ( );
       ( (System.ComponentModel.ISupportInitialize) Cycles_Numeric ).BeginInit ( );
       ( (System.ComponentModel.ISupportInitialize) Max_Points_Numeric ).BeginInit ( );
@@ -72,7 +73,7 @@ namespace Multimeter_Controller
       // Delay_Label
       // 
       Delay_Label.AutoSize = true;
-      Delay_Label.Location = new Point ( 694, 258 );
+      Delay_Label.Location = new Point ( 689, 309 );
       Delay_Label.Name = "Delay_Label";
       Delay_Label.Size = new Size ( 66, 15 );
       Delay_Label.TabIndex = 3;
@@ -81,7 +82,7 @@ namespace Multimeter_Controller
       // Delay_Numeric
       // 
       Delay_Numeric.Increment = new decimal ( new int [ ] { 50, 0, 0, 0 } );
-      Delay_Numeric.Location = new Point ( 766, 255 );
+      Delay_Numeric.Location = new Point ( 761, 306 );
       Delay_Numeric.Maximum = new decimal ( new int [ ] { 60000, 0, 0, 0 } );
       Delay_Numeric.Minimum = new decimal ( new int [ ] { 50, 0, 0, 0 } );
       Delay_Numeric.Name = "Delay_Numeric";
@@ -92,7 +93,7 @@ namespace Multimeter_Controller
       // 
       // Start_Stop_Button
       // 
-      Start_Stop_Button.Location = new Point ( 16, 251 );
+      Start_Stop_Button.Location = new Point ( 11, 302 );
       Start_Stop_Button.Name = "Start_Stop_Button";
       Start_Stop_Button.Size = new Size ( 85, 28 );
       Start_Stop_Button.TabIndex = 5;
@@ -102,7 +103,7 @@ namespace Multimeter_Controller
       // 
       // Clear_Button
       // 
-      Clear_Button.Location = new Point ( 103, 251 );
+      Clear_Button.Location = new Point ( 98, 302 );
       Clear_Button.Name = "Clear_Button";
       Clear_Button.Size = new Size ( 65, 28 );
       Clear_Button.TabIndex = 6;
@@ -112,7 +113,7 @@ namespace Multimeter_Controller
       // 
       // Record_Button
       // 
-      Record_Button.Location = new Point ( 170, 251 );
+      Record_Button.Location = new Point ( 165, 302 );
       Record_Button.Name = "Record_Button";
       Record_Button.Size = new Size ( 85, 28 );
       Record_Button.TabIndex = 7;
@@ -122,7 +123,7 @@ namespace Multimeter_Controller
       // 
       // Load_Button
       // 
-      Load_Button.Location = new Point ( 256, 252 );
+      Load_Button.Location = new Point ( 251, 303 );
       Load_Button.Name = "Load_Button";
       Load_Button.Size = new Size ( 65, 28 );
       Load_Button.TabIndex = 8;
@@ -135,9 +136,9 @@ namespace Multimeter_Controller
       Chart_Panel.Anchor =     AnchorStyles.Top  |  AnchorStyles.Bottom   |  AnchorStyles.Left   |  AnchorStyles.Right ;
       Chart_Panel.BackColor = Color.FromArgb (   24,   27,   31 );
       Chart_Panel.BorderStyle = BorderStyle.FixedSingle;
-      Chart_Panel.Location = new Point ( 12, 287 );
+      Chart_Panel.Location = new Point ( 12, 338 );
       Chart_Panel.Name = "Chart_Panel";
-      Chart_Panel.Size = new Size ( 919, 474 );
+      Chart_Panel.Size = new Size ( 919, 423 );
       Chart_Panel.TabIndex = 12;
       Chart_Panel.Paint +=  Chart_Panel_Paint ;
       Chart_Panel.MouseWheel +=  Chart_Panel_Mouse_Wheel ;
@@ -148,7 +149,7 @@ namespace Multimeter_Controller
       Continuous_Check.AutoSize = true;
       Continuous_Check.Checked = true;
       Continuous_Check.CheckState = CheckState.Checked;
-      Continuous_Check.Location = new Point ( 13, 217 );
+      Continuous_Check.Location = new Point ( 623, 254 );
       Continuous_Check.Name = "Continuous_Check";
       Continuous_Check.Size = new Size ( 111, 19 );
       Continuous_Check.TabIndex = 16;
@@ -160,7 +161,7 @@ namespace Multimeter_Controller
       // 
       Measurement_Combo.DropDownStyle = ComboBoxStyle.DropDownList;
       Measurement_Combo.FormattingEnabled = true;
-      Measurement_Combo.Location = new Point ( 270, 155 );
+      Measurement_Combo.Location = new Point ( 374, 237 );
       Measurement_Combo.Name = "Measurement_Combo";
       Measurement_Combo.Size = new Size ( 150, 23 );
       Measurement_Combo.TabIndex = 15;
@@ -169,7 +170,7 @@ namespace Multimeter_Controller
       // Measurement_Label
       // 
       Measurement_Label.AutoSize = true;
-      Measurement_Label.Location = new Point ( 180, 158 );
+      Measurement_Label.Location = new Point ( 284, 240 );
       Measurement_Label.Name = "Measurement_Label";
       Measurement_Label.Size = new Size ( 83, 15 );
       Measurement_Label.TabIndex = 14;
@@ -179,7 +180,7 @@ namespace Multimeter_Controller
       // 
       Cycles_Label.AutoSize = true;
       Cycles_Label.Enabled = false;
-      Cycles_Label.Location = new Point ( 136, 219 );
+      Cycles_Label.Location = new Point ( 46, 269 );
       Cycles_Label.Name = "Cycles_Label";
       Cycles_Label.Size = new Size ( 44, 15 );
       Cycles_Label.TabIndex = 19;
@@ -188,7 +189,7 @@ namespace Multimeter_Controller
       // Cycles_Numeric
       // 
       Cycles_Numeric.Enabled = false;
-      Cycles_Numeric.Location = new Point ( 186, 216 );
+      Cycles_Numeric.Location = new Point ( 96, 266 );
       Cycles_Numeric.Maximum = new decimal ( new int [ ] { 100000, 0, 0, 0 } );
       Cycles_Numeric.Minimum = new decimal ( new int [ ] { 1, 0, 0, 0 } );
       Cycles_Numeric.Name = "Cycles_Numeric";
@@ -199,7 +200,7 @@ namespace Multimeter_Controller
       // Rolling_Check
       // 
       Rolling_Check.AutoSize = true;
-      Rolling_Check.Location = new Point ( 510, 246 );
+      Rolling_Check.Location = new Point ( 505, 297 );
       Rolling_Check.Name = "Rolling_Check";
       Rolling_Check.Size = new Size ( 79, 34 );
       Rolling_Check.TabIndex = 24;
@@ -212,7 +213,7 @@ namespace Multimeter_Controller
       // 
       Max_Points_Numeric.Enabled = false;
       Max_Points_Numeric.Increment = new decimal ( new int [ ] { 2, 0, 0, 0 } );
-      Max_Points_Numeric.Location = new Point ( 597, 251 );
+      Max_Points_Numeric.Location = new Point ( 592, 302 );
       Max_Points_Numeric.Maximum = new decimal ( new int [ ] { 100000, 0, 0, 0 } );
       Max_Points_Numeric.Minimum = new decimal ( new int [ ] { 5, 0, 0, 0 } );
       Max_Points_Numeric.Name = "Max_Points_Numeric";
@@ -223,7 +224,7 @@ namespace Multimeter_Controller
       // 
       // Legend_Toggle_Button
       // 
-      Legend_Toggle_Button.Location = new Point ( 858, 251 );
+      Legend_Toggle_Button.Location = new Point ( 853, 302 );
       Legend_Toggle_Button.Name = "Legend_Toggle_Button";
       Legend_Toggle_Button.Size = new Size ( 65, 28 );
       Legend_Toggle_Button.TabIndex = 26;
@@ -234,7 +235,7 @@ namespace Multimeter_Controller
       // Cycle_Label
       // 
       Cycle_Label.AutoSize = true;
-      Cycle_Label.Location = new Point ( 537, 189 );
+      Cycle_Label.Location = new Point ( 573, 190 );
       Cycle_Label.Name = "Cycle_Label";
       Cycle_Label.Size = new Size ( 44, 15 );
       Cycle_Label.TabIndex = 27;
@@ -249,7 +250,7 @@ namespace Multimeter_Controller
       // 
       // View_Mode_Button
       // 
-      View_Mode_Button.Location = new Point ( 270, 215 );
+      View_Mode_Button.Location = new Point ( 180, 265 );
       View_Mode_Button.Name = "View_Mode_Button";
       View_Mode_Button.Size = new Size ( 92, 23 );
       View_Mode_Button.TabIndex = 29;
@@ -259,7 +260,7 @@ namespace Multimeter_Controller
       // 
       // Normalize_Button
       // 
-      Normalize_Button.Location = new Point ( 368, 215 );
+      Normalize_Button.Location = new Point ( 278, 265 );
       Normalize_Button.Name = "Normalize_Button";
       Normalize_Button.Size = new Size ( 75, 23 );
       Normalize_Button.TabIndex = 30;
@@ -280,7 +281,7 @@ namespace Multimeter_Controller
       // 
       // Zoom_Slider
       // 
-      Zoom_Slider.Location = new Point ( 12, 101 );
+      Zoom_Slider.Location = new Point ( 374, 186 );
       Zoom_Slider.Maximum = 100;
       Zoom_Slider.Minimum = 1;
       Zoom_Slider.Name = "Zoom_Slider";
@@ -327,7 +328,7 @@ namespace Multimeter_Controller
       // 
       // Reset_Errors_Button
       // 
-      Reset_Errors_Button.Location = new Point ( 327, 252 );
+      Reset_Errors_Button.Location = new Point ( 322, 303 );
       Reset_Errors_Button.Name = "Reset_Errors_Button";
       Reset_Errors_Button.Size = new Size ( 90, 29 );
       Reset_Errors_Button.TabIndex = 35;
@@ -337,7 +338,7 @@ namespace Multimeter_Controller
       // 
       // Close_Button
       // 
-      Close_Button.Location = new Point ( 423, 251 );
+      Close_Button.Location = new Point ( 418, 302 );
       Close_Button.Name = "Close_Button";
       Close_Button.Size = new Size ( 75, 30 );
       Close_Button.TabIndex = 36;
@@ -358,7 +359,7 @@ namespace Multimeter_Controller
       // Graph_Style_Label
       // 
       Graph_Style_Label.AutoSize = true;
-      Graph_Style_Label.Location = new Point ( 535, 214 );
+      Graph_Style_Label.Location = new Point ( 575, 219 );
       Graph_Style_Label.Name = "Graph_Style_Label";
       Graph_Style_Label.Size = new Size ( 42, 15 );
       Graph_Style_Label.TabIndex = 39;
@@ -373,25 +374,9 @@ namespace Multimeter_Controller
       Graph_Style_Combo.TabIndex = 40;
       Graph_Style_Combo.SelectedIndexChanged +=  Graph_Style_Combo_SelectedIndexChanged ;
       // 
-      // NPLC_Delay_Textbox
-      // 
-      NPLC_Delay_Textbox.Location = new Point ( 86, 185 );
-      NPLC_Delay_Textbox.Name = "NPLC_Delay_Textbox";
-      NPLC_Delay_Textbox.Size = new Size ( 70, 23 );
-      NPLC_Delay_Textbox.TabIndex = 42;
-      // 
-      // label1
-      // 
-      label1.AutoSize = true;
-      label1.Location = new Point ( 8, 188 );
-      label1.Name = "label1";
-      label1.Size = new Size ( 72, 15 );
-      label1.TabIndex = 41;
-      label1.Text = "NPLC Delay:";
-      // 
       // Theme_Button
       // 
-      Theme_Button.Location = new Point ( 181, 185 );
+      Theme_Button.Location = new Point ( 91, 235 );
       Theme_Button.Name = "Theme_Button";
       Theme_Button.Size = new Size ( 75, 23 );
       Theme_Button.TabIndex = 43;
@@ -401,33 +386,65 @@ namespace Multimeter_Controller
       // 
       // Poll_Speed_Button
       // 
-      Poll_Speed_Button.Location = new Point ( 270, 186 );
+      Poll_Speed_Button.Location = new Point ( 180, 236 );
       Poll_Speed_Button.Name = "Poll_Speed_Button";
       Poll_Speed_Button.Size = new Size ( 92, 23 );
       Poll_Speed_Button.TabIndex = 44;
-      Poll_Speed_Button.Text = "Poll Speed";
+      Poll_Speed_Button.Text = "Poll Timing";
       Poll_Speed_Button.UseVisualStyleBackColor = true;
       Poll_Speed_Button.Click +=  Poll_Speed_Button_Click ;
       // 
       // label2
       // 
       label2.AutoSize = true;
-      label2.Location = new Point ( 16, 83 );
+      label2.Location = new Point ( 409, 167 );
       label2.Name = "label2";
-      label2.Size = new Size ( 39, 15 );
+      label2.Size = new Size ( 74, 15 );
       label2.TabIndex = 45;
-      label2.Text = "Zoom";
+      label2.Text = "Graph Zoom";
+      // 
+      // Capture_Timing_Checkbox
+      // 
+      Capture_Timing_Checkbox.AutoSize = true;
+      Capture_Timing_Checkbox.Location = new Point ( 374, 270 );
+      Capture_Timing_Checkbox.Name = "Capture_Timing_Checkbox";
+      Capture_Timing_Checkbox.Size = new Size ( 109, 19 );
+      Capture_Timing_Checkbox.TabIndex = 46;
+      Capture_Timing_Checkbox.Text = "Capture Timing";
+      Capture_Timing_Checkbox.UseVisualStyleBackColor = true;
+      Capture_Timing_Checkbox.CheckedChanged +=  Capture_Timing_Checkbox_CheckedChanged ;
+      // 
+      // Analyze_Data_Button
+      // 
+      Analyze_Data_Button.Location = new Point ( 853, 246 );
+      Analyze_Data_Button.Name = "Analyze_Data_Button";
+      Analyze_Data_Button.Size = new Size ( 65, 42 );
+      Analyze_Data_Button.TabIndex = 54;
+      Analyze_Data_Button.Text = "Analyze Data";
+      Analyze_Data_Button.UseVisualStyleBackColor = true;
+      Analyze_Data_Button.Click +=  Analyze_Data_Button_Click ;
+      // 
+      // NPLC_Summary_Button
+      // 
+      NPLC_Summary_Button.Location = new Point ( 21, 58 );
+      NPLC_Summary_Button.Name = "NPLC_Summary_Button";
+      NPLC_Summary_Button.Size = new Size ( 75, 44 );
+      NPLC_Summary_Button.TabIndex = 55;
+      NPLC_Summary_Button.Text = "NPLC Summary";
+      NPLC_Summary_Button.UseVisualStyleBackColor = true;
+      NPLC_Summary_Button.Click +=  NPLC_Summary_Button_Click ;
       // 
       // Multi_Instrument_Poll_Form
       // 
       AutoScaleDimensions = new SizeF ( 7F, 15F );
       AutoScaleMode = AutoScaleMode.Font;
       ClientSize = new Size ( 943, 830 );
+      Controls.Add ( NPLC_Summary_Button );
+      Controls.Add ( Analyze_Data_Button );
+      Controls.Add ( Capture_Timing_Checkbox );
       Controls.Add ( label2 );
       Controls.Add ( Poll_Speed_Button );
       Controls.Add ( Theme_Button );
-      Controls.Add ( NPLC_Delay_Textbox );
-      Controls.Add ( label1 );
       Controls.Add ( Graph_Style_Label );
       Controls.Add ( Graph_Style_Combo );
       Controls.Add ( Close_Button );
@@ -509,10 +526,11 @@ namespace Multimeter_Controller
     private Buffered_Panel Current_Values_Panel;
     private Label Graph_Style_Label;
     private ComboBox Graph_Style_Combo;
-    private TextBox NPLC_Delay_Textbox;
-    private Label label1;
     private Button Theme_Button;
     private Button Poll_Speed_Button;
     private Label label2;
+    private CheckBox Capture_Timing_Checkbox;
+    private Button Analyze_Data_Button;
+    private Button NPLC_Summary_Button;
   }
 }

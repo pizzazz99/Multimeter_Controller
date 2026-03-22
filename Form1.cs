@@ -59,10 +59,14 @@
 // Framework:    .NET 9.0, Windows Forms
 // ============================================================================
 
+using Multimeter_Controller.Properties;
+using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics.Metrics;
 using System.Globalization;
 using System.IO.Ports;
 using System.Windows.Forms;
+using System.Windows.Forms.DataVisualization.Charting;
 using Trace_Execution_Namespace;
 using static System.ComponentModel.Design.ObjectSelectorEditor;
 using static Trace_Execution_Namespace.Trace_Execution;
@@ -103,7 +107,8 @@ namespace Multimeter_Controller
     public bool Is_Ethernet = false;
 
     private bool _Cleanup_Done = false;
-
+    private NPLC_Info_Form? _NPLC_Info_Form;
+    private Session_Settings_Form? _Session_Settings_Form;
 
     public Form1 ( )
     {
@@ -168,7 +173,7 @@ namespace Multimeter_Controller
         NPLC_Combo_Box.SelectedIndex = 0;
     }
 
-   
+
 
 
     protected override void OnFormClosing ( FormClosingEventArgs e )
@@ -179,6 +184,9 @@ namespace Multimeter_Controller
         _ = Shutdown_And_Close ( );
         return;
       }
+
+      _NPLC_Info_Form?.Close ( );
+
       base.OnFormClosing ( e );
     }
 
@@ -190,9 +198,9 @@ namespace Multimeter_Controller
     }
 
 
-  
 
-  
+
+
 
     // ===== Command List =====
 
@@ -431,7 +439,7 @@ namespace Multimeter_Controller
 
 
 
-    private void Multi_Poll_Button_Click ( object sender, EventArgs e )
+    private void old_Multi_Poll_Button_Click ( object sender, EventArgs e )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
       Cursor = Cursors.WaitCursor;
@@ -461,7 +469,59 @@ namespace Multimeter_Controller
       Form.Show ( );
     }
 
+    private void Multi_Poll_Button_Click ( object Sender, EventArgs E )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+      Cursor = Cursors.WaitCursor;
 
+      if ( _Instruments.Count == 0 )
+      {
+        MessageBox.Show (
+            "No instruments configured. Please scan for instruments first.",
+            "No Instruments",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Warning );
+        Cursor = Cursors.Default;
+        return;
+      }
+
+      // ── Commit any pending NPLC edit before cloning ───────────────────
+      Commit_Current_Instrument_Edits ( );
+
+      var Cloned = _Instruments.Select ( Ins => new Instrument
+      {
+        Name = Ins.Name,
+        Address = Ins.Address,
+        Type = Ins.Type,
+        Visible = Ins.Visible,
+        NPLC = Ins.NPLC,
+        Meter_Roll = Ins.Meter_Roll
+      } ).ToList ( );
+
+      // ── Verify NPLC values before opening ─────────────────────────────
+      foreach ( var I in Cloned )
+        Capture_Trace.Write ( $"Clone: {I.Name} NPLC={I.NPLC}" );
+
+      var Form = new Multi_Instrument_Poll_Form ( _Comm, Cloned, _Settings, _Selected_Meter );
+      Cursor = Cursors.Default;
+      Form.Show ( );
+    }
+
+    private void Commit_Current_Instrument_Edits ( )
+    {
+      if ( _Selected_Index < 0 || _Selected_Index >= _Instruments.Count )
+        return;
+
+      if ( !decimal.TryParse (
+              NPLC_Combo_Box.SelectedItem?.ToString ( ),
+              NumberStyles.Number,
+              CultureInfo.InvariantCulture,
+              out decimal NPLC ) )
+        return;
+
+      _Instruments [ _Selected_Index ].NPLC = NPLC;
+      Capture_Trace.Write ( $"Committed NPLC {NPLC} for {_Instruments [ _Selected_Index ].Name}" );
+    }
 
 
     // ===== Instrument List =====
@@ -471,12 +531,9 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
 
-
       Cursor = Cursors.WaitCursor;
-
       _Updating_Controls = true;
       Capture_Trace.Write ( "Adding Instrument" );
-
 
       int Address = (int) GPIB_Address_Numeric.Value;
       Meter_Type Type = Meter_Type_Extensions.From_Combo_Index ( Instrument_Type_Combo.SelectedIndex );
@@ -485,7 +542,7 @@ namespace Multimeter_Controller
       if ( string.IsNullOrEmpty ( Name ) )
         Name = Meter_Type_Extensions.Get_Name ( Type );
 
-      // --- Duplicate address check ---
+      // ── Duplicate address check ───────────────────────────────────────
       if ( _Instruments.Any ( i => i.Address == Address ) )
       {
         _Updating_Controls = false;
@@ -494,7 +551,6 @@ namespace Multimeter_Controller
             "Duplicate Address",
             MessageBoxButtons.OK,
             MessageBoxIcon.Warning );
-
         Cursor = Cursors.Default;
         return;
       }
@@ -521,21 +577,54 @@ namespace Multimeter_Controller
               Append_Response ( $"[No instrument at address {Address} - not added]" );
               Cursor = Cursors.Default;
               return;
-
             }
-            else
-            {
-              _Comm.Mark_Address_Verified ( Address );
-              Append_Response ( $"[Verified at address {Address}: {ID_Response}]" );
 
-              if ( Name == Meter_Type_Extensions.Get_Name ( Type ) )
+            _Comm.Mark_Address_Verified ( Address );
+            Append_Response ( $"[Verified at address {Address}: {ID_Response}]" );
+
+            Meter_Type Detected = Multimeter_Common_Helpers_Class.Get_Meter_Type ( ID_Response );
+
+            // ── Type mismatch check ───────────────────────────────────
+            if ( Detected != Meter_Type.Generic_GPIB && Detected != Type )
+            {
+              string Detected_Name = Meter_Type_Extensions.Get_Name ( Detected );
+              string Selected_Name = Meter_Type_Extensions.Get_Name ( Type );
+              DialogResult Result = DialogResult.No;
+
+              this.Invoke ( ( ) =>
               {
-                Meter_Type Detected = Multimeter_Common_Helpers_Class.Get_Meter_Type ( ID_Response );
-                Name = Meter_Type_Extensions.Get_Name ( Detected );
+                Result = MessageBox.Show (
+                    $"The instrument at address {Address} identified as:\n\n" +
+                    $"  Detected:  {Detected_Name}\n" +
+                    $"  Selected:  {Selected_Name}\n\n" +
+                    $"Do you want to add it as {Detected_Name} instead?",
+                    "Instrument Mismatch",
+                    MessageBoxButtons.YesNoCancel,
+                    MessageBoxIcon.Warning );
+              } );
+
+              if ( Result == DialogResult.Cancel )
+              {
+                Cursor = Cursors.Default;
+                return;
               }
 
-
+              if ( Result == DialogResult.Yes )
+              {
+                Type = Detected;
+                this.Invoke ( ( ) => Load_NPLC_Combo ( Type ) );
+                Append_Response ( $"[Instrument type changed from {Selected_Name} to {Detected_Name}]" );
+              }
+              else
+              {
+                Append_Response ( $"[Warning: adding as {Selected_Name} but instrument identified as {Detected_Name}]" );
+              }
             }
+
+            // ── Update name to match final type if still at default ───
+            if ( Name == Meter_Type_Extensions.Get_Name (
+                Meter_Type_Extensions.From_Combo_Index ( Instrument_Type_Combo.SelectedIndex ) ) )
+              Name = Meter_Type_Extensions.Get_Name ( Type );
           }
         }
         finally
@@ -548,12 +637,16 @@ namespace Multimeter_Controller
         _Updating_Controls = false;
       }
 
-      string UserName = Roll_Name_Textbox.Text.Trim ( );
-
-      // --- Create instrument and add to BindingList ---
+      // ── Create and add instrument ─────────────────────────────────────
       decimal NPLC = decimal.TryParse ( NPLC_Combo_Box.SelectedItem?.ToString ( ), out decimal parsed )
-          ? parsed
-          : 1m;
+          ? parsed : 1m;
+
+      decimal Default_NPLC = Meter_Type_Extensions.Get_Default_NPLC ( Type );
+      if ( NPLC != Default_NPLC )
+      {
+        Capture_Trace.Write ( $"NPLC overridden by user: {Default_NPLC} → {NPLC}" );
+        Append_Response ( $"[Note: NPLC set to {NPLC} (default is {Default_NPLC})]" );
+      }
 
       var Inst = new Instrument
       {
@@ -568,7 +661,6 @@ namespace Multimeter_Controller
 
       _Instruments.Add ( Inst );
 
-      // --- Initialize instrument asynchronously ---
       try
       {
         await Initialize_Remote_For_Instrument ( Inst );
@@ -580,7 +672,6 @@ namespace Multimeter_Controller
       }
       finally
       {
-        // --- Optional UI updates ---
         Roll_Name_Textbox.Enabled = false;
         Refresh_Instrument_List ( );
         Set_Button_State ( );
@@ -588,6 +679,9 @@ namespace Multimeter_Controller
         Cursor = Cursors.Default;
       }
     }
+
+
+
 
 
     private void Refresh_Instrument_List ( )
@@ -742,7 +836,7 @@ namespace Multimeter_Controller
             await _Comm.Send_Instrument_CommandAsync ( inst.Address, "END ALWAYS" );
             await Task.Delay ( 200 );
 
-       //     Capture_Trace.Write ( "Sending Beep on..." );
+            //     Capture_Trace.Write ( "Sending Beep on..." );
             // Beep for errors
             //    await _Comm.Send_Instrument_CommandAsync ( inst.Address, "BEEP 1" );
             //    await Task.Delay ( 200 );
@@ -1315,7 +1409,7 @@ namespace Multimeter_Controller
         }
         return;
       }
-    
+
 
       // --- Setup transport only ---
       Is_Ethernet = Connection_Mode_Combo.SelectedIndex == 2;
@@ -1716,69 +1810,6 @@ namespace Multimeter_Controller
 
 
 
-    private void Show_Session_Info ( )
-    {
-
-      var SB = new System.Text.StringBuilder ( );
-
-      SB.AppendLine ( "╔══════════════════════════════════════════╗" );
-      SB.AppendLine ( "║         SESSION CONFIGURATION            ║" );
-      SB.AppendLine ( "╚══════════════════════════════════════════╝" );
-      SB.AppendLine ( );
-
-      // Instruments
-      SB.AppendLine ( "── Instruments ──────────────────────────────" );
-      foreach ( var I in _Instruments )
-        SB.AppendLine ( $"  {I.Name}  GPIB:{I.Address}  Type:{I.Type}" );
-      SB.AppendLine ( );
-
-      // Connection
-      SB.AppendLine ( "── Connection ───────────────────────────────" );
-      SB.AppendLine ( $"  Prologix  : {_Settings.Default_IP_Address}:{_Settings.Default_Prologic_Port}" );
-      SB.AppendLine ( $"  Connected : {( _Comm?.Is_Connected == true ? "YES" : "No" )}" );
-      SB.AppendLine ( $"  Timeout   : {_Settings.Default_GPIB_Timeout_Ms} ms" );
-      SB.AppendLine ( );
-
-      // Measurement
-      SB.AppendLine ( "── Measurement ──────────────────────────────" );
-      SB.AppendLine ( $"  Default   : {_Settings.Default_Measurement_Type}" );
-      SB.AppendLine ( $"  NPLC      : {_Settings.Default_NPLC}" );
-      SB.AppendLine ( $"  Digits    : {_Settings.Display_Digits}" );
-      SB.AppendLine ( );
-
-      // Polling
-      SB.AppendLine ( "── Polling ───────────────────────────────────" );
-      SB.AppendLine ( $"  Mode      : {( _Settings.Default_Continuous_Poll ? "Continuous" : "Fixed cycles" )}" );
-      SB.AppendLine ( $"  Delay     : {_Settings.Default_Poll_Delay_Ms} ms" );
-      SB.AppendLine ( $"  Max Points: {_Settings.Max_Display_Points:N0}" );
-      SB.AppendLine ( $"  At Max    : {( _Settings.Stop_Polling_At_Max_Display_Points ? "Stop" : "Roll" )}" );
-      SB.AppendLine ( );
-
-      // Data Freshness
-      SB.AppendLine ( "── Data Freshness ───────────────────────────" );
-      SB.AppendLine ( $"  Skew Warn : {_Settings.Skew_Warning_Threshold_Seconds:F1}s  (orange)" );
-      SB.AppendLine ( $"  Stale     : {_Settings.Stale_Data_Threshold_Seconds:F1}s  (red)" );
-      SB.AppendLine ( );
-
-      // Memory
-      SB.AppendLine ( "── Memory ───────────────────────────────────" );
-      SB.AppendLine ( $"  Max Memory: {_Settings.Max_Data_Points_In_Memory:N0}" );
-      SB.AppendLine ( $"  Warn At   : {_Settings.Warning_Threshold_Percent}%" );
-      SB.AppendLine ( );
-
-      // HP3458 
-      SB.AppendLine ( "── HP3458 ───────────────────────────────────" );
-      SB.AppendLine ( $"  NPLC      : {_Settings.Default_NPLC_3458}" );
-      SB.AppendLine ( $"  Trig Mode : {_Settings.Default_Trig_Mode_3458}" );
-      SB.AppendLine ( $"  Digits    : {_Settings.Display_Digits}" );
-      SB.AppendLine ( $"  Reset     : {( _Settings.Send_Reset_On_Connect_3458 ? "Yes" : "No" )}" );
-
-      MessageBox.Show ( SB.ToString ( ),
-        "Session Configuration",
-        MessageBoxButtons.OK,
-        MessageBoxIcon.Information );
-    }
-
 
 
     private string Get_Local_Subnet ( )
@@ -1941,12 +1972,28 @@ namespace Multimeter_Controller
       popup.ShowDialog ( this );
     }
 
-    private void Session_Info_Button_Click ( object sender, EventArgs e )
-    {
-      using var Block = Trace_Block.Start_If_Enabled ( );
-      Show_Session_Info ( );
-    }
+   
 
+    private void Session_Settings_Button_Click ( object Sender, EventArgs E )
+    {
+      if ( _Session_Settings_Form == null || _Session_Settings_Form.IsDisposed )
+      {
+        _Session_Settings_Form = new Session_Settings_Form ( _Settings, _Instruments, _Settings.Current_Theme );
+        _Session_Settings_Form.FormClosed += ( s, e ) =>
+        {
+          _Session_Settings_Form = null;
+          Session_Settings_Button.Text = "Session Settings";
+        };
+        _Session_Settings_Form.Show ( this );
+        Session_Settings_Button.Text = "Hide Settings";
+      }
+      else
+      {
+        _Session_Settings_Form.Close ( );
+        _Session_Settings_Form = null;
+        Session_Settings_Button.Text = "Session Settings";
+      }
+    }
 
     private void Settings_Button_Click ( object Sender, EventArgs E )
     {
@@ -1974,28 +2021,37 @@ namespace Multimeter_Controller
     private void NPLC_Combo_Box_SelectedIndexChanged ( object Sender, EventArgs E )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
-
       if ( _Updating_Controls )
         return;
-
       if ( _Selected_Index < 0 || _Selected_Index >= _Instruments.Count )
         return;
 
-      if ( NPLC_Combo_Box.SelectedItem is not string Value )
+      if ( !decimal.TryParse (
+              NPLC_Combo_Box.SelectedItem?.ToString ( ),
+              NumberStyles.Number,
+              CultureInfo.InvariantCulture,
+              out decimal NPLC ) )
         return;
 
-      if ( !decimal.TryParse ( Value, NumberStyles.Number,
-                               CultureInfo.InvariantCulture, out decimal NPLC ) )
-        return;
+      var Inst = _Instruments [ _Selected_Index ];
+      decimal Default = Meter_Type_Extensions.Get_Default_NPLC ( Inst.Type );
+      Inst.NPLC = NPLC;
 
-      _Instruments [ _Selected_Index ].NPLC = NPLC;
-      Capture_Trace.Write ( $"NPLC updated to {NPLC} for {_Instruments [ _Selected_Index ].Name}" );
-      
+      if ( NPLC != Default )
+      {
+        Capture_Trace.Write ( $"NPLC overridden: {Inst.Name} default={Default} selected={NPLC}" );
+        Append_Response ( $"[{Inst.Name}: NPLC set to {NPLC} (default is {Default})]" );
+      }
+      else
+      {
+        Capture_Trace.Write ( $"NPLC set to default {NPLC} for {Inst.Name}" );
+      }
 
-      _Settings.Default_NPLC = Value;
+      Update_NPLC_Display ( );   // refresh integration/settle time labels if you have them
+
+      _Settings.Default_NPLC = NPLC.ToString ( CultureInfo.InvariantCulture );
       _Settings.Save ( );
     }
-
 
     private void Apply_NPLC_To_All_Button_Click ( object Sender, EventArgs E )
     {
@@ -2035,6 +2091,18 @@ namespace Multimeter_Controller
       Append_Response ( $"[NPLC {NPLC} applied to {Count} of {_Instruments.Count} instruments]" );
     }
 
+
+    private void Update_NPLC_Display ( )
+    {
+      if ( _Selected_Index < 0 || _Selected_Index >= _Instruments.Count )
+        return;
+
+      // Nothing to display on main form — NPLC data shown on polling form only
+      // Just ensure the instrument list reflects the change
+      Refresh_Instrument_List ( );
+    }
+
+
     private void Roll_Name_Textbox_Leave ( object sender, EventArgs e )
     {
       if ( Roll_Name_Textbox is null || !Roll_Name_Textbox.Enabled )
@@ -2049,6 +2117,32 @@ namespace Multimeter_Controller
             MessageBoxButtons.OK,
             MessageBoxIcon.Warning );
         Roll_Name_Textbox.Focus ( );
+      }
+    }
+
+    private void Display_Recording_Data_Button_Click ( object sender, EventArgs e )
+    {
+
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
+      Cursor = Cursors.WaitCursor;
+
+      var Form = new Recording_Playback_Form ( _Settings );
+      Cursor = Cursors.Default;
+      Form.Show ( );
+    }
+
+    private void NPLC_Info_Button_Click ( object Sender, EventArgs E )
+    {
+      if ( _NPLC_Info_Form == null || _NPLC_Info_Form.IsDisposed )
+      {
+        _NPLC_Info_Form = new NPLC_Info_Form ( );
+        _NPLC_Info_Form.Show ( this );
+      }
+      else
+      {
+        _NPLC_Info_Form.Close ( );
+        _NPLC_Info_Form = null;
       }
     }
   }

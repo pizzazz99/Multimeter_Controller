@@ -72,8 +72,7 @@ namespace Multimeter_Controller
 
 
 
-    [JsonPropertyName ( "display_digits" )]
-    public int Display_Digits { get; set; } = 10;
+  
 
     [JsonPropertyName ( "tooltip_distance_threshold" )]
     public int Tooltip_Distance_Threshold { get; set; } = 50;
@@ -126,7 +125,7 @@ namespace Multimeter_Controller
 
 
     [JsonPropertyName ( "default_nplc" )]
-public string Default_NPLC { get; set; } = "1";
+    public string Default_NPLC { get; set; } = "1";
 
     [JsonPropertyName ( "default_measurement_type" )]
     public string Default_Measurement_Type { get; set; } = "DC Voltage";
@@ -159,8 +158,12 @@ public string Default_NPLC { get; set; } = "1";
 
     // ===== FILE/DATA MANAGEMENT =====
 
+    [JsonIgnore]
+    public string Resolved_Save_Folder =>
+    Multimeter_Common_Helpers_Class.Get_Graph_Captures_Folder ( this );
+
     [JsonPropertyName ( "default_save_folder" )]
-    public string Default_Save_Folder { get; set; } = "";
+    public string Default_Save_Folder { get; set; } = "Graph_Captures";
 
     [JsonPropertyName ( "filename_pattern" )]
     public string Filename_Pattern { get; set; } = "{date}_{time}_{function}";
@@ -211,6 +214,40 @@ public string Default_NPLC { get; set; } = "1";
 
     [JsonPropertyName ( "reduce_refresh_rate_when_large" )]
     public bool Reduce_Refresh_Rate_When_Large { get; set; } = true;
+
+
+    // ===== Analysis ======
+
+    // ===== Analysis ======
+    [JsonPropertyName ( "auto_analyze_after_recording" )]
+    public bool Auto_Analyze_After_Recording { get; set; } = false;
+
+    [JsonPropertyName ( "analysis_series_count" )]
+    public int Analysis_Series_Count { get; set; } = 2;
+
+    [JsonPropertyName ( "analysis_show_mean" )]
+    public bool Analysis_Show_Mean { get; set; } = true;
+
+    [JsonPropertyName ( "analysis_show_std_dev" )]
+    public bool Analysis_Show_Std_Dev { get; set; } = true;
+
+    [JsonPropertyName ( "analysis_show_min_max" )]
+    public bool Analysis_Show_Min_Max { get; set; } = true;
+
+    [JsonPropertyName ( "analysis_show_rms" )]
+    public bool Analysis_Show_RMS { get; set; } = true;
+
+    [JsonPropertyName ( "analysis_show_trend" )]
+    public bool Analysis_Show_Trend { get; set; } = true;
+
+    [JsonPropertyName ( "analysis_show_sample_rate" )]
+    public bool Analysis_Show_Sample_Rate { get; set; } = true;
+
+    [JsonPropertyName ( "analysis_show_errors" )]
+    public bool Analysis_Show_Errors { get; set; } = true;
+
+
+
 
     // ===== UI/UX PREFERENCES =====
 
@@ -351,22 +388,9 @@ public string Default_NPLC { get; set; } = "1";
 
     public void Initialize_Default_Save_Folder ( )
     {
-      string Documents = Environment.GetFolderPath ( Environment.SpecialFolder.MyDocuments );
-      Default_Save_Folder = Path.Combine ( Documents, "Multimeter_Data" );
-
-      try
-      {
-        Directory.CreateDirectory ( Default_Save_Folder );
-      }
-      catch
-      {
-        // If can't create in Documents, use app data
-        string App_Data = Environment.GetFolderPath ( Environment.SpecialFolder.ApplicationData );
-        Default_Save_Folder = Path.Combine ( App_Data, "Multimeter_Controller", "Data" );
-        Directory.CreateDirectory ( Default_Save_Folder );
-      }
+      if ( string.IsNullOrWhiteSpace ( Default_Save_Folder ) )
+        Default_Save_Folder = "Graph_Captures";
     }
-
     // ===== VALIDATION METHODS =====
 
 
@@ -391,7 +415,7 @@ public string Default_NPLC { get; set; } = "1";
       if ( Stale_Data_Threshold_Seconds <= Skew_Warning_Threshold_Seconds )
         Stale_Data_Threshold_Seconds = Skew_Warning_Threshold_Seconds + 1.0;
 
-      Display_Digits = Math.Max ( 4, Math.Min ( 10, Display_Digits ) );
+    
       Max_Display_Points = Math.Clamp ( Max_Display_Points, 10, 1_000_000 );
 
       // Poll delay: 50ms to 60000ms (0.05s to 60s)

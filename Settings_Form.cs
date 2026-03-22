@@ -78,6 +78,18 @@ namespace Multimeter_Controller
     private NumericUpDown _Keep_Last_N_Numeric;
     private CheckBox _Reduce_Refresh_Check;
 
+    // Analysis tab controls
+   
+    private RadioButton _Analysis_One_Series_Radio;
+    private RadioButton _Analysis_Two_Series_Radio;
+    private CheckBox _Analysis_Mean_Check;
+    private CheckBox _Analysis_StdDev_Check;
+    private CheckBox _Analysis_MinMax_Check;
+    private CheckBox _Analysis_RMS_Check;
+    private CheckBox _Analysis_Trend_Check;
+    private CheckBox _Analysis_Sample_Rate_Check;
+    private CheckBox _Analysis_Errors_Check;
+
     // UI tab controls
     private TextBox _Window_Title_Text;
     private CheckBox _Remember_Size_Check;
@@ -124,6 +136,7 @@ namespace Multimeter_Controller
       Initialize_Zoom_Tab ( );
       Initialize_HP_Tab ( );
       Build_Prologix_Tab ( );
+      Initialize_Analysis_Tab ( );
       Load_Settings ( );
     }
     public Application_Settings Get_Settings ( )
@@ -762,6 +775,105 @@ namespace Multimeter_Controller
       Y += 30;
 
 
+    }
+
+
+
+    private void Initialize_Analysis_Tab ( )
+    {
+      int Left_Col = 15;
+      int Y = 15;
+      int Row_H = 28;
+
+      // ── Auto-run ─────────────────────────────────────────────────────
+      Analysis_Tab.Controls.Add ( new Label
+      {
+        Text = "Trigger:",
+        Location = new Point ( Left_Col, Y ),
+        Font = new Font ( "Segoe UI", 9F, FontStyle.Bold ),
+        AutoSize = true
+      } );
+      Y += 22;
+
+      _Auto_Analyze_Check = new CheckBox
+      {
+        Text = "Automatically show analysis popup when recording stops",
+        Location = new Point ( Left_Col, Y ),
+        AutoSize = true
+      };
+      Analysis_Tab.Controls.Add ( _Auto_Analyze_Check );
+      Y += Row_H + 8;
+
+      // ── Series count ─────────────────────────────────────────────────
+      Analysis_Tab.Controls.Add ( new Label
+      {
+        Text = "Compare:",
+        Location = new Point ( Left_Col, Y ),
+        Font = new Font ( "Segoe UI", 9F, FontStyle.Bold ),
+        AutoSize = true
+      } );
+      Y += 22;
+
+      _Analysis_One_Series_Radio = new RadioButton
+      {
+        Text = "Single series  (summary stats only)",
+        Location = new Point ( Left_Col, Y ),
+        AutoSize = true
+      };
+      Analysis_Tab.Controls.Add ( _Analysis_One_Series_Radio );
+      Y += Row_H;
+
+      _Analysis_Two_Series_Radio = new RadioButton
+      {
+        Text = "Two series  (full delta / σ / histogram comparison)",
+        Location = new Point ( Left_Col, Y ),
+        AutoSize = true
+      };
+      Analysis_Tab.Controls.Add ( _Analysis_Two_Series_Radio );
+      Y += Row_H + 8;
+
+      // ── Which stats ──────────────────────────────────────────────────
+      Analysis_Tab.Controls.Add ( new Label
+      {
+        Text = "Include in analysis:",
+        Location = new Point ( Left_Col, Y ),
+        Font = new Font ( "Segoe UI", 9F, FontStyle.Bold ),
+        AutoSize = true
+      } );
+      Y += 22;
+
+      var Stat_Checks = new (string Text, Action<CheckBox> Assign) [ ]
+      {
+        ( "Mean / Average",  C => _Analysis_Mean_Check        = C ),
+        ( "Std Dev (σ)",     C => _Analysis_StdDev_Check      = C ),
+        ( "Min / Max",       C => _Analysis_MinMax_Check      = C ),
+        ( "RMS",             C => _Analysis_RMS_Check         = C ),
+        ( "Trend direction", C => _Analysis_Trend_Check       = C ),
+        ( "Sample rate",     C => _Analysis_Sample_Rate_Check = C ),
+        ( "Error count",     C => _Analysis_Errors_Check      = C ),
+      };
+
+      foreach ( var (Text, Assign) in Stat_Checks )
+      {
+        var CB = new CheckBox
+        {
+          Text = Text,
+          Location = new Point ( Left_Col, Y ),
+          AutoSize = true
+        };
+        Assign ( CB );
+        Analysis_Tab.Controls.Add ( CB );
+        Y += Row_H;
+      }
+
+      Y += 8;
+      Analysis_Tab.Controls.Add ( new Label
+      {
+        Text = "Note: two-series comparison always shows delta, rolling σ, and histogram tabs.",
+        Location = new Point ( Left_Col, Y ),
+        AutoSize = true,
+        ForeColor = SystemColors.GrayText
+      } );
     }
 
     private void Initialize_Files_Tab ( )
@@ -1474,8 +1586,7 @@ namespace Multimeter_Controller
         Location = new Point ( 250, Y - 3 ),
         Size = new Size ( 60, 23 ),
         Minimum = 4,
-        Maximum = 10,
-        Value = _Settings.Display_Digits
+        Maximum = 10
       };
       Scroll_Panel.Controls.Add ( _Display_Digits_Numeric );
       Scroll_Panel.Controls.Add ( new Label
@@ -1523,7 +1634,19 @@ namespace Multimeter_Controller
       _Prologic_Scan_Timeout_MS_Textbox.Text = _Settings.Prologic_Scan_Timeout_MS.ToString();
 
 
-
+      // Analysis tab
+      _Auto_Analyze_Check.Checked = _Settings.Auto_Analyze_After_Recording;
+      _Analysis_Mean_Check.Checked = _Settings.Analysis_Show_Mean;
+      _Analysis_StdDev_Check.Checked = _Settings.Analysis_Show_Std_Dev;
+      _Analysis_MinMax_Check.Checked = _Settings.Analysis_Show_Min_Max;
+      _Analysis_RMS_Check.Checked = _Settings.Analysis_Show_RMS;
+      _Analysis_Trend_Check.Checked = _Settings.Analysis_Show_Trend;
+      _Analysis_Sample_Rate_Check.Checked = _Settings.Analysis_Show_Sample_Rate;
+      _Analysis_Errors_Check.Checked = _Settings.Analysis_Show_Errors;
+      if ( _Settings.Analysis_Series_Count == 1 )
+        _Analysis_One_Series_Radio.Checked = true;
+      else
+        _Analysis_Two_Series_Radio.Checked = true;
 
       // Display tab
       _Tooltip_Distance_Numeric.Value = _Settings.Tooltip_Distance_Threshold;
@@ -1537,7 +1660,7 @@ namespace Multimeter_Controller
       _Default_Combined_Check.Checked = _Settings.Default_To_Combined_View;
       _Default_Normalized_Check.Checked = _Settings.Default_To_Normalized_View;
       _Show_Legend_Check.Checked = _Settings.Show_Legend_On_Startup;
-      _Display_Digits_Numeric.Value = _Settings.Display_Digits;
+     
 
 
       // Polling tab
@@ -1623,7 +1746,16 @@ namespace Multimeter_Controller
       _Settings.Network_Scan_Subnet = _Prologix_Subnet_Textbox.Text.Trim ( ).TrimEnd ( '.' );
       _Settings.Prologic_Scan_Timeout_MS = int.Parse ( _Prologic_Scan_Timeout_MS_Textbox.Text );
 
-
+      // Analysis tab
+      _Settings.Auto_Analyze_After_Recording = _Auto_Analyze_Check.Checked;
+      _Settings.Analysis_Series_Count = _Analysis_Two_Series_Radio.Checked ? 2 : 1;
+      _Settings.Analysis_Show_Mean = _Analysis_Mean_Check.Checked;
+      _Settings.Analysis_Show_Std_Dev = _Analysis_StdDev_Check.Checked;
+      _Settings.Analysis_Show_Min_Max = _Analysis_MinMax_Check.Checked;
+      _Settings.Analysis_Show_RMS = _Analysis_RMS_Check.Checked;
+      _Settings.Analysis_Show_Trend = _Analysis_Trend_Check.Checked;
+      _Settings.Analysis_Show_Sample_Rate = _Analysis_Sample_Rate_Check.Checked;
+      _Settings.Analysis_Show_Errors = _Analysis_Errors_Check.Checked;
 
       // Display tab
       _Settings.Tooltip_Distance_Threshold = (int) _Tooltip_Distance_Numeric.Value;
@@ -1637,7 +1769,7 @@ namespace Multimeter_Controller
       _Settings.Default_To_Combined_View = _Default_Combined_Check.Checked;
       _Settings.Default_To_Normalized_View = _Default_Normalized_Check.Checked;
       _Settings.Show_Legend_On_Startup = _Show_Legend_Check.Checked;
-      _Settings.Display_Digits = (int) _Display_Digits_Numeric.Value;
+    
 
 
 

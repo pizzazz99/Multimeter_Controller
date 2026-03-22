@@ -24,17 +24,9 @@ namespace Multimeter_Controller
 {
   public class Instrument
   {
-
     public string Name { get; set; } = "";
-
-
     public string Meter_Roll { get; set; } = string.Empty;
-
     public int Address
-    {
-      get; set;
-    }
-    public Meter_Type Type
     {
       get; set;
     }
@@ -43,19 +35,47 @@ namespace Multimeter_Controller
       get; set;
     }
     public bool Visible { get; set; } = true;
-    public decimal NPLC { get; set; } = 1m;
+
+    private decimal _NPLC = 1m;
+    public decimal NPLC
+    {
+      get => _NPLC;
+      set => _NPLC = value;   // no more Compute_Display_Digits call
+    }
+
+    public int Display_Digits => Compute_Display_Digits ( _Type, _NPLC );
+
+    private Meter_Type _Type;
+    public Meter_Type Type
+    {
+      get => _Type;
+      set => _Type = value;   // no more Compute_Display_Digits call
+    }
+
+    public static int Compute_Display_Digits ( Meter_Type Type, decimal NPLC ) =>
+        Type switch
+        {
+          Meter_Type.HP3458 =>
+              NPLC >= 1000 ? 10 :
+              NPLC >= 100 ? 9 :
+              NPLC >= 10 ? 8 :
+              NPLC >= 1 ? 7 :
+              NPLC >= 0.1m ? 6 :
+              NPLC >= 0.01m ? 5 : 4,
+          Meter_Type.HP34401 => 6,
+          Meter_Type.HP34420 => 7,
+          Meter_Type.HP3456 => 6,
+          _ => 6,
+        };
+
     public string Display => $"{Name}  (GPIB {Address})";
 
     public string DisplayString ( string Transport_Mode )
     {
       bool Is_GPIB = Transport_Mode == "Prologix_GPIB" || Transport_Mode == "Prologix_Ethernet";
-      return Is_GPIB
-          ? $"{Name}  (GPIB {Address})"
-          : Name;
+      return Is_GPIB ? $"{Name}  (GPIB {Address})" : Name;
     }
-
   }
-
 
 
   // ===== Data Model =====
@@ -88,13 +108,45 @@ namespace Multimeter_Controller
     public Dictionary<string, string> File_Stats { get; set; } = null;
     public List<(DateTime Time, double Value)> Points { get; set; } = new ( );
     public bool Is_Recording { get; set; } = false;
-    public int Display_Digits { get; set; } = 6;
+    public int Display_Digits => Instrument.Display_Digits;
     public int Consecutive_Errors { get; set; } = 0;
     public int Total_Errors { get; set; } = 0;
     public Color Line_Color
     {
       get; set;
     }
+
+
+    // ── NPLC calculated properties ───────────────────────────────────
+    public double Integration_Ms => (double) NPLC * ( 1000.0 / 60.0 );
+    public double Settle_Ms => Integration_Ms * 2.0;   // autozero doubles it
+    public int Readings_Per_Min => Settle_Ms > 0 ? (int) ( 60000.0 / Settle_Ms ) : 0;
+
+    public string NPLC_Warning_Text => Settle_Ms >= 1000 ? "Slow settle"
+                                     : Settle_Ms >= 200 ? "Moderate settle"
+                                     : "Fast";
+
+    public Color NPLC_Warning_Color => Settle_Ms >= 1000 ? Color.Orange
+                                     : Settle_Ms >= 200 ? Color.Blue
+                                     : Color.Black;
+
+
+    public int Get_Readings_Per_Min ( int Instrument_Count = 1 )
+    => Settle_Ms > 0
+        ? (int) ( 60000.0 / ( Settle_Ms * Instrument_Count ) )
+        : 0;
+
+
+
+
+    // ── In Instrument_Series ─────────────────────────────────────────────
+
+
+
+   
+
+  
+
 
     // ── Incremental stats ────────────────────────────────────────────
     private int _Stat_N = 0;

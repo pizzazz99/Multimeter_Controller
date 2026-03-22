@@ -1,38 +1,19 @@
-﻿
 <Project Sdk="Microsoft.NET.Sdk">
-
-
-<PropertyGroup>
-  <GenerateDocumentationFile>false</GenerateDocumentationFile>
-</PropertyGroup>
-
-<PropertyGroup>
-  <NoWarn>$(NoWarn);1591</NoWarn>
-</PropertyGroup>
-<PropertyGroup>
-  <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-</PropertyGroup>
-
-
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net9.0-windows</TargetFramework>
-
     <UseWindowsForms>true</UseWindowsForms>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
-
+    <EnableWindowsFormsDesigner>true</EnableWindowsFormsDesigner>
     <RootNamespace>Multimeter_Controller</RootNamespace>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-
-    <!-- Build behavior -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591;CA1416</NoWarn>
     <DisableFastUpToDateCheck>true</DisableFastUpToDateCheck>
     <BuildInParallel>false</BuildInParallel>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
-    <NoWarn>CA1416</NoWarn>
-
-    <!-- Publish behavior -->
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
@@ -41,6 +22,7 @@
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <PublishTrimmed>false</PublishTrimmed>
   </PropertyGroup>
+
 
   <!-- Exclusions -->
   <PropertyGroup>
@@ -62,10 +44,12 @@
     <None Remove="Meter_Info.txt" />
     <None Remove="Properties\Resources\Meter_Info.txt" />
     <None Remove="README.md" />
+    <None Remove="Recording_Playback_Form.resx-old" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="System.IO.Ports" Version="10.0.2" />
+    <PackageReference Include="System.IO.Ports" Version="10.0.5" />
+    <PackageReference Include="System.Windows.Forms.DataVisualization" Version="1.0.0-prerelease.20110.1" />
   </ItemGroup>
 
   <ItemGroup>
@@ -75,7 +59,5 @@
   <ItemGroup>
     <Folder Include="Properties\Resources\" />
   </ItemGroup>
-
+  
 </Project>
-
-

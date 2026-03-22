@@ -1,3 +1,141 @@
+
+// =============================================================================
+// FILE:     HP3458_Command_Dictionary_Class.cs
+// PROJECT:  Multimeter_Controller
+// =============================================================================
+//
+// DESCRIPTION:
+//   Static command dictionary for the HP/Agilent 3458A 8.5-digit multimeter.
+//   Provides a structured, searchable registry of all supported GPIB instrument
+//   commands, organized by functional category. Each entry captures the full
+//   command syntax, description, valid parameter ranges, query form, factory
+//   default value, and a usage example.
+//
+//   This class is intended as the single source of truth for instrument command
+//   metadata. It is designed to support command validation, UI population,
+//   documentation generation, and runtime lookup by command name or query form.
+//
+// -----------------------------------------------------------------------------
+// INSTRUMENT:
+//   HP / Agilent 3458A Multimeter
+//   Interface:    GPIB (IEEE-488.2)
+//   Default Addr: 22
+//   Firmware Ref: Compatible with all standard 3458A firmware revisions
+//
+// -----------------------------------------------------------------------------
+// COMMAND CATEGORIES:
+//
+//   Measurement   — Function selectors (DCV, ACV, OHM, FREQ, etc.) and
+//                   sampling modes (DSAC, DSDC, SSAC, SSDC). These commands
+//                   configure the active measurement function and optionally
+//                   set range and resolution in a single call.
+//
+//   Configuration — Settings that modify how a measurement is taken, including
+//                   integration time (NPLC / APER), autorange (ARANGE), digit
+//                   count (NDIG), autozero (AZERO), input impedance (FIXEDZ),
+//                   AC bandwidth (ACBAND), and offset compensation (OCOMP).
+//
+//   Trigger       — Trigger arming (TARM), trigger source selection (TRIG),
+//                   readings-per-trigger (NRDGS), sweep configuration (SWEEP),
+//                   timer interval (TIMER), and level/slope triggering.
+//
+//   Math          — Post-measurement math operations including null offset,
+//                   scaling, percentage, dB/dBm, digital filtering, statistics
+//                   (STAT / RMATH), and pass/fail limit testing (PFAIL).
+//
+//   Memory        — Reading memory control (MEM, MSIZE, MFORMAT), memory
+//                   recall (RMEM, MCOUNT), and instrument state save/recall
+//                   (SSTATE / RSTATE, registers 0–9).
+//
+//   I/O           — Display control (DISP), output data format (OFORMAT),
+//                   GPIB address (GPIB), input/output buffering (INBUF, TBUFF),
+//                   external output signal (EXTOUT), and front panel lock (LOCK).
+//
+//   System        — Identification (ID?), error reporting (ERR?, ERRSTR?,
+//                   AUXERR?), status registers (STB?, SRQ, EMASK), self-test
+//                   (TEST), reset/preset, power line reference (LFREQ, LINE?),
+//                   temperature query (TEMP?), and firmware revision (REV?).
+//
+//   Calibration   — Auto-calibration (ACAL), manual calibration steps (CAL),
+//                   calibration count query (CALNUM?), calibration string label
+//                   (CALSTR), and calibration security (SECURE).
+//
+//   Subprogram    — Stored subprogram creation (SUB / SUBEND), execution
+//                   (CALL), deletion (DELSUB), and flow control (PAUSE / CONT).
+//
+// -----------------------------------------------------------------------------
+// KEY METHODS:
+//
+//   Get_All_Commands()
+//     Returns a List<Command_Entry> containing all registered commands,
+//     sorted alphabetically by Command name (case-insensitive). This list
+//     is rebuilt on every call — it is not cached.
+//
+//   Get_Command_By_Name(string Command_Name)
+//     Performs a case-insensitive lookup against both the Command field and
+//     the Query_Form field of every registered entry. Returns the matching
+//     Command_Entry, or null if no match is found. Trims leading/trailing
+//     whitespace from the input before comparison.
+//
+// -----------------------------------------------------------------------------
+// DATA MODEL — Command_Entry fields:
+//
+//   Command       The primary mnemonic sent to the instrument (e.g. "DCV").
+//   Syntax        Full syntax string including optional parameters.
+//   Description   Human-readable description of the command's purpose.
+//   Category      Command_Category enum value for grouping/filtering.
+//   Parameters    Enumeration of valid parameter values and their meanings.
+//   Query_Form    The query variant of the command (e.g. "DCV?"), if one
+//                 exists. Empty string if the command has no query form.
+//   Default_Value The factory default state returned or applied by the
+//                 instrument for this setting.
+//   Example       A representative usage string suitable for direct GPIB
+//                 transmission.
+//
+// -----------------------------------------------------------------------------
+// USAGE NOTES:
+//
+//   - All string comparisons in Get_Command_By_Name use
+//     StringComparison.OrdinalIgnoreCase for culture-invariant matching.
+//
+//   - Commands with no query form (e.g. RESET, BEEP, SCRATCH) have an
+//     empty string in Query_Form and will not match a "CMD?" lookup.
+//
+//   - RMATH? and MCOUNT? are registered as their query form in the Command
+//     field because they are read-only queries with no write counterpart.
+//
+//   - Resistance ranges are expressed in scientific notation (e.g. "1E6")
+//     to match the literal strings accepted and returned by the instrument.
+//
+//   - NPLC value 0 selects synchronous sub-sampling mode; it is not a
+//     "zero integration time" setting.
+//
+//   - The DELAY command accepts -1 as a special value meaning auto-delay
+//     (instrument-calculated based on function and range).
+//
+// -----------------------------------------------------------------------------
+// DEPENDENCIES:
+//   System.Collections.Generic    List<T>
+//   System.Linq                   FirstOrDefault (LINQ extension)
+//   System.StringComparison       OrdinalIgnoreCase
+//   Command_Entry                 Data record defined elsewhere in namespace
+//   Command_Category              Enum defined elsewhere in namespace
+//
+// -----------------------------------------------------------------------------
+// MAINTENANCE:
+//   To add a command: append a new Command_Entry to the list in
+//   Get_All_Commands(). The list is re-sorted alphabetically on every call,
+//   so insertion order does not matter.
+//
+//   To deprecate a command: add a note to the Description field rather than
+//   removing the entry, to preserve backward compatibility with any consumers
+//   relying on dictionary lookup.
+//
+// =============================================================================
+
+
+
+
 using System;
 using System.Collections.Generic;
 using System.Linq;

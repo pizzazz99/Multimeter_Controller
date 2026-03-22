@@ -69,23 +69,36 @@ namespace Multimeter_Controller
     // FILE / FOLDER HELPERS
     // ========================================================================
 
-    public static string Get_Graph_Captures_Folder ( )
+    public static string Get_Graph_Captures_Folder ( Application_Settings Settings )
     {
+      string Folder = Settings.Default_Save_Folder;
+
+      // If user gave an absolute path, use it directly
+      if ( Path.IsPathRooted ( Folder ) )
+      {
+        Directory.CreateDirectory ( Folder );
+        return Folder;
+      }
+
+      // Otherwise walk up from BaseDirectory to find project root
       string Base = AppContext.BaseDirectory;
       string? Dir = Base;
 
       while ( Dir != null )
       {
-        string Candidate = Path.Combine ( Dir, "Graph_Captures" );
+        string Candidate = Path.Combine ( Dir, Folder );
         if ( Directory.Exists ( Candidate ) )
           return Candidate;
         Dir = Directory.GetParent ( Dir )?.FullName;
       }
 
-      string Fallback = Path.Combine ( Base, "Graph_Captures" );
+      // Fallback: create next to executable
+      string Fallback = Path.Combine ( Base, Folder );
       Directory.CreateDirectory ( Fallback );
       return Fallback;
     }
+
+
 
     public static string Get_Filename_From_Pattern (
       string Pattern,
@@ -714,9 +727,17 @@ namespace Multimeter_Controller
           Current_Section = Line.Substring ( 3, Line.Length - 4 );
           Sectioned_Stats [ Current_Section ] = new Dictionary<string, string> ( );
         }
-        else if ( Line.StartsWith ( "# Unit:" ) )
+        else if ( Line.StartsWith ( "# Unit" ) )
         {
-          Flat_Stats [ "Unit" ] = Line.Substring ( "# Unit:".Length ).Trim ( );
+          int Colon = Line.IndexOf ( ':' );
+          if ( Colon > 0 )
+            Flat_Stats [ "Unit" ] = Line.Substring ( Colon + 1 ).Trim ( );
+        }
+        else if ( Line.StartsWith ( "# Measurement" ) )
+        {
+          int Colon = Line.IndexOf ( ':' );
+          if ( Colon > 0 )
+            Flat_Stats [ "Measurement" ] = Line.Substring ( Colon + 1 ).Trim ( );
         }
         else if ( Line.StartsWith ( "#   " ) )
         {

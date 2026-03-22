@@ -65,6 +65,7 @@ namespace Multimeter_Controller
       Response_Label = new Label ( );
       Response_Text_Box = new TextBox ( );
       Instruments_Group = new GroupBox ( );
+      button1 = new Button ( );
       Meter_Roll_Label = new Label ( );
       Roll_Name_Textbox = new TextBox ( );
       Apply_NPLC_To_All_Button = new Button ( );
@@ -87,7 +88,8 @@ namespace Multimeter_Controller
       Settings_Button = new Button ( );
       Reset_Defaults_Button = new Button ( );
       Button_Show_Execution_Trace = new Button ( );
-      Session_Info_Button = new Button ( );
+      Session_Settings_Button = new Button ( );
+      Display_Recording_Button = new Button ( );
       Connection_Group.SuspendLayout ( );
       ( (System.ComponentModel.ISupportInitialize) GPIB_Address_Numeric ).BeginInit ( );
       Instruments_Group.SuspendLayout ( );
@@ -513,6 +515,7 @@ namespace Multimeter_Controller
       // Instruments_Group
       // 
       Instruments_Group.Anchor =    AnchorStyles.Top  |  AnchorStyles.Bottom   |  AnchorStyles.Right ;
+      Instruments_Group.Controls.Add ( button1 );
       Instruments_Group.Controls.Add ( Meter_Roll_Label );
       Instruments_Group.Controls.Add ( Roll_Name_Textbox );
       Instruments_Group.Controls.Add ( Apply_NPLC_To_All_Button );
@@ -536,6 +539,16 @@ namespace Multimeter_Controller
       Instruments_Group.TabIndex = 14;
       Instruments_Group.TabStop = false;
       Instruments_Group.Text = "GPIB Instruments";
+      // 
+      // button1
+      // 
+      button1.Location = new Point ( 126, 246 );
+      button1.Name = "button1";
+      button1.Size = new Size ( 87, 30 );
+      button1.TabIndex = 57;
+      button1.Text = "About NPLC";
+      button1.UseVisualStyleBackColor = true;
+      button1.Click +=  NPLC_Info_Button_Click ;
       // 
       // Meter_Roll_Label
       // 
@@ -709,9 +722,9 @@ namespace Multimeter_Controller
       // Meter_Info_Button
       // 
       Meter_Info_Button.Anchor =   AnchorStyles.Bottom  |  AnchorStyles.Left ;
-      Meter_Info_Button.Location = new Point ( 25, 404 );
+      Meter_Info_Button.Location = new Point ( 25, 383 );
       Meter_Info_Button.Name = "Meter_Info_Button";
-      Meter_Info_Button.Size = new Size ( 72, 35 );
+      Meter_Info_Button.Size = new Size ( 72, 56 );
       Meter_Info_Button.TabIndex = 18;
       Meter_Info_Button.Text = "Meter Info";
       Meter_Info_Button.UseVisualStyleBackColor = true;
@@ -749,23 +762,35 @@ namespace Multimeter_Controller
       Button_Show_Execution_Trace.UseVisualStyleBackColor = true;
       Button_Show_Execution_Trace.Click +=  Button_Show_Execution_Trace_Click ;
       // 
-      // Session_Info_Button
+      // Session_Settings_Button
       // 
-      Session_Info_Button.Anchor =   AnchorStyles.Bottom  |  AnchorStyles.Left ;
-      Session_Info_Button.Location = new Point ( 25, 489 );
-      Session_Info_Button.Name = "Session_Info_Button";
-      Session_Info_Button.Size = new Size ( 72, 38 );
-      Session_Info_Button.TabIndex = 22;
-      Session_Info_Button.Text = "Session Info";
-      Session_Info_Button.UseVisualStyleBackColor = true;
-      Session_Info_Button.Click +=  Session_Info_Button_Click ;
+      Session_Settings_Button.Anchor =   AnchorStyles.Bottom  |  AnchorStyles.Left ;
+      Session_Settings_Button.Location = new Point ( 25, 489 );
+      Session_Settings_Button.Name = "Session_Settings_Button";
+      Session_Settings_Button.Size = new Size ( 72, 38 );
+      Session_Settings_Button.TabIndex = 22;
+      Session_Settings_Button.Text = "Session Setings";
+      Session_Settings_Button.UseVisualStyleBackColor = true;
+      Session_Settings_Button.Click +=  Session_Settings_Button_Click ;
+      // 
+      // Display_Recording_Button
+      // 
+      Display_Recording_Button.Anchor =   AnchorStyles.Bottom  |  AnchorStyles.Left ;
+      Display_Recording_Button.Location = new Point ( 103, 383 );
+      Display_Recording_Button.Name = "Display_Recording_Button";
+      Display_Recording_Button.Size = new Size ( 72, 56 );
+      Display_Recording_Button.TabIndex = 23;
+      Display_Recording_Button.Text = "View Recorded Data";
+      Display_Recording_Button.UseVisualStyleBackColor = true;
+      Display_Recording_Button.Click +=  Display_Recording_Data_Button_Click ;
       // 
       // Form1
       // 
       AutoScaleDimensions = new SizeF ( 7F, 15F );
       AutoScaleMode = AutoScaleMode.Font;
       ClientSize = new Size ( 1340, 547 );
-      Controls.Add ( Session_Info_Button );
+      Controls.Add ( Display_Recording_Button );
+      Controls.Add ( Session_Settings_Button );
       Controls.Add ( Button_Show_Execution_Trace );
       Controls.Add ( Reset_Defaults_Button );
       Controls.Add ( Settings_Button );
@@ -866,13 +891,15 @@ namespace Multimeter_Controller
     private Button Settings_Button;
     private Button Reset_Defaults_Button;
     private Button Button_Show_Execution_Trace;
-    private Button Session_Info_Button;
+    private Button Session_Settings_Button;
     private ComboBox NPLC_Combo_Box;
     private Button Apply_NPLC_To_All_Button;
     private Label Session_Name_Label;
     private TextBox Session_Name_Textbox;
     private Label Meter_Roll_Label;
     private TextBox Roll_Name_Textbox;
+    private Button Display_Recording_Button;
+    private Button button1;
   }
 
 }
