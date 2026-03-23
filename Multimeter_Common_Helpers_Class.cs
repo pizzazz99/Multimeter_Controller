@@ -1,9 +1,160 @@
-using System;
-// ============================================================================
-// MULTIMETER_COMMON.CS
-// Shared utility methods extracted from Single_Instrument_Poll_Form
-// and Multi_Instrument_Poll_Form
-// ============================================================================
+// ════════════════════════════════════════════════════════════════════════════════
+// FILE:    Multimeter_Common_Helpers_Class.cs
+// PROJECT: Multimeter_Controller
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// PURPOSE
+//   Static utility library shared by every form and subsystem in the
+//   application.  Centralises logic that would otherwise be duplicated between
+//   Single_Instrument_Poll_Form and Multi_Instrument_Poll_Form, including
+//   NPLC command building, value formatting, CSV I/O, statistics, chart
+//   refresh throttling, scrollbar management, network scanning, and UI helpers.
+//
+// ── INSTRUMENT CONFIGURATION ─────────────────────────────────────────────────
+//
+//   Build_NPLC_Command(measurementLabel, nplcValue)
+//     Maps a human-readable measurement label (e.g. "DC Voltage") to the
+//     correct SCPI NPLC command string.  Returns null for functions that
+//     have no NPLC parameter (Freq, Period, Diode, Continuity).
+//
+//   Calculate_Settle_Ms(nplcValue, safetyFactor)
+//     Converts an NPLC string to a settle delay in milliseconds
+//     (NPLC × 16.67 ms × safetyFactor), clamped to a minimum of 50 ms.
+//     Default safety factor of 2.0 accounts for autozero.
+//
+//   Get_Meter_Type(name)
+//     Substring-matches an instrument ID string to a Meter_Type enum value.
+//     Falls back to Generic_GPIB for unrecognised strings.
+//
+// ── VALUE FORMATTING ─────────────────────────────────────────────────────────
+//
+//   Format_Value(value, unit, meter, digits)
+//     Full-precision SI-prefix formatter for chart labels and stats panels.
+//     Handles: Hz (MHz/kHz/Hz), s (ns/µs/ms/s), Ohm (MOhm/kOhm/Ohm),
+//     °C, and V/A (with milli/micro/nano prefix scaling driven by Digits).
+//     Falls back to G2 scientific notation for values below 1 nV/nA.
+//
+//   Format_Time_Span(span)
+//     Human-readable duration string: ms / s / m / h / d, one decimal place.
+//
+// ── STATISTICS ───────────────────────────────────────────────────────────────
+//
+//   Calculate_Stats(points)
+//     Single-pass O(n) computation of Min, Max, Avg, Std_Dev (population),
+//     Range, Duration, sample Rate (S/s), and Avg_Interval_Ms from a
+//     List<(DateTime, double)>.  Returns a named tuple; zero-fills on empty input.
+//
+// ── CSV FILE I/O ─────────────────────────────────────────────────────────────
+//
+//   Save_Single_Series_CSV(filePath, function, unit, points, meter)
+//     Writes a commented preamble (function, unit, capture time, statistics)
+//     followed by "Timestamp,Value" rows in InvariantCulture format.
+//
+//   Save_Multi_Series_CSV(filePath, series)
+//     Writes a preamble with per-series statistics blocks, then a merged
+//     wide-format table: one column per instrument, rows aligned to the
+//     union of all timestamps.  Missing values are written as empty cells.
+//
+//   Write_Stats_Block(writer, …)
+//     Shared helper that writes a "#  Key: Value" statistics block for one
+//     series into an already-open StreamWriter.
+//
+//   Load_CSV_Preamble(filePath)   [async]
+//     Parses the "#" comment preamble of any application CSV into a
+//     CSV_Preamble_Result containing:
+//       Lines[]          — all raw lines
+//       Header_Index     — index of the first non-comment, non-blank line
+//       Flat_Stats       — key/value pairs from un-sectioned "# Key: Value" lines
+//       Sectioned_Stats  — per-instrument stats from "# [Name]" sections
+//     Returns null and shows a MessageBox on file-not-found or no-data.
+//
+//   Parse_Single_Column_Data(lines, headerIndex)
+//     Parses "Timestamp,Value" data rows below the preamble into parallel
+//     List<double> and List<DateTime>.  Skips blank and comment lines.
+//
+// ── CHART / DISPLAY HELPERS ───────────────────────────────────────────────────
+//
+//   Calculate_Refresh_Rate(settings, totalPoints)
+//     Returns the appropriate timer interval in ms, applying the step-wise
+//     throttle multiplier (×2/×3/×4) when totalPoints exceeds the configured
+//     threshold.
+//
+//   Get_Visible_Range(totalCount, enableRolling, maxDisplayPoints, viewOffset)
+//     Computes (Start_Index, Visible_Count) for the currently visible slice
+//     of a point list, respecting rolling-window mode and pan offset.
+//     Used by both forms and by Base_Chart_Form draw helpers.
+//
+//   Track_FPS(ref paintCount, ref actualFps, stopwatch, updateStatus)
+//     Increments paintCount and recalculates FPS once per second via the
+//     supplied Stopwatch.  Calls updateStatus() after each recalculation.
+//
+//   Update_Performance_Status(perfLabel, memLabel, fps, …)
+//     Updates ToolStripStatusLabel text and ForeColor for the FPS/points
+//     display (orange below 5 FPS) and the memory usage display
+//     (orange ≥ warning threshold, red ≥ 90%).
+//
+//   Get_Next_Theme(current)
+//     Cycles through Dark → Light → Dark presets by name match.
+//
+// ── SCROLLBAR MANAGEMENT ──────────────────────────────────────────────────────
+//
+//   Update_Scrollbar_Range(scrollbar, totalPoints, maxDisplayPoints,
+//                          autoScroll, ref viewOffset)
+//     Configures HScrollBar Minimum/Maximum/LargeChange/SmallChange for the
+//     current point count.  Disables the scrollbar when all points fit in the
+//     window.  Resets Value to 0 when autoScroll is true.
+//
+// ── SETTINGS APPLICATION ──────────────────────────────────────────────────────
+//
+//   Apply_Common_Settings(settings, comm, autoSaveTimer, chartTimer, pointCount)
+//     Applies settings shared by both forms: save-folder creation, GPIB
+//     read timeout, auto-save timer start/stop, and chart refresh throttling.
+//
+// ── RECORDING UI HELPERS ──────────────────────────────────────────────────────
+//
+//   Start_Recording_UI(button)   Sets button to "Stop Rec" / red.
+//   Stop_Recording_UI(button)    Resets button to "Record" / system colors.
+//   Stop_Recording(…)            Stops recording, resets UI, shows "no data"
+//                                dialog if point count is zero, otherwise
+//                                calls the supplied Save_Recorded_Data action.
+//
+// ── MEMORY LIMIT CHECK ────────────────────────────────────────────────────────
+//
+//   Check_Memory_Limit(settings, getCount, stopRecording,
+//                      showWarning, ref warningShown)
+//     Calls stopRecording() if the point count reaches Max_Data_Points_In_Memory.
+//     Calls showWarning() once when the configurable warning threshold is crossed.
+//
+// ── STATUS STRIP INITIALIZATION ───────────────────────────────────────────────
+//
+//   Initialize_Status_Strip(owner, settings, instrumentCount)
+//     Removes any existing StatusStrip, builds Memory and Performance labels,
+//     optionally adds an Instruments count label (multi-form only), and
+//     docks the strip to the form.  Returns the two mutable labels.
+//
+// ── FILE / FOLDER HELPERS ─────────────────────────────────────────────────────
+//
+//   Get_Graph_Captures_Folder(settings)
+//     Resolves Default_Save_Folder to an absolute path.  Absolute paths are
+//     used directly; relative paths are searched upward from BaseDirectory
+//     for an existing folder, falling back to creating one beside the executable.
+//
+//   Get_Filename_From_Pattern(pattern, functionName)
+//     Expands {date}, {time}, {function} tokens in a filename pattern and
+//     appends ".csv" if not already present.
+//
+// ── NETWORK SCANNING ─────────────────────────────────────────────────────────
+//
+//   Scan_For_Prologix(subnet, timeoutMs, progress, trace)   [async]
+//     Scans subnet.1–254 in parallel (50 concurrent) via TCP port 1234.
+//     Confirms each responding host by sending "++ver\n" and checking that
+//     the response contains "Prologix".  Returns discovered IPs sorted by
+//     last octet.  Reports progress via IProgress<(int, int)>.
+//
+// AUTHOR:  [Your name]
+// CREATED: [Date]
+// ════════════════════════════════════════════════════════════════════════════════
+
 
 using System;
 using System.Collections.Concurrent;

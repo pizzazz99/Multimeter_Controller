@@ -1,3 +1,112 @@
+
+// ════════════════════════════════════════════════════════════════════════════════
+// FILE:    Settings_Form.cs
+// PROJECT: Multimeter_Controller
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// PURPOSE
+//   Multi-tab settings dialog that exposes every Application_Settings property
+//   through a WinForms UI.  Changes are applied to the settings object and
+//   persisted to disk when the user clicks OK or Apply.  Cancel discards all
+//   changes; Reset replaces the settings object with a fresh default instance.
+//
+// TABS  (one Initialize_*() / Build_*() method per tab)
+//
+//   Display
+//     Tooltip pixel distance threshold, tooltip enable / duration, chart
+//     refresh rate, grid lines, data dots (size), line thickness, default
+//     view (Combined / Split), default normalized mode, legend on startup.
+//
+//   Polling
+//     Max display points, stop-at-max flag, poll delay, default NPLC,
+//     default measurement type, continuous-poll default, GPIB timeout,
+//     max retry attempts.  Error Handling sub-section: max consecutive
+//     errors before disable, auto-retry toggle, retry delay.  Data
+//     Freshness sub-section: skew warning threshold (orange) and stale
+//     data threshold (red) in seconds.
+//
+//   Files
+//     Default save folder (with Browse button → FolderBrowserDialog),
+//     filename pattern ({date}/{time}/{function} tokens), auto-save enable
+//     and interval, auto-save-on-stop, include-stats-in-save,
+//     prompt-before-clear, auto-load-last-session, export format ComboBox.
+//
+//   Performance
+//     Max data points in memory, warning threshold %, warn-at-threshold
+//     flag.  Performance Optimization sub-section: throttle-when-many
+//     toggle and point threshold, auto-trim toggle and keep-last-N count,
+//     reduce-refresh-rate flag.
+//
+//   Analysis
+//     Auto-analyze-after-recording flag, series count radio buttons
+//     (Single / Two series), seven stat-include checkboxes (Mean, Std Dev,
+//     Min/Max, RMS, Trend, Sample Rate, Error Count).
+//
+//   UI
+//     Default window title, remember size / position flags, keyboard pan
+//     and Ctrl+scroll zoom toggles, progress messages / flash-on-error /
+//     play-sound-on-complete flags.  Appearance sub-section: theme ComboBox
+//     (Dark / Light / Brown / Grey / Golden / Light Yellow) with immediate
+//     application via Application_Settings.Set_Theme().
+//
+//   Zoom
+//     Default zoom level NumericUpDown (1–100, 50 = 1.0×), zoom sensitivity
+//     TrackBar (1–50, displayed as N/10 ×), remember-zoom-level flag.
+//
+//   HP3458A  (scrollable Panel)
+//     Connection & Reset: send-reset-on-connect, reset settle delay,
+//     send-END-always.  Timing: instrument settle, ERR? read delay, NPLC
+//     apply delay.  Measurement Defaults: default NPLC ComboBox
+//     (0.001–100), default trigger mode ComboBox, display digits (4–10).
+//
+//   Prologix  (built by Build_Prologix_Tab())
+//     IP address, scan subnet (with hint label), TCP port, MAC/OUI prefix,
+//     default GPIB address (0–30), auto-read toggle, read timeout, scan
+//     timeout, fetch delay.
+//
+// LOAD / SAVE FLOW
+//   Load_Settings()   Called from the constructor after all tabs are built.
+//                     Copies every Application_Settings field into its
+//                     corresponding control.  ComboBox selections use
+//                     SelectedItem string matching.
+//   Save_Settings()   Reads every control back into _Settings, calls
+//                     Validate_And_Fix(), then Settings.Save().  Called by
+//                     OK_Button_Click and Apply_Button_Click.
+//   Get_Settings()    Returns the (possibly modified) _Settings reference
+//                     so the caller can update its own reference after OK.
+//
+// BUTTON HANDLERS
+//   OK_Button_Click       Save_Settings() → DialogResult.OK → Close().
+//   Apply_Button_Click    Save_Settings() (form stays open).
+//   Cancel_Button_Click   DialogResult.Cancel → Close() (no save).
+//   Reset_Button_Click    Confirms via MessageBox, replaces _Settings with
+//                         new Application_Settings(), calls Load_Settings().
+//   Browse_Folder_Button  Opens FolderBrowserDialog, writes path to
+//                         _Save_Folder_Text.
+//   Zoom_Sensitivity_Slider_ValueChanged  Updates the adjacent label to
+//                         show the slider value as "N.Nx".
+//
+// NOTES
+//   • The form uses a partial class; the designer file supplies the TabControl
+//     and its named TabPage references (Display_Tab, Polling_Tab, Files_Tab,
+//     Performance_Tab, Analysis_Tab, UI_Tab, Zoom_Tab, HP3458_Tab,
+//     Prologix_Tab) as well as the OK / Apply / Cancel / Reset buttons.
+//   • All tab content controls are constructed programmatically in the
+//     Initialize_*() / Build_*() methods — no controls are placed in the
+//     designer beyond the tab pages themselves.
+//   • The theme ComboBox applies the new theme immediately via
+//     Settings.Set_Theme(), which raises Theme_Changed so open chart forms
+//     repaint without needing to close the settings dialog first.
+//   • _Prologic_Scan_Timeout_MS_Textbox uses a plain TextBox with int.Parse
+//     in Save_Settings(); no validation is performed beyond what
+//     Validate_And_Fix() enforces.
+//
+// AUTHOR:  [Your name]
+// CREATED: [Date]
+// ════════════════════════════════════════════════════════════════════════════════
+
+
+
 using System;
 using System.Drawing;
 using System.Windows.Forms;

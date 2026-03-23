@@ -1,3 +1,161 @@
+
+
+// ════════════════════════════════════════════════════════════════════════════════
+// FILE:    Instrument_Comm.cs
+// PROJECT: Multimeter_Controller
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// PURPOSE
+//   Low-level hardware abstraction layer for all GPIB instrument communication.
+//   Supports three transport modes — Prologix GPIB-USB, Prologix GPIB-Ethernet,
+//   and Direct Serial — behind a single unified API.  All instrument reads,
+//   writes, address changes, bus scans, and connection lifecycle management
+//   flow through this class.
+//
+// ENUMERATIONS
+//   Connection_Mode       Direct_Serial | Prologix_GPIB | Prologix_Ethernet
+//   Prologix_Eos_Mode     CR_LF(0) | CR(1) | LF(2) | None(3) — maps directly
+//                         to Prologix ++eos parameter values.
+//
+// SUPPORTING TYPES
+//   Scan_Result           Address + ID_String + Detected_Type (Meter_Type?)
+//                         returned by Scan_GPIB_BusAsync() and cached in
+//                         _Verified_Cache.
+//
+// CONNECTION LIFECYCLE
+//   Connect()             Opens the transport selected by Mode; calls
+//                         Configure_Prologix() for both GPIB modes.
+//   Disconnect_Async()    Graceful async teardown: aborts pending ops, drains
+//                         and closes the port/stream, clears verified caches,
+//                         raises Connection_Changed(false) on the UI thread.
+//   Cleanup_Connections() Disposes and nulls _Port, _Tcp_Stream, _Tcp_Client.
+//   Emergency_Shutdown()  One-shot synchronous shutdown registered with
+//                         AppDomain.ProcessExit, UnhandledException, and
+//                         Application.ThreadException — ensures the serial
+//                         port and TCP socket are closed on any exit path
+//                         including VS "Stop Debugging" and unhandled crashes.
+//   Dispose()             IDisposable — calls Disconnect_Async() once.
+//
+// PROLOGIX CONFIGURATION
+//   Configure_Prologix()            Full adapter init: mode 1, auto, addr,
+//                                   read_tmo_ms, eos. On first connect only:
+//                                   savecfg 0 (prevents EEPROM wear).
+//   Configure_Prologix_Transport_Only()  Same but skips ++addr — used during
+//                                   bus scanning before an address is chosen.
+//
+// WRITE PATHS
+//   Raw_Write(string)               Appends "\r\n" and writes ASCII bytes to
+//                                   whichever transport is active; silent on
+//                                   error (logs via Capture_Trace).
+//   Raw_Write_Prologix(string)      Logs "Prologix Command" then calls
+//                                   Write_Bytes(); used for ++ commands.
+//   Raw_Write_Instrument(cmd, addr) Sets ++addr then calls Raw_Write(); used
+//                                   for instrument commands at a specific address.
+//   Raw_Write_Instrument(cmd, Meter_Type)  Selects "\n" for HP3458A or "\r\n"
+//                                   for all other meters before writing.
+//   Send_Instrument_Command(string) Delegates to Raw_Write_Instrument using
+//                                   Connected_Meter.
+//   Send_Instrument_Command(addr, cmd)  Address-targeted overload.
+//   Send_Prologix_Command(string)   Guard against Direct_Serial mode; calls
+//                                   Raw_Write_Prologix.
+//   Write_Bytes(byte[])             Final transport dispatcher — throws
+//                                   InvalidOperationException if not connected.
+//
+// QUERY OVERLOADS  (Query_Instrument)
+//   All overloads funnel into the master signature:
+//     Query_Instrument(command, settle_ms, token, Meter_Type)
+//   Which: sends the command, sleeps Instrument_Settle_Ms, issues "++read eoi",
+//   optionally sleeps Prologix_Fetch_Ms (skipped for HP3456), then calls
+//   Read_Instrument().
+//
+// READ PATHS
+//   Read_Instrument(token)    Dispatches to Read_Serial or Read_Ethernet;
+//                             re-throws OperationCanceledException, TimeoutException,
+//                             and InvalidOperationException; swallows others.
+//   Read_Serial(token)        Polls BytesToRead in 10 ms increments up to
+//                             Read_Timeout_Ms, then calls Read_Response_Serial().
+//   Read_Response_Serial()    Accumulates ReadExisting() chunks until '\n'
+//                             arrives or 50 ms of silence after first data.
+//   Read_Ethernet(token)      Reads NetworkStream in 1 KB chunks; breaks on
+//                             '\n'/'\r'; throws TimeoutException at Read_Timeout_Ms.
+//   Read_With_Timeout(ms)     CancellationTokenSource wrapper that picks the
+//                             correct Read_* path by Mode.
+//
+// BUFFER MANAGEMENT
+//   Flush_Buffers()           Drains TCP DataAvailable bytes or calls
+//                             DiscardInBuffer/DiscardOutBuffer on serial.
+//   Flush_Device_Buffer()     Silent drain of the current GPIB address's buffer.
+//   Drain_Buffer(ms, maxIter) Issues "++read eoi" in a loop until the response
+//                             is empty or the iteration cap is reached; used
+//                             before querying instruments that auto-trigger.
+//   Discard_Input/Output/IO_Buffers()  Thin wrappers over SerialPort.Discard*
+//                             guarded by null/open checks.
+//   Abort_Pending_Operations()  PurgeComm() at the Win32 driver level for
+//                             serial (deeper than DiscardInBuffer), plus TCP
+//                             drain; followed by 150 ms settle.
+//
+// GPIB ADDRESS MANAGEMENT
+//   Change_GPIB_Address(int)  Validates 0–30, updates GPIB_Address, sends
+//                             "++addr N" if connected.
+//   Verified Address Cache    _Verified_Addresses (HashSet) + _Verified_Cache
+//                             (Dictionary<int, Scan_Result>); populated by
+//                             Verify_GPIB_Address() and Scan_GPIB_BusAsync().
+//
+// INSTRUMENT IDENTIFICATION
+//   Verify_GPIB_Address(addr, tryLegacy, restore)
+//     Three-pass identification strategy:
+//       Pass 1 — SCPI "*IDN?" with LF terminator (modern instruments).
+//       Pass 2 — Legacy "ID?" with TRIG HOLD + buffer drain (HP3458A).
+//       Pass 3 — Numeric probe "F1R0S1Z1 / T3" with CR terminator (HP3456A).
+//     Detected Meter_Type is stored in _Verified_Cache; address is restored
+//     to its original value in the finally block if Restore_Address is true.
+//
+// BUS SCAN
+//   Scan_GPIB_BusAsync(progress, token)
+//     Async two-pass scan of addresses 0–30:
+//       Pass 1 — "*IDN?" with 500 ms timeout; instruments returning numeric
+//                readings receive TRIG HOLD before retry.
+//       Pass 2 — "ID?" fallback for all non-responding addresses; results
+//                added to _Verified_Cache.
+//     Restores original address and auto-read mode on completion regardless
+//     of cancellation.  Reports progress via IProgress<string>.
+//
+// DIAGNOSTICS
+//   Raw_Diagnostic(command)   Tries all four line terminators in sequence,
+//                             reporting the first response or "No response"
+//                             per terminator; also dumps port/TCP status.
+//   Query_Prologix_Version()  Issues "++ver" and returns the adapter firmware
+//                             string.
+//   Is_Data_Available()       Issues "++spoll" and checks the MAV bit (0x10)
+//                             of the status byte.
+//
+// EVENTS
+//   Data_Received      Raised by Read_Response_Serial and Read_Ethernet with
+//                      the trimmed response string.
+//   Error_Occurred     Raised by Raise_Error() with a descriptive message.
+//   Connection_Changed Raised true after successful Connect(), false after
+//                      Disconnect_Async() completes.
+//
+// THREAD SAFETY
+//   All blocking reads and writes are synchronous.  Callers are responsible
+//   for invoking from a background thread.  Disconnect_Async() is the only
+//   async method; Connection_Changed is raised back on the calling (UI) thread
+//   after the background Task completes.
+//   Emergency_Shutdown() is designed to be callable from any thread and is
+//   idempotent via _Emergency_Shutdown_Done.
+//
+// DEPENDENCIES
+//   Application_Settings   — Prologix_Auto_Read, Prologix_Read_Tmo_Ms
+//   Trace_Execution_Namespace — Trace_Block, Capture_Trace (optional tracing)
+//   PurgeComm (kernel32)   — Win32 deep serial buffer purge in
+//                            Abort_Pending_Operations()
+//
+// AUTHOR:  [Your name]
+// CREATED: [Date]
+// ════════════════════════════════════════════════════════════════════════════════
+
+
+
 using System.CodeDom;
 using System.Diagnostics;
 using System.IO.Ports;

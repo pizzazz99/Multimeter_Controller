@@ -1,3 +1,112 @@
+
+
+// ════════════════════════════════════════════════════════════════════════════════
+// FILE:    Instrument.cs
+// PROJECT: Multimeter_Controller
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// PURPOSE
+//   Defines the two core data-model classes used throughout the application:
+//   Instrument (hardware identity and configuration) and Instrument_Series
+//   (time-series data + O(1) running statistics for one instrument per session).
+//
+// ── CLASS: Instrument ────────────────────────────────────────────────────────
+//
+//   Represents a single physical instrument on the GPIB bus.  Holds identity,
+//   address, and measurement configuration.  Shared by reference into every
+//   Instrument_Series that wraps it.
+//
+//   Key properties
+//     Name            Display name assigned by the user or auto-detected.
+//     Meter_Roll      Role label (e.g. "DUT", "Reference") for multi-meter runs.
+//     Address         GPIB bus address (0–30).
+//     Verified        True once the address has been confirmed via IDN/ID? query.
+//     Visible         Controls chart series visibility; toggled from the legend.
+//     NPLC            Integration time in power-line cycles; drives Display_Digits.
+//     Type            Meter_Type enum; drives Display_Digits lookup.
+//     Display_Digits  Computed property — delegates to Compute_Display_Digits().
+//
+//   Compute_Display_Digits(Meter_Type, decimal NPLC)
+//     Static pure function mapping (type, NPLC) → significant digit count:
+//       HP3458A  — 4–10 digits depending on NPLC (≥0.01 → 4, ≥1000 → 10)
+//       HP34401  — fixed 6 digits
+//       HP34420  — fixed 7 digits
+//       HP3456   — fixed 6 digits
+//       others   — fixed 6 digits
+//
+//   Display / DisplayString(transportMode)
+//     Short formatted strings for list boxes and combo boxes.
+//     DisplayString omits the GPIB address in Direct Serial mode.
+//
+// ── CLASS: Instrument_Series ─────────────────────────────────────────────────
+//
+//   Wraps an Instrument with a time-series point list and incremental
+//   (Welford) running statistics so that mean, variance, min, max, and RMS
+//   are available in O(1) without iterating Points on every chart repaint.
+//
+//   Data
+//     Points          List<(DateTime Time, double Value)> — the raw sample log.
+//     Is_Recording    True while the polling loop is actively appending points.
+//     File_Stats      Optional Dictionary loaded from a recorded CSV preamble;
+//                     null during live sessions.
+//
+//   Error tracking
+//     Consecutive_Errors   Resets to 0 on each successful read; used to
+//                          trigger instrument disable after the configured
+//                          threshold.
+//     Total_Errors         Cumulative error count for the session.
+//     Disconnect_Count     Number of times the instrument was lost and re-found.
+//     Comm_Error_Count     Number of communication-level errors (timeout, etc.)
+//
+//   NPLC-derived properties (computed from Instrument.NPLC)
+//     Integration_Ms       NPLC × (1000 / 60)  — integration window in ms.
+//     Settle_Ms            Integration_Ms × 2   — accounts for autozero.
+//     Readings_Per_Min     60 000 / Settle_Ms   — single-instrument throughput.
+//     Get_Readings_Per_Min(n)  Same but divided by instrument count for
+//                          multi-meter round-robin estimates.
+//     NPLC_Warning_Text    "Slow settle" / "Moderate settle" / "Fast"
+//     NPLC_Warning_Color   Orange / Blue / Black — for status label coloring.
+//
+//   Incremental statistics  (Welford online algorithm)
+//     Add_Point_Value(double)   Must be called every time a point is appended
+//                               to Points.  Updates _Stat_N, _Stat_Mean,
+//                               _Stat_M2 (for variance), _Stat_Min, _Stat_Max,
+//                               and _Stat_Sum_Sq (for RMS) in O(1).
+//     Reset_Stats()             Clears Points and all accumulators; resets all
+//                               error counters and File_Stats.
+//
+//   O(1) stat accessors
+//     Get_Average()      Welford mean.
+//     Get_StdDev()       Sample standard deviation (Bessel-corrected, N−1).
+//     Get_Min()          Running minimum.
+//     Get_Max()          Running maximum.
+//     Get_RMS()          Root-mean-square from _Stat_Sum_Sq.
+//     Get_Range()        Max − Min.
+//     Get_Peak_To_Peak() Alias for Get_Range().
+//     Get_Last()         Most recent point value; 0 if Points is empty.
+//
+//   O(n) accessors  (kept for callers that require them)
+//     Get_Trend()        Compares the mean of the last 5 points to the
+//                        preceding 5; returns "↑", "↓", or "→" (flat < 0.1%).
+//                        Returns "—" with fewer than 10 points.
+//     Get_Sample_Rate()  (Count − 1) / total elapsed seconds across all points.
+//     Get_Average_From(source)  Average over an arbitrary point list.
+//
+// NOTES
+//   • Add_Point_Value() and Points.Add() must be called together by the caller —
+//     the class does not enforce this pairing internally.
+//   • Instrument_Series does not own the Instrument; the same Instrument
+//     instance may be referenced from the polling form and the series list
+//     simultaneously.
+//   • Display_Digits is a pass-through to Instrument.Display_Digits, ensuring
+//     chart renderers always see the current value without caching stale digits.
+//
+// AUTHOR:  [Your name]
+// CREATED: [Date]
+// ════════════════════════════════════════════════════════════════════════════════
+
+
+
 using System;
 using System.Collections.Generic;
 using System.Linq;

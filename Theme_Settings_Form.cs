@@ -1,3 +1,74 @@
+
+
+// ════════════════════════════════════════════════════════════════════════════════
+// FILE:    Theme_Settings_Form.cs
+// PROJECT: Multimeter_Controller
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// PURPOSE
+//   Modal dialog for interactively editing a Chart_Theme.  The form works on
+//   a private working copy of the theme so the caller's theme is never mutated
+//   unless the user clicks OK.  On OK the edited theme is exposed via the
+//   Result property; on Cancel Result remains null and the caller's theme is
+//   unchanged.
+//
+// CONSTRUCTOR
+//   Theme_Settings_Form(Chart_Theme current)
+//     Copies current into a new _Working instance via Chart_Theme.Copy_From(),
+//     then calls Update_Swatches() to reflect the initial colors in the UI.
+//     The designer file supplies all swatch Panel controls and preset/action
+//     buttons; this file contains only logic.
+//
+// COLOR EDITING
+//   Each color slot is represented by a colored Panel (swatch) in the designer.
+//   Clicking any swatch calls Pick_Color() and immediately updates both
+//   _Working and the swatch's BackColor.
+//
+//   Editable slots
+//     Background   Bg_Swatch_Click
+//     Foreground   Fg_Swatch_Click
+//     Grid         Grid_Swatch_Click
+//     Labels       Labels_Swatch_Click
+//     Separator    Separator_Swatch_Click
+//     Line 1–4     Line1_Swatch_Click … Line4_Swatch_Click
+//
+//   Pick_Color(current)
+//     Opens a full ColorDialog (FullOpen = true, AnyColor = true).
+//     Returns the chosen color on OK, or the original color on Cancel.
+//
+//   Update_Swatches()
+//     Synchronises all nine swatch BackColor values from _Working.
+//     Called after construction and after every preset button click.
+//
+// PRESET BUTTONS
+//   Each preset button calls Chart_Theme.*_Preset() and copies the result
+//   into _Working via Copy_From(), then calls Update_Swatches().
+//   Available presets: Dark, Light, Light Blue, Brown, Grey, Golden,
+//   Light Yellow.
+//
+// RESULT HANDLING
+//   Result     [DesignerSerializationVisibility(Hidden)] public property.
+//              Set to _Working on OK; remains null! on Cancel.
+//              Callers should check DialogResult before reading Result.
+//
+//   OK_Button_Click       Assigns _Working to Result, sets DialogResult.OK,
+//                         closes the form.
+//   Cancel_Close_Button_Click  Sets DialogResult.Cancel, closes the form
+//                         without modifying Result.
+//
+// NOTES
+//   • _Working is always a separate instance from the theme passed in — the
+//     caller's theme is never touched until it explicitly applies Result.
+//   • The designer file (Theme_Settings_Form.Designer.cs) owns the layout of
+//     swatch panels, preset buttons, OK, and Cancel controls.  This file
+//     contains no control construction.
+//
+// AUTHOR:  [Your name]
+// CREATED: [Date]
+// ════════════════════════════════════════════════════════════════════════════════
+
+
+
 using System.ComponentModel;
 
 namespace Multimeter_Controller

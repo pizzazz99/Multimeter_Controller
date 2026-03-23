@@ -1,3 +1,147 @@
+// ════════════════════════════════════════════════════════════════════════════════
+// FILE:    Base_Chart_Form.cs
+// PROJECT: Multimeter_Controller
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// PURPOSE
+//   Abstract base Form from which all chart/data-viewer windows in the
+//   Multimeter Controller application inherit.  It centralises every piece of
+//   chart logic that is shared between the live-polling form and the file-
+//   playback form, preventing duplication and providing a single location for
+//   maintenance.
+//
+// RESPONSIBILITIES
+//   • GDI+ resource lifecycle   – Font, Pen, and Brush objects are allocated
+//                                 once in Initialize_Chart_Resources() and
+//                                 disposed in Dispose_Chart_Resources().
+//   • Chart refresh timer       – A Windows.Forms.Timer drives all repaints.
+//                                 Refresh rate is auto-throttled when the total
+//                                 point count exceeds the configurable threshold
+//                                 (Application_Settings.Throttle_Point_Threshold).
+//   • Graph-style management    – Supports Line / Scatter / Step / Bar /
+//                                 Histogram / Pie.  Multi-series restrictions
+//                                 (Bar, Histogram, Pie are single-series only)
+//                                 are enforced by Update_Graph_Style_Availability().
+//   • View modes                – Combined (all series on one Y axis, absolute
+//                                 or normalised 0–100%) and Split (one subplot
+//                                 per visible series).
+//   • Zoom                      – TrackBar-driven zoom factor (0.1 × … 10 ×)
+//                                 applied symmetrically around the Y-axis centre.
+//   • Rolling window & panning  – Optional rolling window of N most-recent
+//                                 points.  HScrollBar + keyboard (←/→/Home/End/
+//                                 PgUp/PgDn) pan through historical data.
+//                                 Auto-scroll snaps to the latest sample when
+//                                 View_Offset == 0.
+//   • Tooltip hit-testing       – MouseMove finds the nearest plotted point
+//                                 (Euclidean distance) across all visible series
+//                                 and shows a ToolTip with time + formatted value.
+//   • Legend / visibility       – FlowLayoutPanel with per-series CheckBoxes;
+//                                 at least one series must remain visible.
+//                                 "Stats" popup (Show_Stats_Popup) exposes per-
+//                                 instrument statistics in a RichTextBox dialog.
+//   • Histogram drawing         – Sturges-rule bin count (clamped 5–30), overlaid
+//                                 normal-distribution curve, mean (μ) and ±1σ/±2σ
+//                                 markers, both as a subplot (Draw_Subplot_Histogram)
+//                                 and as a full-panel view (Draw_Histogram).
+//   • Pie chart                 – Same Sturges-rule binning; right-side legend
+//                                 with percentage labels.
+//   • Poll-timing chart         – Reads from a ring buffer (_Cycle_Timing[10 000])
+//                                 of Poll_Cycle_Sample structs, draws a filled
+//                                 area chart of total cycle duration, and overlays
+//                                 stacked phase bands (Addr / Comm / UI / Record).
+//                                 Disconnect events are marked with vertical
+//                                 dashed lines.
+//   • Timing file loader        – Load_Timing_File() parses a _Timing.csv produced
+//                                 by the polling thread; supports both normal sample
+//                                 rows (≥ 8 columns) and DISCONNECT event rows.
+//   • Analysis popup            – Show_Analysis_Results() / Build_Analysis_Rtb()
+//                                 display Min/Max/Mean/σ/RMS/Trend/Rate for each
+//                                 series in a non-modal dialog.
+//   • Formatting helpers        – Format_Digits(), Format_Sig_Figs(),
+//                                 Format_Axis_Value(), Format_Time_Label(),
+//                                 Format_Value() (delegates to
+//                                 Multimeter_Common_Helpers_Class).
+//
+// ABSTRACT / VIRTUAL MEMBERS — subclasses must override
+//   protected virtual string Current_Unit               Unit string for Y-axis labels.
+//   protected virtual bool   _Is_Running_State()        True while polling is active.
+//   protected virtual void   Show_Progress(msg, color)  Update a status strip label.
+//   protected virtual void   On_Chart_Refresh_Tick()    Called every timer tick
+//                                                        while running (e.g. to
+//                                                        refresh the legend).
+//   protected virtual void   Update_Performance_Status() Refresh FPS / point-count
+//                                                        display.
+//
+// CONTROL REFERENCES — must be assigned by the subclass after InitializeComponent()
+//   Chart_Panel_Control         Panel whose Paint event renders the chart.
+//   Pan_Scrollbar_Control       HScrollBar for panning through historical data.
+//   Auto_Scroll_Check_Control   CheckBox — when checked, offset is locked to 0.
+//   Rolling_Check_Control       CheckBox — enables the rolling-window mode.
+//   Max_Points_Numeric_Control  NumericUpDown — window size (points).
+//   Zoom_Slider_Control         TrackBar (0–100) mapped to 0.1–10 × zoom factor.
+//   Graph_Style_Combo_Control   ComboBox — selects the active graph style.
+//   View_Mode_Button_Control    Button — toggles Split ↔ Combined view.
+//   Normalize_Button_Control    Button — toggles Absolute ↔ Normalised (combined
+//                                        view only).
+//   Legend_Toggle_Button_Control Button — opens the statistics popup.
+//
+// DATA FLOW
+//   _Series (List<Instrument_Series>)
+//     └─ Instrument_Series.Points  (List<(DateTime Time, double Value)>)
+//          Populated by the subclass (polling thread via Invoke, or file loader).
+//          All read access from Base_Chart_Form is UI-thread-safe because writes
+//          are marshalled through Control.Invoke before the chart timer fires.
+//
+// TIMING RING BUFFER
+//   _Cycle_Timing[10 000]  — fixed-size circular buffer of Poll_Cycle_Sample.
+//   _Timing_Head           — next write index (modulo _Timing_Buffer_Size).
+//   _Timing_Count          — number of valid samples (capped at buffer size).
+//   _Disconnect_Events     — thread-safe list of Disconnect_Event; lock() guards
+//                            every access from both the paint and the loader.
+//
+// CHART LAYOUT CONSTANTS
+//   _Chart_Margin_Left   = 110 px   (Y-axis labels + padding)
+//   _Chart_Margin_Right  = 140 px   (last-value labels + position indicator)
+//   _Chart_Margin_Top    =  30 px
+//   _Chart_Margin_Bottom =  30 px   (X-axis labels)
+//   _Chart_Subplot_Gap   =   8 px   (vertical gap between subplots in Split view)
+//
+// DEPENDENCIES
+//   Multimeter_Common_Helpers_Class  — Get_Visible_Range(), Format_Value()
+//   Instrument_Series                — per-instrument data, statistics, styling
+//   Application_Settings             — runtime-configurable behaviour flags
+//   Chart_Theme                      — colour palette (Background, Foreground,
+//                                      Grid, Separator, Labels, Line_Colors[])
+//   Trace_Execution_Namespace        — optional block-level execution tracing
+//                                      (Trace_Block.Start_If_Enabled())
+//
+// THREAD SAFETY
+//   All chart state is read and written on the UI thread only.  Subclasses are
+//   responsible for marshalling data from background threads via Invoke/BeginInvoke
+//   before modifying _Series or _Cycle_Timing.
+//
+// KNOWN LIMITATIONS / NOTES
+//   • Double-buffering is enabled on Chart_Panel_Control via reflection
+//     (Enable_Double_Buffer) because the WinForms designer does not expose the
+//     DoubleBuffered property for arbitrary Panel controls.
+//   • The scrollbar arithmetic uses a "usable range" pattern
+//     (Maximum − LargeChange) to avoid the WinForms scrollbar boundary quirk
+//     where Value can never reach Maximum.
+//   • Draw_Combined_Absolute() and Draw_Combined_Scatter() both recompute the
+//     global Y range; this is intentional — scatter may later diverge in its
+//     axis-padding strategy.
+//   • Bar, Histogram, and Pie styles are deliberately removed from the combo
+//     when _Series.Count > 1 because those renderers only use _Series[0].
+//
+// AUTHOR:  [Your name]
+// CREATED: [Date]
+// ════════════════════════════════════════════════════════════════════════════════
+
+
+
+
+
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -12,16 +156,7 @@ using static Trace_Execution_Namespace.Trace_Execution;
 
 namespace Multimeter_Controller
 {
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Base_Chart_Form
-  // ───────────────
-  // Abstract base class shared by Multi_Instrument_Poll_Form and
-  // Recording_Playback_Form.  Contains every drawing, formatting, legend,
-  // scrollbar, zoom, tooltip and keyboard method that is identical in both
-  // forms.  Each concrete form inherits this class and supplies the abstract
-  // members that refer to designer-generated controls.
-  // ═══════════════════════════════════════════════════════════════════════════
-
+ 
 
   public struct Poll_Cycle_Sample
   {
@@ -133,6 +268,9 @@ namespace Multimeter_Controller
 
     protected virtual void On_Chart_Refresh_Tick ( )
     {
+      // empty virtual methods exist as default no-ops — let the base class
+      // call them unconditionally without needing to null-check or know whether
+      // a subclass cares.
     }
 
     protected System.Windows.Forms.Timer? _Chart_Refresh_Timer;
@@ -146,6 +284,8 @@ namespace Multimeter_Controller
 
     protected void Initialize_Chart_Resources ( )
     {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
       _Chart_Label_Font = new Font ( "Consolas", 7.5F );
       _Chart_Name_Font = new Font ( "Segoe UI", 8F, FontStyle.Bold );
       _Chart_X_Label_Font = new Font ( "Segoe UI", 7.5F );
@@ -160,6 +300,8 @@ namespace Multimeter_Controller
 
     protected void Initialize_Chart_Refresh_Timer ( )
     {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
       _Chart_Refresh_Timer?.Stop ( );
       _Chart_Refresh_Timer?.Dispose ( );
 
@@ -183,6 +325,8 @@ namespace Multimeter_Controller
 
     protected void Update_Chart_Refresh_Rate ( )
     {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
       if ( _Chart_Refresh_Timer == null )
         return;
 
@@ -206,9 +350,15 @@ namespace Multimeter_Controller
     }
     protected virtual void Update_Performance_Status ( )
     {
+      // empty virtual methods exist as default no-ops — let the base class
+      // call them unconditionally without needing to null-check or know whether
+      // a subclass cares.
     }
     protected void Dispose_Chart_Resources ( )
     {
+
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
       _Chart_Label_Font?.Dispose ( );
       _Chart_Label_Font = null;
       _Chart_Name_Font?.Dispose ( );
@@ -230,6 +380,8 @@ namespace Multimeter_Controller
 
     protected static void Enable_Double_Buffer ( Control C )
     {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
       typeof ( Panel ).InvokeMember (
           "DoubleBuffered",
           System.Reflection.BindingFlags.SetProperty
@@ -251,6 +403,7 @@ namespace Multimeter_Controller
 
     public static string Format_Digits ( double Value, int Digits )
     {
+
       using var Block = Trace_Block.Start_If_Enabled ( );
 
       if ( Value == 0 || Math.Abs ( Value ) < 1e-15 )
@@ -268,6 +421,8 @@ namespace Multimeter_Controller
 
     protected static string Format_Sig_Figs ( double Value, int Sig_Figs )
     {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
       if ( Value == 0 )
         return "0";
       double Abs = Math.Abs ( Value );
@@ -322,6 +477,8 @@ namespace Multimeter_Controller
 
     protected List<double> Get_Single_Series_Readings ( )
     {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
       if ( _Series.Count == 0 )
         return new List<double> ( );
       return _Series [ 0 ].Points.Select ( p => p.Value ).ToList ( );
@@ -329,6 +486,8 @@ namespace Multimeter_Controller
 
     protected (double Min_V, double Max_V) Get_Y_Range ( )
     {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
       double Min_V = double.MaxValue;
       double Max_V = double.MinValue;
 
@@ -361,6 +520,8 @@ namespace Multimeter_Controller
         int Chart_W, int Chart_H,
         double Min_V, double Max_V )
     {
+
+      using var Block = Trace_Block.Start_If_Enabled ( );
       var Result = new PointF [ Count ];
       double Range = Max_V - Min_V;
 
@@ -451,12 +612,16 @@ namespace Multimeter_Controller
 
     protected int Get_Bin_Count ( int N )
     {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
       int Bins = (int) Math.Ceiling ( 1.0 + 3.322 * Math.Log10 ( N ) );
       return Math.Clamp ( Bins, 5, 30 );
     }
 
     protected Color Get_Bin_Color ( int Index )
     {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
       Color [ ] Base = _Theme.Line_Colors;
       int Cycle = Index / Base.Length;
       Color C = Base [ Index % Base.Length ];
@@ -945,6 +1110,8 @@ namespace Multimeter_Controller
 
     protected void Pan_Scrollbar_Control_Scroll ( object sender, ScrollEventArgs e )
     {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
       _Updating_Scroll = true;
       Auto_Scroll_Check_Control.Checked = false;
       _Updating_Scroll = false;
@@ -1092,6 +1259,8 @@ namespace Multimeter_Controller
 
     protected void Show_Stats_Popup ( )
     {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
       var Dlg = new Form
       {
         Text = "Instrument Statistics",
@@ -1176,6 +1345,8 @@ namespace Multimeter_Controller
 
     private void Build_Stats_Rtb ( RichTextBox Rtb )
     {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
       Rtb.Clear ( );
 
       void Append_Header ( string Text )
@@ -1341,6 +1512,8 @@ namespace Multimeter_Controller
 
     protected void Update_Memory_Status ( int Current, int Max )
     {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
       // subclass wires to its own status label
     }
 
@@ -1377,6 +1550,8 @@ namespace Multimeter_Controller
 
     protected int Calculate_Y_Axis_Width ( Graphics G, double Min_V, double Max_V )
     {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
       using var Measure_Font = new Font ( "Consolas", 7.5f );
       float Max_Label_Width = 0;
       var Ref_Series = _Series.FirstOrDefault ( s => s.Visible && s.Points.Count > 0 );
@@ -1403,6 +1578,8 @@ namespace Multimeter_Controller
 
     protected void Draw_Empty_State ( Graphics G, int W, int H, string Message )
     {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
       using var Empty_Font = new Font ( "Segoe UI", 10F );
       using var Empty_Brush = new SolidBrush ( _Theme.Labels );
       G.DrawString ( Message, Empty_Font, Empty_Brush, 20, H / 2 );
@@ -1410,6 +1587,8 @@ namespace Multimeter_Controller
 
     protected void Draw_Instrument_List ( Graphics G, int H )
     {
+
+      using var Block = Trace_Block.Start_If_Enabled ( );
       using var Empty_Font = new Font ( "Segoe UI", 10F );
       using var Empty_Brush = new SolidBrush ( _Theme.Labels );
       int Y_Pos = 30;
@@ -1628,6 +1807,8 @@ namespace Multimeter_Controller
         int W, int H, Pen Grid_Pen, Font Label_Font, Brush Label_Brush,
         int Chart_H = -1 )
     {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
       int Actual_Chart_H = Chart_H >= 0
           ? Chart_H
           : H - _Chart_Margin_Top - _Chart_Margin_Bottom;
@@ -2378,6 +2559,8 @@ namespace Multimeter_Controller
 
     protected void Draw_Single_Histogram ( Graphics G, int W, int H, int Chart_W, int Chart_H )
     {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
       var Saved = _Readings;
       _Readings = Get_Single_Series_Readings ( );
       Draw_Histogram ( G, W, H );
@@ -2386,6 +2569,8 @@ namespace Multimeter_Controller
 
     protected void Draw_Single_Pie ( Graphics G, int W, int H, int Chart_W, int Chart_H )
     {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
       var Saved = _Readings;
       _Readings = Get_Single_Series_Readings ( );
       Draw_Pie_Chart ( G, W, H );
@@ -2874,6 +3059,8 @@ namespace Multimeter_Controller
 
     protected void Load_Timing_File ( string File_Path )
     {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
       var Lines = File.ReadAllLines ( File_Path );
       if ( Lines.Length < 2 )
         return;
@@ -2938,6 +3125,8 @@ namespace Multimeter_Controller
 
     protected void Show_Analysis_Results ( List<Instrument_Series> Series )
     {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
       var Dlg = new Form
       {
         Text = "Auto Analysis Results",
@@ -3009,6 +3198,8 @@ namespace Multimeter_Controller
 
     private void Build_Analysis_Rtb ( RichTextBox Rtb, List<Instrument_Series> Series )
     {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
       Rtb.Clear ( );
 
       void Append_Header ( string Text, Color C )

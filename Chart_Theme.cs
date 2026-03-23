@@ -1,3 +1,83 @@
+
+// ════════════════════════════════════════════════════════════════════════════════
+// FILE:    Chart_Theme.cs
+// PROJECT: Multimeter_Controller
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// PURPOSE
+//   Defines the complete visual palette used by every chart panel in the
+//   application.  A theme is a flat bag of Color properties that chart
+//   renderers read directly — no CSS, no resource dictionaries.  Themes are
+//   persisted as a small JSON file beside the source tree and loaded once at
+//   startup via Application_Settings.
+//
+// PERSISTENCE
+//   File location : <source directory>\chart_theme.json
+//                   (resolved at compile time via [CallerFilePath])
+//   Format        : UTF-8 JSON, WriteIndented = true
+//   Serialisation : Colors are stored as KnownColor names where possible,
+//                   falling back to "#RRGGBB" hex strings for non-named colors.
+//   On load error : silently falls back to Dark_Preset(); never throws.
+//   On save error : silently ignored; the in-memory theme remains intact.
+//
+// COLOR PROPERTIES
+//   Background    Panel fill behind all chart content.
+//   Foreground    Primary text and general annotation color.
+//   Grid          Horizontal / vertical grid line color.
+//   Labels        Y-axis and X-axis label text color.
+//   Separator     Subplot divider and secondary border color.
+//   Accent        Highlight color — mean lines, markers, interactive elements.
+//   Line_Colors   Fixed array of exactly 4 colors cycled across data series.
+//
+// BUILT-IN PRESETS
+//   Dark_Preset()         Near-black background; green/blue/orange/orchid lines.
+//                         Default when no theme file exists.
+//   Light_Preset()        WhiteSmoke background; forest-green/royal-blue lines.
+//   Light_Blue_Preset()   AliceBlue background; blue/teal/slate palette.
+//   Light_Yellow_Preset() LightYellow background; orange/goldenrod palette.
+//   Golden_Preset()       Very dark warm background; gold/orange/yellow lines.
+//   Brown_Preset()        Dark brown background; peru/chocolate/tan lines.
+//   Grey_Preset()         Dark grey background; silver/gainsboro/white lines.
+//
+// KEY METHODS
+//   static Load()          Reads chart_theme.json → deserialises Theme_Data →
+//                          reconstructs Color properties via From_Color_String().
+//                          Returns Dark_Preset() on any failure.
+//   Save()                 Serialises all Color properties to Theme_Data via
+//                          To_Color_String() and writes chart_theme.json.
+//   Copy_From(other)       Shallow-copies all Color properties from another
+//                          Chart_Theme instance in-place (used by the theme
+//                          editor to apply a preset without replacing the
+//                          reference held by Application_Settings).
+//
+// INTERNAL HELPERS
+//   To_Color_String(Color)    Returns the KnownColor name if the color is named
+//                             or matches a known color by RGB; otherwise "#RRGGBB".
+//   From_Color_String(string) Parses "#RRGGBB" hex or a named color string back
+//                             to a Color; returns Color.Gray on failure.
+//
+// PRIVATE SERIALISATION DTO
+//   Theme_Data   Flat POCO with string properties for each color slot
+//                (Background, Foreground, Grid, Labels, Separator, Accent,
+//                Line_1 … Line_4) plus Name.  Never exposed outside the class.
+//
+// NOTES
+//   • Line_Colors must always contain exactly 4 elements.  Presets enforce
+//     this; Load() constructs the array from the four named slots in Theme_Data.
+//   • _File_Path is resolved once at class-load time using [CallerFilePath]
+//     so the theme file always sits next to the source file regardless of the
+//     working directory at runtime.
+//   • Background_Name, Foreground_Name, etc. are retained string properties
+//     from an earlier serialisation approach; they are no longer written by
+//     Save() but are left in place for backwards-compatible JSON loading.
+//
+// AUTHOR:  [Your name]
+// CREATED: [Date]
+// ════════════════════════════════════════════════════════════════════════════════
+
+
+
+
 using System.Text.Json;
 using System.Xml.Linq;
 using static Trace_Execution_Namespace.Trace_Execution;

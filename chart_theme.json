@@ -1,4 +1,9 @@
 {
+    "_comment": "Chart theme for Multimeter Controller. Edit colors as KnownColor names or #RRGGBB hex. Loaded by Chart_Theme.Load() — see Chart_Theme.cs.",
+    "Name": "Dark",
+    "..."
+}
+{
   "Name": "Dark",
   "Background": "WhiteSmoke",
   "Foreground": "#1E1E1E",

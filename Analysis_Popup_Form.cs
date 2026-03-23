@@ -1,4 +1,112 @@
 
+// ════════════════════════════════════════════════════════════════════════════════
+// FILE:    Analysis_Popup_Form.cs
+// PROJECT: Multimeter_Controller
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// PURPOSE
+//   A self-contained modal Form that performs a deep statistical comparison
+//   between two simultaneously-recorded instrument series (A and B).  All
+//   computation happens once in the constructor; the six tab panels paint
+//   directly from pre-computed arrays on every resize/invalidate.
+//
+// TABS
+//   0  Δ Delta          — downsampled (A − B) line + fill over time;
+//                         zero reference line and mean marker.
+//   1  Rolling σ        — 100-sample sliding-window standard deviation of the
+//                         delta, revealing noise bursts and drift over time.
+//   2  Summary Stats    — three sections rendered via GDI+ text:
+//                           • Δ (A − B) — Mean / σ / Min / Max / Range
+//                             in both Volts and µV columns.
+//                           • Sample Timing — mean interval, jitter (σ),
+//                             max interval, total point count.
+//                           • Polling Health — baseline interval (median of
+//                             first 20 samples), slowdown threshold (+20%),
+//                             first sustained-slow timestamp (5 consecutive
+//                             intervals above threshold), % slow cycles,
+//                             peak interval as a multiple of baseline, trend.
+//   3  Δ Distribution   — Sturges-rule histogram of the delta in µV; overlaid
+//                         fitted normal curve, mean line, ±1σ/±2σ markers.
+//   4  Raw              — every sample plotted with no downsampling; useful for
+//                         spotting individual outliers or dropped readings.
+//   5  Poll Intervals   — raw sample-to-sample gap in ms; rolling 50-sample
+//                         mean overlay; +20% threshold line; orange vertical
+//                         marker at the first sustained slowdown.
+//
+// CONSTRUCTOR INPUTS
+//   Points_A / Points_B   Paired time-series from the two instruments.
+//                         Only Math.Min(A.Count, B.Count) pairs are used.
+//   Name_A  / Name_B      Display names shown in titles and the window caption.
+//   Theme                 Chart_Theme supplying Background, Foreground, Grid,
+//                         Labels, Accent, and Line_Colors[].
+//
+// DATA COMPUTED IN CONSTRUCTOR (computed once, read-only thereafter)
+//   _Deltas               List<double>   — A[i].Value − B[i].Value (Volts)
+//   _Delta_Ms             List<double>   — ms between consecutive A timestamps
+//   _Times                List<DateTime> — timestamps from series A
+//   _Mean / _StdDev / _Min / _Max               — delta statistics (Volts)
+//   _Mean_uV / _StdDev_uV / _Min_uV / _Max_uV  — same values scaled to µV
+//   _Mean_Delta_Ms / _StdDev_Delta_Ms / _Max_Delta_Ms — timing statistics
+//   _Rolling_StdDev       100-sample Welford-style rolling σ of _Deltas
+//
+// LAYOUT CONSTANTS  (local to the class)
+//   ML = 90   Left margin  — Y-axis labels
+//   MR = 30   Right margin — overflow clearance
+//   MT = 30   Top margin   — title area
+//   MB = 40   Bottom margin — X-axis time labels + stats strip
+//
+// GDI RENDERING
+//   Every tab panel is a Buffered_Panel whose Paint event calls a dedicated
+//   Draw_*() method.  All drawing is done with locally scoped using-blocks —
+//   no persistent GDI resources are held between paints.
+//   Setup_Graphics() applies AntiAlias + ClearTypeGridFit and fills the
+//   background from _Theme.Background before any chart drawing begins.
+//
+// SHARED DRAWING HELPERS
+//   Draw_Grid()              Horizontal grid lines + formatted Y-axis labels.
+//   Build_Points()           Maps a List<double> directly to a PointF[].
+//   Build_Points_Sampled()   Same, but skips every N-th point to cap output
+//                            at Max_Pts (default 800) for large datasets.
+//   Draw_Title()             Centred bold title string in the top margin.
+//   Draw_Time_Axis()         Time labels and vertical grid lines on X axis;
+//                            indexes into _Times[] by fractional position.
+//   Draw_Stat_Row()          Two-column row (Volts + µV) for the stats panel.
+//   Draw_Stat_Row_Single()   Single-value row for the stats panel.
+//   Color_Name()             Resolves a Color to its KnownColor name, or
+//                            falls back to "#RRGGBB" hex notation.
+//
+// HELP SYSTEM
+//   _Tab_Help[]              One plain-text help string per tab, built in the
+//                            constructor using the resolved color names so
+//                            references match the actual theme in use.
+//   Show_Tab_Help()          Parses the active tab's help string line-by-line
+//                            into a formatted FlowLayoutPanel dialog with
+//                            section headers (accent bar), bullet rows
+//                            (colored dot), and body text labels.
+//   "?" button               Always visible in the bottom bar; calls
+//                            Show_Tab_Help() for the currently selected tab.
+//
+// NOTES
+//   • The Stats tab is wrapped in a scrollable Panel so that the fixed-size
+//     860 × 860 Buffered_Panel is accessible on small screens.
+//   • Slowdown detection (both in Summary Stats and Poll Intervals) uses the
+//     same algorithm: median of the first 20 intervals as the baseline,
+//     +20% as the threshold, 5 consecutive exceedances as "sustained".
+//   • The form is shown modally (ShowDialog) from the parent chart window;
+//     the help dialog (Show_Tab_Help) is also modal to this form.
+//
+// AUTHOR:  [Your name]
+// CREATED: [Date]
+// ════════════════════════════════════════════════════════════════════════════════
+
+
+
+
+
+
+
+
+
 using System.Text;
 using System.Threading.Tasks;
 

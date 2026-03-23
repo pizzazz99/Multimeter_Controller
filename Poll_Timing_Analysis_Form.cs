@@ -1,3 +1,116 @@
+
+// ════════════════════════════════════════════════════════════════════════════════
+// FILE:    Poll_Timing_Analysis_Form.cs
+// PROJECT: Multimeter_Controller
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// PURPOSE
+//   Standalone analysis dialog for poll-timing CSV files produced by the
+//   polling thread.  Parses the CSV into Poll_Timing_Analysis records and
+//   presents five GDI+ chart tabs giving a complete picture of cycle-time
+//   behaviour, phase breakdown, distribution, and error rate.
+//
+// ── CLASS: Poll_Timing_Analysis ──────────────────────────────────────────────
+//
+//   Data record (one row per CSV line) with fields:
+//     Timestamp      DateTime  — wall-clock time of the cycle.
+//     Cycle          int       — monotonic cycle counter.
+//     Total_Ms       double    — complete cycle wall time.
+//     Comm_Ms        double    — time spent in serial/USB communication.
+//     AddrSwitch_Ms  double    — time spent switching GPIB addresses.
+//     UI_Ms          double    — time spent in Invoke / UI updates.
+//     Record_Ms      double    — time spent writing to the data stream.
+//     Had_Error      bool      — true if the field value is not "0".
+//
+//   Load_CSV(path)
+//     Reads the file line-by-line, skips the header, and parses each
+//     comma-separated row into a Poll_Timing_Analysis.  Malformed rows
+//     are silently skipped.  Requires ≥ 8 fields per row.
+//
+// ── CLASS: Poll_Timing_Analysis_Form ─────────────────────────────────────────
+//
+//   Entry point
+//     Show_From_File(owner, theme)   Static method that shows an OpenFileDialog,
+//                                    loads the CSV via Poll_Timing_Analysis.Load_CSV(),
+//                                    validates that at least 2 records were parsed,
+//                                    and shows the form modally.
+//
+//   Constructor
+//     Poll_Timing_Analysis_Form(records, theme)
+//       Pre-extracts five parallel double lists from _Records (_Total_Ms,
+//       _Comm_Ms, _AddrSwitch_Ms, _UI_Ms, _Record_Ms) and a DateTime list
+//       (_Times).  Computes a TimingStat summary for each column.  Builds a
+//       100-sample rolling σ of Total_Ms (Welford online, identical to
+//       Analysis_Popup_Form).  Calls Build_UI().
+//
+//   TABS
+//     0  Total Cycle Time   Line + fill of Total_Ms over time; gold dashed
+//                           mean line; red dot markers on error cycles.
+//                           Title shows mean, σ, max, count, error count.
+//     1  Time Breakdown     Stacked filled-area chart of the four sub-phases
+//                           (Comm / AddrSwitch / UI / Record) per cycle.
+//                           Inline color legend in the top-left margin.
+//     2  Summary Stats      GDI+ text table: one row per phase showing
+//                           Mean / σ / Min / Max / % of Total; followed by
+//                           effective sample rate, error count and rate.
+//     3  Distribution       Sturges-rule histogram of Total_Ms (8–50 bins);
+//                           overlaid fitted normal curve; mean and ±1σ/±2σ
+//                           markers; 99th-percentile value in the title.
+//     4  Errors             Vertical bar per cycle — red for Had_Error,
+//                           transparent blue for normal; bar height = Total_Ms.
+//                           Overlay text with error count, rate, and first
+//                           error timestamp.
+//
+//   SEGMENT COLOURS  (static readonly)
+//     C_Comm    RGB(100,160,240) — blue
+//     C_Addr    RGB(255,180, 60) — gold
+//     C_UI      RGB(100,220,130) — green
+//     C_Record  RGB(200,110,200) — purple
+//     C_Error   RGB(255, 80, 80) — red
+//
+//   LAYOUT CONSTANTS
+//     ML=80  MR=30  MT=34  MB=44  (pixels; MB is taller to fit the stats strip)
+//
+//   HELP SYSTEM
+//     _Tab_Help[]          One plain-text string per tab; same bullet/section
+//                          parse format as Analysis_Popup_Form.
+//     Show_Tab_Help()      Builds a scrollable FlowLayoutPanel dialog with
+//                          section headers (blue accent bar) and bullet rows
+//                          (colored dot); shown modally from the "?" button.
+//
+//   SHARED DRAWING HELPERS
+//     Setup_Graphics()     AntiAlias + ClearTypeGridFit + background fill.
+//     Draw_Grid()          Six horizontal grid lines with formatted Y labels.
+//     Build_Points()       Maps List<double> → PointF[] by index fraction.
+//     Draw_Title()         Centred bold Segoe UI 8.5pt title in top margin.
+//     Draw_Time_Axis()     Up to 8 time labels and vertical grid lines on X
+//                          axis indexed into _Times[] by fractional position.
+//     Percentile()         Sorts a copy of the list and interpolates the
+//                          requested percentile (used for 99th pct in title).
+//
+//   PRIVATE HELPER CLASS: TimingStat
+//     Immutable value object computed from a List<double> in the constructor.
+//     Exposes Mean, StdDev (population), Min, Max, Range.  One instance is
+//     created per timing column during form construction.
+//
+// NOTES
+//   • All five tab panels are Buffered_Panel instances; Paint handlers are
+//     wired in Build_UI() and the active panel is invalidated on tab change.
+//   • The form has no designer file; all controls are constructed inline.
+//   • Draw_Breakdown() builds stacked cumulative arrays using Zip() and
+//     renders each layer as a filled polygon between the top of the current
+//     phase and the top of the previous phase.
+//   • Error markers in Draw_Timeline() iterate the full record list so marker
+//     X positions match the corresponding line-chart points exactly.
+//
+// AUTHOR:  [Your name]
+// CREATED: [Date]
+// ════════════════════════════════════════════════════════════════════════════════
+
+
+
+
+
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;

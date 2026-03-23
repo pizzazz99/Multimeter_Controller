@@ -1,3 +1,106 @@
+
+// ════════════════════════════════════════════════════════════════════════════════
+// FILE:    NPLC_Forms.cs
+// PROJECT: Multimeter_Controller
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// PURPOSE
+//   Contains two read-only reference dialogs related to NPLC configuration:
+//   NPLC_Summary_Form shows live per-instrument timing derived from the current
+//   session's NPLC values; NPLC_Info_Form is a static educational reference
+//   explaining the theory and mathematics of NPLC measurement.
+//
+// ── CLASS: NPLC_Summary_Form ─────────────────────────────────────────────────
+//
+//   A compact FixedDialog that renders one GroupBox per Instrument_Series,
+//   followed by an optional Session Summary GroupBox when more than one
+//   instrument is present.
+//
+//   Constructor: NPLC_Summary_Form(List<Instrument_Series> series)
+//     Builds all UI inline with no designer file.  Window width is fixed at
+//     320 px; height is clamped to the primary screen's working area minus
+//     100 px to prevent overflow on small monitors.
+//
+//   Per-instrument GroupBox rows
+//     Max NPLC        Current NPLC value from the series.
+//     Digits          "10" for HP3458A at 1000 NPLC; "N.5" for all others
+//                     (reflecting the half-digit convention).
+//     Integration     Integration_Ms rounded to whole milliseconds.
+//     Settle Time     Settle_Ms (Integration_Ms × 2 for autozero).
+//     Rate            Get_Readings_Per_Min(series.Count) — accounts for
+//                     round-robin sharing across all active instruments.
+//     Warning/Info    NPLC_Warning_Text in NPLC_Warning_Color
+//                     (Orange = slow, Blue = moderate, Black = fast).
+//
+//   Session Summary GroupBox  (multi-instrument only)
+//     Session Rate    Readings per minute limited by the slowest instrument.
+//     Slowest/Fastest Name and NPLC of the bounding instruments
+//                     (omitted when all instruments share the same NPLC).
+//     Note            "Rate limited by slowest instrument" in gray.
+//
+//   Add_Row(parent, label, value, ref y, color?)
+//     Private helper that places a fixed-width Label pair (100 px label,
+//     155 px value) at the current Y position inside a GroupBox and
+//     advances Y by 24 px.  Optional Color overrides the value ForeColor.
+//
+// ── CLASS: NPLC_Info_Form ────────────────────────────────────────────────────
+//
+//   A SizableToolWindow (670 × 500 minimum) containing a single read-only
+//   RichTextBox (Courier New 9.5pt) that displays a structured technical
+//   reference document built programmatically in Build().
+//
+//   Document sections
+//     NPLC — Number of Power Line Cycles
+//       Definition of NPLC as an integrating ADC control parameter and its
+//       role in the speed/accuracy trade-off.
+//     Integration Window
+//       Formula T = NPLC × (1 / f_line); values at 50 Hz and 60 Hz.
+//     Why Power Line Cycles?
+//       Explanation of Normal Mode Rejection — why integrating over whole
+//       cycles causes sinusoidal interference to sum to zero.
+//     Two Distinct Noise Rejection Mechanisms
+//       1. Deterministic cancellation of periodic line-frequency interference.
+//       2. Statistical averaging of random noise (improves as √NPLC).
+//       Quantified examples: ×10 NPLC → √10 = 3.16× noise reduction.
+//     Speed vs. Accuracy Trade-off
+//       Bullet summary of 0.02 / 1 / 10 / 100 / 200 NPLC operating points
+//       with approximate digit resolution and use-case notes.
+//     Integration Times at 60 Hz
+//       Tabulated NPLC → integration time for 0.02 through 200 PLC.
+//     Autozero Interaction
+//       Explains the 2× time penalty of autozero and the drift trade-off
+//       when disabling it.
+//     Poll Interval = Integration + Overhead
+//       Lists the four overhead contributors: autozero, settling, A/D
+//       rundown, and GPIB transfer time.
+//
+//   Build() internal helpers (local functions)
+//     Header(text)            Bold 10.5pt section heading.
+//     Body(text)              Regular 9.5pt paragraph line.
+//     Bullet(label, text)     Bold label + regular text on one line.
+//     Table_Row(c1,c2,c3)     Fixed-width three-column row; bold when
+//                             Is_Header = true.
+//     Gap()                   Appends a blank line.
+//
+// NOTES
+//   • Neither form uses a .designer.cs file; all controls are constructed
+//     in the constructor or Build() method.
+//   • NPLC_Summary_Form is intended to be shown modally from the polling
+//     form's NPLC configuration panel whenever the user wants to preview
+//     the timing impact of their current settings.
+//   • NPLC_Info_Form is purely educational; it contains no live data and
+//     can be shown at any time regardless of polling state.
+//
+// AUTHOR:  [Your name]
+// CREATED: [Date]
+// ════════════════════════════════════════════════════════════════════════════════
+
+
+
+
+
+
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
