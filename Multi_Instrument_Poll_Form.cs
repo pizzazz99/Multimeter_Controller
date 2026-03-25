@@ -203,8 +203,8 @@ namespace Multimeter_Controller
     private bool _Data_Was_Recorded = false;
     private DateTime _Record_Start;
     private string _Record_Query = "";
-    
-    
+
+    private string _Last_Tooltip_Text = "";
     private StreamWriter? _Recording_Writer;
     private string? _Recording_File_Path;
     private readonly List<DateTime> _Reading_Timestamps = new List<DateTime> ( );
@@ -383,6 +383,8 @@ namespace Multimeter_Controller
     protected override bool _Is_Running_State ( ) => _Is_Running;
     protected override void Show_Progress ( string Message, Color Color )
     {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
       Progress_Text_Box.Text = Message;
       Progress_Text_Box.ForeColor = Color;
     }
@@ -409,8 +411,21 @@ namespace Multimeter_Controller
         return "";
       }
     }
+
+    private void Chart_Panel_MouseLeave ( object? sender, EventArgs e )
+    {
+      _Last_Mouse_Position = Point.Empty;
+      _Last_Tooltip_Text = "";
+      _Chart_Tooltip.Hide ( Chart_Panel_Control );
+      Chart_Panel_Control.Invalidate ( );  // clear the crosshair
+    }
+
+
+
     private void Chart_Panel_MouseMove ( object sender, MouseEventArgs e )
     {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
       // Mirror the same no-data guards as Paint
       if ( _Show_Timing_View )
       {
@@ -430,7 +445,7 @@ namespace Multimeter_Controller
       }
 
       // Only start tracing once we know there's real work to do
-      using var Block = Trace_Block.Start_If_Enabled ( );
+    
       Capture_Trace.Write ( $"MouseMove at ({e.X}, {e.Y})" );
 
       // Check if tooltips are enabled
@@ -451,6 +466,9 @@ namespace Multimeter_Controller
       // Find the closest point
       var (Series, Point_Index, Distance) = Find_Closest_Point ( e.Location );
 
+      // Invalidate to draw position indicator whether running or not
+      Chart_Panel_Control.Invalidate ( );
+
       // Use settings for distance threshold
       if ( Series != null && Distance < _Settings.Tooltip_Distance_Threshold )
       {
@@ -467,6 +485,14 @@ namespace Multimeter_Controller
             e.Location.Y - 40,
             _Settings.Tooltip_Display_Duration_Ms
         );
+      }
+      else
+      {
+        if ( _Last_Tooltip_Text != "" )
+        {
+          _Last_Tooltip_Text = "";
+          _Chart_Tooltip.Hide ( Chart_Panel );
+        }
       }
     }
 
@@ -503,36 +529,7 @@ namespace Multimeter_Controller
       return Points;
     }
 
-    private void Draw_Mini_Legend ( Graphics G, int W )
-    {
-      int X = W - 200;
-      int Y = _Chart_Margin_Top;
-
-      using ( var Font = new Font ( this.Font.FontFamily, 8f ) )
-      using ( var Brush = new SolidBrush ( _Theme.Foreground ) )
-      {
-        int Series_Index = 0;
-        foreach ( var S in _Series.Where ( s => s.Visible ) )
-        {
-          Color Line_Color = _Theme.Line_Colors [ Series_Index % _Theme.Line_Colors.Length ];
-
-          // Draw color box
-          using ( var Color_Brush = new SolidBrush ( Line_Color ) )
-          {
-            G.FillRectangle ( Color_Brush, X, Y, 12, 12 );
-          }
-
-          // Draw name
-          string Display = S.Points.Count > 0
-    ? $"{S.Name}: {Format_Digits ( S.Get_Last ( ), S.Display_Digits )}"
-    : S.Name;
-          G.DrawString ( Display, Font, Brush, X + 18, Y - 2 );
-
-          Y += 18;
-          Series_Index++;
-        }
-      }
-    }
+   
 
     private void Auto_Save_Timer_Tick ( object sender, EventArgs e )
     {
@@ -848,6 +845,10 @@ namespace Multimeter_Controller
 
       Capture_Trace.Write ( $"Points: {_Settings.Max_Display_Points}" );
 
+
+      // Setup cts for finish poling
+      var My_Cts = _Cts;
+
       try
       {
         _Comm.Error_Occurred -= On_Poll_Error;
@@ -1025,6 +1026,9 @@ namespace Multimeter_Controller
               Previous_Address = S.Address;
             }
 
+
+
+
             // ── Actual read ───────────────────────────────────────────────
             string Response;
             try
@@ -1093,13 +1097,13 @@ namespace Multimeter_Controller
             }
 
             if (
-              double.TryParse (
-                Response,
-                System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture,
-                out double Value
-              )
-            )
+       double.TryParse (
+         Response,
+         System.Globalization.NumberStyles.Float,
+         System.Globalization.CultureInfo.InvariantCulture,
+         out double Value
+       )
+     )
             {
               var Point = (DateTime.Now, Value);
               S.Points.Add ( Point );
@@ -1119,7 +1123,8 @@ namespace Multimeter_Controller
                 }
                 else
                 {
-                  S.Points.RemoveAt ( 0 );
+                  int Excess = S.Points.Count - _Settings.Max_Display_Points;
+                  S.Points.RemoveRange ( 0, Excess );  // ← O(n) but single call, no per-point shifting
                 }
               }
 
@@ -1162,7 +1167,7 @@ namespace Multimeter_Controller
             Cycle_Had_Error
           );
 
-          Chart_Panel.Invalidate ( );
+       
 
           bool Has_More = Continuous || _Cycle_Count < Total_Cycles;
           if ( Has_More )
@@ -1205,7 +1210,7 @@ namespace Multimeter_Controller
         }
         catch { }
 
-        Finish_Polling ( );
+        Finish_Polling ( My_Cts );
       }
     }
 
@@ -1266,10 +1271,7 @@ namespace Multimeter_Controller
          // Build_Legend_Controls ( );
           _Last_Legend_Series_Count = _Series.Count;
         }
-    //    else if ( Update_Stats )
-    //    {
-    //      Update_Legend_Stats_Only ( );
-    //    }
+  
 
         Cycle_Text_Box.Text = Cycle_Text;
 
@@ -1331,17 +1333,24 @@ namespace Multimeter_Controller
       }
     }
 
-    private void Finish_Polling ( )
+    private void Finish_Polling ( CancellationTokenSource Session_Cts )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
 
-      _Is_Running = false;
-
-      if ( _Cts != null && !_Cts.IsCancellationRequested )
+      if ( !ReferenceEquals ( Session_Cts, _Cts ) )
       {
         Capture_Trace.Write ( "Finish_Polling: new session already running, skipping teardown" );
         return;
       }
+
+
+      bool Was_Cancelled = _Is_Shutting_Down;  // ← capture before reset
+
+
+      _Chart_Refresh_Timer?.Stop ( );
+
+      _Is_Running = false;
+      _Is_Shutting_Down = false;
 
       _Is_Shutting_Down = false;
       _Poll_Error_Shown = false;
@@ -1359,61 +1368,14 @@ namespace Multimeter_Controller
       Load_Button.Enabled = true;
       Rolling_Check.Enabled = true;
 
-    //  Update_Legend ( );
+      _Chart_Refresh_Timer?.Stop ( );
       Set_Button_State ( );
+
+      // Run analysis if cycles completed normally (not user-cancelled)
+      if ( !Was_Cancelled )
+        Run_Auto_Analysis_If_Enabled ( );
     }
 
-    private string Translate_Command_For_Instrument ( string Base_Command, Meter_Type Meter )
-    {
-      using var Block = Trace_Block.Start_If_Enabled ( );
-
-      // Find the measurement that matches the base command
-      foreach ( var Measurement in _Measurements )
-      {
-        if ( Measurement.Cmd_3458 == Base_Command )
-        {
-          // Translate to the appropriate command for
-          // this meter type
-          if ( Meter == Meter_Type.HP34401 )
-          {
-            string Cmd = Measurement.Cmd_34401;
-            if ( !string.IsNullOrEmpty ( Cmd ) )
-            {
-              // 34401 needs READ? for configured
-              // measurements
-              if ( !Cmd.EndsWith ( "?" ) )
-              {
-                return "READ?";
-              }
-              return Cmd;
-            }
-          }
-
-          // Default to 3458 command
-          return Base_Command;
-        }
-      }
-
-      // If not found in measurement list,
-      // return as-is (custom command)
-      return Base_Command;
-    }
-
-    private string Get_Config_Command_For_34401 ( string Base_Command )
-    {
-      using var Block = Trace_Block.Start_If_Enabled ( );
-
-      // Find the measurement that matches the base command
-      foreach ( var Measurement in _Measurements )
-      {
-        if ( Measurement.Cmd_3458 == Base_Command )
-        {
-          return Measurement.Cmd_34401;
-        }
-      }
-
-      return Base_Command;
-    }
 
     private void Clear_Button_Click ( object Sender, EventArgs E )
     {
@@ -1438,8 +1400,6 @@ namespace Multimeter_Controller
       // ── Guard: don't clear instrument data while live polling ─────────
       if ( _Is_Running )
         return;
-
-
 
       // Check if we should prompt
       if ( _Settings.Prompt_Before_Clear && _Series.Any ( s => s.Points.Count > 0 ) )
@@ -1471,36 +1431,10 @@ namespace Multimeter_Controller
 
       Show_Progress ( "", _Foreground_Color );
 
-  //    Update_Legend ( );
       Update_Graph_Style_Availability ( );
       Set_Button_State ( );
       Chart_Panel.Invalidate ( );
     }
-
-    public void old_Set_Button_State ( )
-    {
-      bool Live = _Is_Running;
-      bool Rec = _Is_Recording;
-      bool Has_Data = _Series.Any ( s => s.Points.Count > 0 );
-      bool Has_Timing = _Timing_Count > 0;
-      bool Loaded = _File_Loading == false && Has_Data && !Live && !Rec;
-
-
-      Load_Button.Enabled = !Live && !Rec && !Loaded;
-      Record_Button.Enabled = !Loaded && !Rec || Rec;
-
-      // Clear is active when:
-      // - data is loaded (not live)
-      // - OR currently running (to clear timing view)
-      // - OR timing data exists
-      Clear_Button.Enabled = Loaded || Live || Has_Timing;
-
-      Capture_Timing_Checkbox.Enabled = !Live && !Rec;
-      Measurement_Combo.Enabled = !Loaded;
-
-      Analyze_Data_Button.Enabled = _Data_Was_Recorded;
-    }
-
 
     public void Set_Button_State ( )
     {
@@ -1520,8 +1454,7 @@ namespace Multimeter_Controller
       Close_Button.Enabled = !Rec;
       Reset_Errors_Button.Enabled = !Rec;
 
-      // ── Needs to be live OR recording in progress to stop ─────────────
-      Record_Button.Enabled = Live || Rec;
+    
 
       // ── Only meaningful once there is something to clear ──────────────
       Clear_Button.Enabled = Has_Any;
@@ -1534,13 +1467,19 @@ namespace Multimeter_Controller
       // Poll Timing: only useful if we have timing data, and not mid-run
       Poll_Speed_Button.Enabled = Idle && Has_Timing;
 
+
+
+      // ── Polling controls: available when live or already have data ────
+      Rolling_Check.Enabled = Live || Has_Data;  // ← Has_Data covers loaded files too
+      Max_Points_Numeric.Enabled = Rolling_Check.Checked && ( Live || Has_Data );
+
+      // ── Record: live to start, recording to stop, OR idle with loaded data ──
+      Record_Button.Enabled = Live || Rec || Idle;
+
+
       // ── Polling controls: available when live or already have data ────
       Continuous_Check.Enabled = Idle;          // configure before starting
       Delay_Numeric.Enabled = Idle;          // only set delay when idle
-
-      // Show Last N: only meaningful when live or has data to scroll
-      Rolling_Check.Enabled = Live || Has_Data;
-      Max_Points_Numeric.Enabled = Rolling_Check.Checked && ( Live || Has_Data );
 
       // ── Graph / display: only once something exists to display ────────
       Graph_Style_Combo.Enabled = Has_Any || Live;
@@ -1560,10 +1499,6 @@ namespace Multimeter_Controller
       Cycles_Numeric.Enabled = Idle && !Continuous;
       Cycle_Text_Box.Enabled = Has_Any || Live;
     }
-
-
-
-
 
     // ===== Recording / Loading =====
 
@@ -1672,7 +1607,6 @@ namespace Multimeter_Controller
       );
 
 
-
       Set_Button_State ( );
     }
 
@@ -1726,9 +1660,20 @@ namespace Multimeter_Controller
       if ( !Series_With_Data.Any ( ) )
         return;
 
-      Show_Analysis_Results ( Series_With_Data );
-    }
+      var Points_A = Series_With_Data [ 0 ].Points;
+      var Points_B = Series_With_Data.Count > 1 ? Series_With_Data [ 1 ].Points : null;
+      string Name_A = Series_With_Data [ 0 ].Name;
+      string Name_B = Series_With_Data.Count > 1 ? Series_With_Data [ 1 ].Name : "";
 
+      var Popup = new Analysis_Popup_Form (
+          Points_A,
+          Points_B,
+          Name_A,
+          Name_B,
+          _Theme ?? Chart_Theme.Dark_Preset ( )
+      );
+      Popup.Show ( this );
+    }
 
 
 
@@ -1837,9 +1782,23 @@ namespace Multimeter_Controller
 
         // ── Build series from CSV headers ─────────────────────────────
         _Series.Clear ( );
+        var Seen_Names = new Dictionary<string, int> ( );
+
         for ( int I = 0; I < Col_Count; I++ )
         {
           string Header_Name = Headers [ I + 1 ].Trim ( );
+
+          // ── Disambiguate duplicate names ──────────────────────────
+          if ( Seen_Names.TryGetValue ( Header_Name, out int Name_Count ) )
+          {
+            Seen_Names [ Header_Name ] = Name_Count + 1;
+            Header_Name = $"{Header_Name} ({Name_Count + 1})";
+          }
+          else
+          {
+            Seen_Names [ Header_Name ] = 1;
+          }
+
 
           var Instr = new Instrument
           {
@@ -1854,14 +1813,17 @@ namespace Multimeter_Controller
           var S = new Instrument_Series
           {
             Instrument = Instr,
+          
             Line_Color = _Theme.Line_Colors [ I % _Theme.Line_Colors.Length ],
             Points = new List<(DateTime Time, double Value)> ( Data_Line_Count ),
             File_Stats = Sectioned_Stats != null && Sectioned_Stats.ContainsKey ( Header_Name )
-                                   ? Sectioned_Stats [ Header_Name ]
-                                   : null,
+                                ? Sectioned_Stats [ Header_Name ]
+                                : null,
           };
 
           _Series.Add ( S );
+
+        
         }
 
         // ── Parse data rows ───────────────────────────────────────────
@@ -1934,6 +1896,13 @@ namespace Multimeter_Controller
     private void Chart_Panel_Paint ( object? sender, PaintEventArgs e )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
+
+      var Stack = new System.Diagnostics.StackTrace ( true );
+      string Frames = string.Join ( "\n",
+          Stack.GetFrames ( )
+               .Select ( f => $"{f.GetMethod ( )?.DeclaringType?.Name}.{f.GetMethod ( )?.Name} line {f.GetFileLineNumber ( )}" ) );
+      System.IO.File.AppendAllText ( "paint_trace.txt", $"{DateTime.Now:HH:mm:ss.fff}\n{Frames}\n---\n" );
+
 
       if ( _File_Loading )
         return; // ← don't draw anything while loading
@@ -2383,6 +2352,8 @@ namespace Multimeter_Controller
 
         // Start async polling loop directly
         Start_Polling ( ); // ← this is all you need
+
+      
       }
       else
       {
@@ -2414,8 +2385,7 @@ namespace Multimeter_Controller
         Set_Button_State ( );
         Update_Performance_Status ( );
 
-        Run_Auto_Analysis_If_Enabled ( );
-      }
+      } 
     }
 
    
@@ -3212,22 +3182,27 @@ namespace Multimeter_Controller
 
     private void Show_Analysis_Popup ( )
     {
-      if ( _Series.Count < 2
-        || _Series [ 0 ].Points.Count == 0
-        || _Series [ 1 ].Points.Count == 0 )
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
+      if ( _Series.Count == 0 || _Series [ 0 ].Points.Count == 0 )
       {
-        Show_Progress ( "Analysis requires 2 loaded series.", Color.Orange );
+        Show_Progress ( "Analysis requires at least 1 loaded series.", Color.Orange );
         return;
       }
 
+      var Points_A = _Series [ 0 ].Points;
+      var Points_B = _Series.Count > 1 ? _Series [ 1 ].Points : null;
+      string Name_A = _Series [ 0 ].Name;
+      string Name_B = _Series.Count > 1 ? _Series [ 1 ].Name : "";
+
       var Popup = new Analysis_Popup_Form (
-          _Series [ 0 ].Points,
-          _Series [ 1 ].Points,
-          _Series [ 0 ].Name,
-          _Series [ 1 ].Name,
+          Points_A,
+          Points_B,
+          Name_A,
+          Name_B,
           _Theme
       );
-      Popup.Show ( this );   // non-modal so main window stays usable
+      Popup.ShowDialog ( this );
     }
 
     // ── Call from a button (wire in designer) ────────────────────────────────

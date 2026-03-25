@@ -245,6 +245,12 @@ namespace Multimeter_Controller
 
       using var Block = Trace_Block.Start_If_Enabled ( );
 
+      // Diagnostic — remove after finding the bad call site
+      if ( Settings == null )
+        throw new ArgumentNullException ( nameof ( Settings ), "Settings must not be null" );
+      if ( Settings.Current_Theme == null )
+        throw new ArgumentNullException ( "Settings.Current_Theme", "Theme must not be null — use Application_Settings.Load() not new Application_Settings()" );
+
 
       Chart_Panel_Control = Chart_Panel;
       Pan_Scrollbar_Control = Pan_Scrollbar;
@@ -265,7 +271,7 @@ namespace Multimeter_Controller
         return;
 
       _Settings = Settings;
-      _Theme = _Settings.Current_Theme;
+      _Theme = _Settings?.Current_Theme ?? Chart_Theme.Dark_Preset ( );
       Chart_Panel.BackColor = _Theme.Background;
 
       _Settings.Theme_Changed += ( s, e ) =>
@@ -517,7 +523,7 @@ namespace Multimeter_Controller
 
 
       // Needs instrument data specifically
-      Analyze_Instrument_Data_Button.Enabled = Has_Multi;
+      Analyze_Instrument_Data_Button.Enabled = Has_Data;
       Measurement_Combo.Enabled = Has_Data;
 
       // Needs timing specifically
@@ -1375,31 +1381,36 @@ namespace Multimeter_Controller
     }
 
 
-
-
-    private void Show_Analysis_Popup ( )
-    {
-      if ( _Series.Count < 2
-        || _Series [ 0 ].Points.Count == 0
-        || _Series [ 1 ].Points.Count == 0 )
-      {
-        Show_Progress ( "Analysis requires 2 loaded series.", Color.Orange );
-        return;
-      }
-
-      var Popup = new Analysis_Popup_Form (
-          _Series [ 0 ].Points,
-          _Series [ 1 ].Points,
-          _Series [ 0 ].Name,
-          _Series [ 1 ].Name,
-          _Theme
-      );
-      Popup.Show ( this );   // non-modal so main window stays usable
-    }
-
     // ── Call from a button (wire in designer) ────────────────────────────────
     private void Analyze_Instrument_Data_Button_Click ( object Sender, EventArgs E )
         => Show_Analysis_Popup ( );
+
+    private void Show_Analysis_Popup ( )
+    {
+      if ( _Series == null || _Series.Count == 0 || _Series [ 0 ].Points.Count == 0 )
+      {
+        Show_Progress ( "Analysis requires at least 1 series with data.", Color.Orange );
+        return;
+      }
+
+      var Points_A = _Series [ 0 ].Points;
+      var Points_B = _Series.Count > 1 && _Series [ 1 ].Points.Count > 0
+          ? _Series [ 1 ].Points
+          : null;
+      string Name_A = _Series [ 0 ].Name;
+      string Name_B = Points_B != null ? _Series [ 1 ].Name : "";
+
+      var Popup = new Analysis_Popup_Form (
+          Points_A,
+          Points_B,
+          Name_A,
+          Name_B,
+          _Theme
+      );
+      Popup.Show ( this );
+    }
+
+ 
 
 
   }

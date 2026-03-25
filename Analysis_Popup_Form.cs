@@ -134,7 +134,6 @@ namespace Multimeter_Controller
     private readonly List<double> _Deltas;
     private readonly List<double> _Delta_Ms;
     private readonly List<DateTime> _Times;
-    private readonly Chart_Theme _Theme;
 
     // ── Summary stats (computed once) ─────────────────────────────────
     private readonly double _Mean;
@@ -166,85 +165,128 @@ namespace Multimeter_Controller
 
     private readonly string [ ] _Tab_Help;
 
+    private readonly bool _Single_Series_Mode;
+
+    private readonly Chart_Theme _Theme;
 
 
     public Analysis_Popup_Form (
-        List<(DateTime Time, double Value)> Points_A,
-        List<(DateTime Time, double Value)> Points_B,
-        string Name_A,
-        string Name_B,
-        Chart_Theme Theme
-    )
+       List<(DateTime Time, double Value)> Points_A,
+       List<(DateTime Time, double Value)> Points_B,  // ← null for single series
+       string Name_A,
+       string Name_B,
+       Chart_Theme Theme
+   )
     {
-      _Points_A = Points_A;
-      _Points_B = Points_B;
+
+      // Guard against null theme at the very top
+      _Theme = Theme ?? Chart_Theme.Dark_Preset ( );
+
       _Name_A = Name_A;
       _Name_B = Name_B;
-      _Theme = Theme;
 
-      int Count = Math.Min ( Points_A.Count, Points_B.Count );
 
-      // ── Compute deltas ────────────────────────────────────────────
-      _Deltas = new List<double> ( Count );
+
+      bool Single_Series = Points_B == null || Points_B.Count == 0;
+
+      // For single series, use Points_A as both so delta = 0
+      // but skip delta computation and hide those tabs
+      _Points_A = Points_A;
+      _Points_B = Single_Series ? Points_A : Points_B;
+
+      int Count = Points_A.Count;
+      _Times = Points_A.Select ( p => p.Time ).ToList ( );
       _Delta_Ms = new List<double> ( Count );
-      _Times = new List<DateTime> ( Count );
 
       for ( int I = 0; I < Count; I++ )
-      {
-        _Deltas.Add ( Points_A [ I ].Value - Points_B [ I ].Value );
-        _Times.Add ( Points_A [ I ].Time );
         _Delta_Ms.Add ( I == 0 ? 0.0
             : ( Points_A [ I ].Time - Points_A [ I - 1 ].Time ).TotalMilliseconds );
+
+
+     
+      // ── Summary stats ─────────────────────────────────────────────
+      if ( !Single_Series )
+      {
+        int Delta_Count = Math.Min ( Points_A.Count, _Points_B.Count );  // ← local, don't touch Count
+
+        _Deltas = new List<double> ( Delta_Count );
+        for ( int I = 0; I < Delta_Count; I++ )
+          _Deltas.Add ( Points_A [ I ].Value - _Points_B [ I ].Value );
+
+        _Mean = _Deltas.Average ( );
+        double Var = _Deltas.Average ( D => ( D - _Mean ) * ( D - _Mean ) );
+        _StdDev = Math.Sqrt ( Var );
+        _Min = _Deltas.Min ( );
+        _Max = _Deltas.Max ( );
+        _Mean_uV = _Mean * 1e6;
+        _StdDev_uV = _StdDev * 1e6;
+        _Min_uV = _Min * 1e6;
+        _Max_uV = _Max * 1e6;
+        // rolling σ computation here too...
+      }
+      else
+      {
+        _Deltas = new List<double> ( );
+        _Mean = 0;
+        _StdDev = 0;
+        _Min = 0;
+        _Max = 0;
+        _Mean_uV = 0;
+        _StdDev_uV = 0;
+        _Min_uV = 0;
+        _Max_uV = 0;
       }
 
-      // ── Summary stats ─────────────────────────────────────────────
-      _Mean = _Deltas.Average ( );
-      double Var = _Deltas.Average ( D => ( D - _Mean ) * ( D - _Mean ) );
-      _StdDev = Math.Sqrt ( Var );
-      _Min = _Deltas.Min ( );
-      _Max = _Deltas.Max ( );
+      _Single_Series_Mode = Single_Series;
 
-      _Mean_uV = _Mean * 1e6;
-      _StdDev_uV = _StdDev * 1e6;
-      _Min_uV = _Min * 1e6;
-      _Max_uV = _Max * 1e6;
+     
 
-      // ── Timing stats ──────────────────────────────────────────────
+
+      // ── Timing stats — guard against empty ───────────────────────────────
       var Valid_Ms = _Delta_Ms.Skip ( 1 ).ToList ( );
-      _Mean_Delta_Ms = Valid_Ms.Average ( );
-      double T_Var = Valid_Ms.Average ( D => ( D - _Mean_Delta_Ms ) * ( D - _Mean_Delta_Ms ) );
-      _StdDev_Delta_Ms = Math.Sqrt ( T_Var );
-      _Max_Delta_Ms = Valid_Ms.Max ( );
-
-      // ── Rolling σ ─────────────────────────────────────────────────
-      const int Window = 100;
-      var Q = new Queue<double> ( );
-      double R_Sum = 0, R_Sum_Sq = 0;
-
-      foreach ( double D in _Deltas )
+      if ( Valid_Ms.Count > 0 )
       {
-        Q.Enqueue ( D );
-        R_Sum += D;
-        R_Sum_Sq += D * D;
+        _Mean_Delta_Ms = Valid_Ms.Average ( );
+        double T_Var = Valid_Ms.Average ( D => ( D - _Mean_Delta_Ms ) * ( D - _Mean_Delta_Ms ) );
+        _StdDev_Delta_Ms = Math.Sqrt ( T_Var );
+        _Max_Delta_Ms = Valid_Ms.Max ( );
+      }
+      else
+      {
+        _Mean_Delta_Ms = 0;
+        _StdDev_Delta_Ms = 0;
+        _Max_Delta_Ms = 0;
+      }
 
-        if ( Q.Count > Window )
+      // ── Rolling σ — only meaningful with delta data ───────────────────────
+      if ( !Single_Series )
+      {
+        const int Window = 100;
+        var Q = new Queue<double> ( );
+        double R_Sum = 0, R_Sum_Sq = 0;
+        foreach ( double D in _Deltas )
         {
-          double Old = Q.Dequeue ( );
-          R_Sum -= Old;
-          R_Sum_Sq -= Old * Old;
+          Q.Enqueue ( D );
+          R_Sum += D;
+          R_Sum_Sq += D * D;
+          if ( Q.Count > Window )
+          {
+            double Old = Q.Dequeue ( );
+            R_Sum -= Old;
+            R_Sum_Sq -= Old * Old;
+          }
+          int N = Q.Count;
+          double R_Mu = R_Sum / N;
+          double R_Var = ( R_Sum_Sq / N ) - ( R_Mu * R_Mu );
+          _Rolling_StdDev.Add ( R_Var > 0 ? Math.Sqrt ( R_Var ) : 0.0 );
         }
-
-        int N = Q.Count;
-        double R_Mu = R_Sum / N;
-        double R_Var = ( R_Sum_Sq / N ) - ( R_Mu * R_Mu );
-        _Rolling_StdDev.Add ( R_Var > 0 ? Math.Sqrt ( R_Var ) : 0.0 );
       }
 
 
       // ── Build help text ───────────────────────────────────────────
-      string C0 = Color_Name ( _Theme.Line_Colors [ 0 ] );
-      string C1 = Color_Name ( _Theme.Line_Colors [ 1 ] );
-      string Acc = Color_Name ( _Theme.Accent );
+      string C0 = _Theme.Line_Colors != null && _Theme.Line_Colors.Length > 0 ? Color_Name ( _Theme.Line_Colors [ 0 ] ) : "Blue";
+      string C1 = _Theme.Line_Colors != null && _Theme.Line_Colors.Length > 1 ? Color_Name ( _Theme.Line_Colors [ 1 ] ) : "Green";
+      string Acc = _Theme.Accent != default ? Color_Name ( _Theme.Accent ) : "Orange";
       string Red = "Red";
 
       _Tab_Help = new [ ]
@@ -337,26 +379,24 @@ namespace Multimeter_Controller
     // UI Construction
     // ─────────────────────────────────────────────────────────────────
 
+
+
     private void Build_UI ( )
     {
-      Text = $"Meter Comparison Analysis — {_Name_A}  vs  {_Name_B}";
+      Text = _Single_Series_Mode
+          ? $"Analysis — {_Name_A}"
+          : $"Meter Comparison Analysis — {_Name_A}  vs  {_Name_B}";
       Size = new Size ( 900, 620 );
       MinimumSize = new Size ( 700, 500 );
-     
       StartPosition = FormStartPosition.CenterParent;
-      this.Padding = new Padding ( 0 );
+      Padding = new Padding ( 0 );
 
       _Tabs = new TabControl
       {
         Dock = DockStyle.Fill,
-      
-        Padding = new Point ( 10, 3 ),   // optional: gives tab labels a little breathing room
+        Padding = new Point ( 10, 3 ),
+        SizeMode = TabSizeMode.Normal,
       };
-
-
-      // Push tabs flush to the top edge — eliminates the thin black gap
-      _Tabs.SizeMode = TabSizeMode.Normal;
-      Padding = new Padding ( 0, 0, 0, 0 );  // form padding
 
       _Delta_Panel = new Buffered_Panel ( );
       _Rolling_Panel = new Buffered_Panel ( );
@@ -372,48 +412,47 @@ namespace Multimeter_Controller
       _Raw_Panel.Paint += ( s, e ) => Draw_Raw_Chart ( e.Graphics );
       _Timing_Panel.Paint += ( s, e ) => Draw_Timing_Panel ( e.Graphics );
 
-      Add_Tab ( "Δ Delta", _Delta_Panel );
-      Add_Tab ( "Rolling σ", _Rolling_Panel );
+      // ── Delta tabs — only for two-series mode ────────────────────────
+      if ( !_Single_Series_Mode )
+      {
+        Add_Tab ( "Δ Delta", _Delta_Panel );
+        Add_Tab ( "Rolling σ", _Rolling_Panel );
+      }
 
-      // ── Stats tab — wrapped in scrollable panel ───────────────────────
+      // ── Summary Stats — scrollable, always shown ─────────────────────
       _Stats_Panel.Dock = DockStyle.None;
       _Stats_Panel.Size = new Size ( 860, 860 );
       _Stats_Panel.Anchor = AnchorStyles.Top | AnchorStyles.Left;
 
-      var Stats_Scroll = new Panel
-      {
-        Dock = DockStyle.Fill,
-        AutoScroll = true,
-      };
+      var Stats_Scroll = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
       Stats_Scroll.Controls.Add ( _Stats_Panel );
 
       var Stats_Page = new TabPage ( "Summary Stats" );
       Stats_Page.Controls.Add ( Stats_Scroll );
       _Tabs.TabPages.Add ( Stats_Page );
-      // ─────────────────────────────────────────────────────────────────
 
-      Add_Tab ( "Δ Distribution", _Histogram_Panel );
-      Add_Tab ( "Raw", _Raw_Panel );
+      // ── Remaining delta tabs ─────────────────────────────────────────
+      if ( !_Single_Series_Mode )
+      {
+        Add_Tab ( "Δ Distribution", _Histogram_Panel );
+        Add_Tab ( "Raw", _Raw_Panel );
+      }
+
+      // ── Poll Intervals — always shown ────────────────────────────────
       Add_Tab ( "Poll Intervals", _Timing_Panel );
 
-      // ── Bottom panel ────────────────────────────────────────────────
-      var Bottom_Panel = new Panel
-      {
-        Dock = DockStyle.Bottom,
-        Height = 36,
-      };
+      // ── Bottom panel ─────────────────────────────────────────────────
+      var Bottom_Panel = new Panel { Dock = DockStyle.Bottom, Height = 36 };
 
-      // "?" help button — explains the current tab
       var Help_Btn = new Button
       {
         Text = "?  What am I looking at?",
         Size = new Size ( 180, 26 ),
+        Location = new Point ( 8, 5 ),
         Anchor = AnchorStyles.Bottom | AnchorStyles.Left,
       };
       Help_Btn.Click += ( s, e ) => Show_Tab_Help ( );
-      Help_Btn.Location = new Point ( 8, 5 );
 
-      // Close button
       var Close_Btn = new Button
       {
         Text = "Close",
@@ -421,25 +460,37 @@ namespace Multimeter_Controller
         Anchor = AnchorStyles.Bottom | AnchorStyles.Right,
       };
       Close_Btn.Click += ( s, e ) => Close ( );
+      Close_Btn.Location = new Point ( Bottom_Panel.Width - 90, 5 );
 
       Bottom_Panel.Controls.Add ( Help_Btn );
       Bottom_Panel.Controls.Add ( Close_Btn );
-      Close_Btn.Location = new Point ( Bottom_Panel.Width - 90, 5 );
-      Close_Btn.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
 
       Controls.Add ( _Tabs );
       Controls.Add ( Bottom_Panel );
 
       _Tabs.SelectedIndexChanged += ( s, e ) =>
       {
-        var First = _Tabs.SelectedTab?.Controls [ 0 ];
+        var Tab = _Tabs.SelectedTab;
+        if ( Tab == null || Tab.Controls.Count == 0 )
+          return;
+        var First = Tab.Controls [ 0 ];
         if ( First is Buffered_Panel BP )
           BP.Invalidate ( );
-        else if ( First is Panel Scroll )
-          ( Scroll.Controls.Count > 0 ? Scroll.Controls [ 0 ] as Buffered_Panel : null )?.Invalidate ( );
+        else if ( First is Panel Scroll && Scroll.Controls.Count > 0 )
+          ( Scroll.Controls [ 0 ] as Buffered_Panel )?.Invalidate ( );
       };
     }
-  
+
+
+
+
+
+
+
+
+
+
+
     private void Add_Tab ( string Title, Panel Content )
     {
       var Page = new TabPage ( Title )
@@ -572,51 +623,53 @@ namespace Multimeter_Controller
 
       using var Title_Font = new Font ( "Segoe UI", 12f, FontStyle.Bold );
       using var Header_Font = new Font ( "Segoe UI", 10f, FontStyle.Bold );
-      using var Value_Font = new Font ( "Courier New", 11f );          // was Consolas 10f
-      using var Label_Font = new Font ( "Courier New", 11f );          // was Consolas 9f
-      using var Small_Font = new Font ( "Courier New", 9f );           // was Consolas 8f
-
+      using var Value_Font = new Font ( "Courier New", 11f );
       using var Fg_Brush = new SolidBrush ( SystemColors.ControlText );
       using var Dim_Brush = new SolidBrush ( SystemColors.GrayText );
-      using var Header_Brush = new SolidBrush ( SystemColors.ControlText );
+      using var Sep_Pen = new Pen ( _Theme.Grid, 1f );
 
       int Col1 = 40, Col2 = 260, Col3 = 500;
       int Y = 30;
-      int Row = 30;   // bumped from 28 to give Segoe UI a little more breathing room
+      int Row = 30;
 
-    
-
-      G.DrawString ( $"Comparison: {_Name_A}  vs  {_Name_B}", Title_Font, Fg_Brush, Col1, Y );
+      // ── Title ─────────────────────────────────────────────────────────
+      string Title = _Single_Series_Mode
+          ? $"Analysis: {_Name_A}"
+          : $"Comparison: {_Name_A}  vs  {_Name_B}";
+      G.DrawString ( Title, Title_Font, Fg_Brush, Col1, Y );
       Y += Row + 8;
 
-      // Section: Delta stats
-      G.DrawString ( "Δ  (A − B)", Header_Font, Fg_Brush, Col1, Y );
-      G.DrawString ( "Volts", Header_Font, Fg_Brush, Col2, Y );
-      G.DrawString ( "µV", Header_Font, Fg_Brush, Col3, Y );
-      Y += Row;
+      // ── Delta section ─────────────────────────────────────────────────
+      if ( _Single_Series_Mode )
+      {
+        G.DrawString ( "Δ (A − B) — N/A (single instrument)", Header_Font, Dim_Brush, Col1, Y );
+        Y += Row;
+        Draw_Stat_Row_Single ( G, Value_Font, Dim_Brush, Dim_Brush,
+            "No comparison data", "Two instruments required for delta analysis",
+            Col1, Col2, Y );
+        Y += Row * 2 + 16;
+      }
+      else
+      {
+        G.DrawString ( "Δ  (A − B)", Header_Font, Fg_Brush, Col1, Y );
+        G.DrawString ( "Volts", Header_Font, Fg_Brush, Col2, Y );
+        G.DrawString ( "µV", Header_Font, Fg_Brush, Col3, Y );
+        Y += Row;
+        Draw_Stat_Row ( G, Value_Font, Fg_Brush, Fg_Brush, "Mean", _Mean, _Mean_uV, Col1, Col2, Col3, Y );
+        Y += Row;
+        Draw_Stat_Row ( G, Value_Font, Fg_Brush, Fg_Brush, "σ", _StdDev, _StdDev_uV, Col1, Col2, Col3, Y );
+        Y += Row;
+        Draw_Stat_Row ( G, Value_Font, Fg_Brush, Fg_Brush, "Min", _Min, _Min_uV, Col1, Col2, Col3, Y );
+        Y += Row;
+        Draw_Stat_Row ( G, Value_Font, Fg_Brush, Fg_Brush, "Max", _Max, _Max_uV, Col1, Col2, Col3, Y );
+        Y += Row;
+        Draw_Stat_Row ( G, Value_Font, Fg_Brush, Fg_Brush, "Range", _Max - _Min, _Max_uV - _Min_uV, Col1, Col2, Col3, Y );
+        Y += Row + 16;
+      }
 
-      Draw_Stat_Row ( G, Value_Font, Fg_Brush, Fg_Brush,
-          "Mean", _Mean, _Mean_uV, Col1, Col2, Col3, Y );
-      Y += Row;
-      Draw_Stat_Row ( G, Value_Font, Fg_Brush, Fg_Brush,
-          "σ", _StdDev, _StdDev_uV, Col1, Col2, Col3, Y );
-      Y += Row;
-      Draw_Stat_Row ( G, Value_Font, Fg_Brush, Fg_Brush,
-          "Min", _Min, _Min_uV, Col1, Col2, Col3, Y );
-      Y += Row;
-      Draw_Stat_Row ( G, Value_Font, Fg_Brush, Fg_Brush,
-          "Max", _Max, _Max_uV, Col1, Col2, Col3, Y );
-      Y += Row;
-      Draw_Stat_Row ( G, Value_Font, Fg_Brush, Fg_Brush,
-          "Range", _Max - _Min, _Max_uV - _Min_uV, Col1, Col2, Col3, Y );
-      Y += Row + 16;
-
-      // Separator
-      using var Sep_Pen = new Pen ( _Theme.Grid, 1f );
+      // ── Sample Timing ─────────────────────────────────────────────────
       G.DrawLine ( Sep_Pen, Col1, Y, W - 40, Y );
       Y += 12;
-
-      // Section: Timing stats
       G.DrawString ( "Sample Timing", Header_Font, Fg_Brush, Col1, Y );
       Y += Row;
 
@@ -633,29 +686,28 @@ namespace Multimeter_Controller
           Col1, Col2, Y );
       Y += Row;
       Draw_Stat_Row_Single ( G, Value_Font, Fg_Brush, Fg_Brush,
-          "Point count", $"{_Deltas.Count:N0}",
+          "Point count", $"{_Times.Count:N0}",
           Col1, Col2, Y );
-
-
       Y += Row + 16;
 
-      // ── Separator ─────────────────────────────────────────────────────
+      // ── Polling Health ────────────────────────────────────────────────
       G.DrawLine ( Sep_Pen, Col1, Y, W - 40, Y );
       Y += 12;
-
       G.DrawString ( "Polling Health", Header_Font, Fg_Brush, Col1, Y );
       Y += Row;
 
       var Valid_Ms = _Delta_Ms.Skip ( 1 ).ToList ( );
       int N = Valid_Ms.Count;
 
+      double Baseline = 0, Threshold = 0, Slope_Total = 0, Pct_Slow = 0;
+      int Slowdown_Index = -1;
+
       if ( N > 2 )
       {
         var Early = Valid_Ms.Take ( 20 ).OrderBy ( V => V ).ToList ( );
-        double Baseline = Early [ Early.Count / 2 ];
-        double Threshold = Baseline * 1.2;
+        Baseline = Early [ Early.Count / 2 ];
+        Threshold = Baseline * 1.2;
 
-        int Slowdown_Index = -1;
         const int Sustain = 5;
         for ( int I = 0; I <= N - Sustain; I++ )
         {
@@ -673,7 +725,7 @@ namespace Multimeter_Controller
           }
         }
 
-        double Pct_Slow = Valid_Ms.Count ( V => V > Threshold ) * 100.0 / N;
+        Pct_Slow = Valid_Ms.Count ( V => V > Threshold ) * 100.0 / N;
         double Peak_Ms = Valid_Ms.Max ( );
 
         double X_Mean = ( N - 1 ) / 2.0;
@@ -684,7 +736,8 @@ namespace Multimeter_Controller
           Num += ( I - X_Mean ) * ( Valid_Ms [ I ] - Y_Mean );
           Den += ( I - X_Mean ) * ( I - X_Mean );
         }
-        double Slope_Total = Den > 0 ? ( Num / Den ) * N : 0;
+        Slope_Total = Den > 0 ? ( Num / Den ) * N : 0;
+
         string Trend =
             Math.Abs ( Slope_Total ) < 0.5 ? "Flat — stable polling" :
             Slope_Total > 0
@@ -692,14 +745,12 @@ namespace Multimeter_Controller
                 : $"Improving  ({Slope_Total:F1} ms over session)";
 
         Draw_Stat_Row_Single ( G, Value_Font, Fg_Brush, Dim_Brush,
-            "Baseline interval",
-            $"{Baseline:F2} ms   ({1000.0 / Baseline:F1} S/s)",
+            "Baseline interval", $"{Baseline:F2} ms   ({1000.0 / Baseline:F1} S/s)",
             Col1, Col2, Y );
         Y += Row;
 
         Draw_Stat_Row_Single ( G, Value_Font, Fg_Brush, Dim_Brush,
-            "Slowdown threshold",
-            $"{Threshold:F2} ms   (+20%)",
+            "Slowdown threshold", $"{Threshold:F2} ms   (+20%)",
             Col1, Col2, Y );
         Y += Row;
 
@@ -715,21 +766,99 @@ namespace Multimeter_Controller
             Pct_Slow > 10 ? Color.OrangeRed :
             Pct_Slow > 2 ? Color.Orange :
                             SystemColors.ControlText );
+        string Pct_Str = Pct_Slow < 0.1 && Pct_Slow > 0 ? $"{Pct_Slow:F3}%" : $"{Pct_Slow:F1}%";
         Draw_Stat_Row_Single ( G, Value_Font, Slow_Brush, Dim_Brush,
-            "Slow cycles",
-            $"{Pct_Slow:F1}%   ({Valid_Ms.Count ( V => V > Threshold ):N0} of {N:N0})",
+            "Slow cycles", $"{Pct_Str}   ({Valid_Ms.Count ( V => V > Threshold ):N0} of {N:N0})",
             Col1, Col2, Y );
         Y += Row;
 
         Draw_Stat_Row_Single ( G, Value_Font, Fg_Brush, Dim_Brush,
-            "Peak interval",
-            $"{Peak_Ms:F1} ms   ({Peak_Ms / Baseline:F1}x baseline)",
+            "Peak interval", $"{Peak_Ms:F1} ms   ({Peak_Ms / Baseline:F1}x baseline)",
             Col1, Col2, Y );
         Y += Row;
 
         Draw_Stat_Row_Single ( G, Value_Font, Fg_Brush, Dim_Brush,
             "Trend", Trend,
             Col1, Col2, Y );
+        Y += Row;
+      }
+
+      // ── Interpretation ────────────────────────────────────────────────
+      Y += 6;
+      G.DrawLine ( Sep_Pen, Col1, Y, W - 40, Y );
+      Y += 12;
+      G.DrawString ( "Interpretation", Header_Font, Fg_Brush, Col1, Y );
+      Y += Row;
+
+      using var Interp_Font = new Font ( "Segoe UI", 9f );
+      using var Interp_Dim = new SolidBrush ( _Theme.Labels );
+
+      if ( N > 2 )
+      {
+        string Thresh_Text =
+            $"Slowdown threshold: {Threshold:F2} ms (+20%) means the baseline polling " +
+            $"interval is {Baseline:F2} ms, and any cycle taking longer than " +
+            $"{Threshold:F2} ms is flagged as slow.";
+        Draw_Wrapped_Text ( G, Interp_Font, Interp_Dim, Thresh_Text, Col1 + 16, ref Y, W - 80, Row );
+        Y += 6;
+
+        int Slow_Count = Valid_Ms.Count ( V => V > Threshold );
+        string Pct_Str2 = Pct_Slow < 0.1 && Pct_Slow > 0 ? $"{Pct_Slow:F3}%" : $"{Pct_Slow:F1}%";
+        string Health =
+            Pct_Slow == 0 ? "Polling was perfectly consistent — no slow cycles detected." :
+            Pct_Slow < 1 ? $"Polling was excellent — only {Slow_Count} of {N:N0} cycles exceeded the threshold ({Pct_Str2})." :
+            Pct_Slow < 10 ? $"Polling was mostly consistent — {Slow_Count} of {N:N0} cycles were slow ({Pct_Str2})." :
+                            $"Polling had significant slowdowns — {Slow_Count} of {N:N0} cycles exceeded the threshold ({Pct_Str2}).";
+        Draw_Wrapped_Text ( G, Interp_Font, Interp_Dim, Health, Col1 + 16, ref Y, W - 80, Row );
+        Y += 6;
+
+        string Trend_Text = Math.Abs ( Slope_Total ) < 0.5
+            ? "Trend: Polling speed was stable throughout the session."
+            : Slope_Total > 0
+                ? $"Trend: Polling gradually slowed by {Slope_Total:F1} ms over the session — this may indicate system load increasing over time."
+                : $"Trend: Polling speed improved by {Math.Abs ( Slope_Total ):F1} ms over the session.";
+        Draw_Wrapped_Text ( G, Interp_Font, Interp_Dim, Trend_Text, Col1 + 16, ref Y, W - 80, Row );
+      }
+      else
+      {
+        Draw_Wrapped_Text ( G, Interp_Font, Interp_Dim,
+            "Not enough data for polling health analysis — need at least 3 intervals.",
+            Col1 + 16, ref Y, W - 80, Row );
+      }
+    }
+
+
+    private void Draw_Wrapped_Text (
+    Graphics G, Font F, Brush B,
+    string Text, int X, ref int Y, int Max_Width, int Line_Height )
+    {
+      if ( string.IsNullOrEmpty ( Text ) )
+        return;
+
+      var Words = Text.Split ( ' ' );
+      var Line = new System.Text.StringBuilder ( );
+
+      foreach ( string Word in Words )
+      {
+        string Test = Line.Length == 0 ? Word : Line + " " + Word;
+
+        if ( G.MeasureString ( Test, F ).Width > Max_Width && Line.Length > 0 )
+        {
+          G.DrawString ( Line.ToString ( ), F, B, X, Y );
+          Y += Line_Height - 10;
+          Line.Clear ( );
+        }
+
+        if ( Line.Length > 0 )
+          Line.Append ( ' ' );
+        Line.Append ( Word );
+      }
+
+      // Draw the last remaining line
+      if ( Line.Length > 0 )
+      {
+        G.DrawString ( Line.ToString ( ), F, B, X, Y );
+        Y += Line_Height - 10;
       }
     }
 

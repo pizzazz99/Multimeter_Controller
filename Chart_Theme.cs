@@ -96,7 +96,16 @@ namespace Multimeter_Controller
 
 
 
-
+    public Color [ ] Line_Colors
+    {
+      get; set;
+    } = new Color [ ]
+{
+    Color.MediumSeaGreen,
+    Color.CornflowerBlue,
+    Color.SandyBrown,
+    Color.MediumOrchid,
+};
 
     public Color Accent
     {
@@ -122,14 +131,11 @@ namespace Multimeter_Controller
     {
       get; set;
     }
-    public Color [ ] Line_Colors
-    {
-      get; set;
-    }
 
-    public string Name { get; set; } = "";
 
-  
+    public string Name { get; set; } = "Dark";
+
+
 
     public void Copy_From ( Chart_Theme Other )
     {

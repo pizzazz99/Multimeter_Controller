@@ -191,10 +191,7 @@ namespace Multimeter_Controller
 
   public class Instrument_Series
   {
-    public Instrument Instrument
-    {
-      get; set;
-    }
+    public Instrument Instrument { get; set; } = new Instrument ( );
 
     public decimal NPLC
     {
@@ -204,7 +201,7 @@ namespace Multimeter_Controller
 
     public int Disconnect_Count { get; set; } = 0;
     public int Comm_Error_Count { get; set; } = 0;
-    public string Name => Instrument.Name;
+    public string Name => Instrument?.Name ?? "";
 
     public string Role => Instrument.Meter_Roll;
     public int Address => Instrument.Address;
@@ -246,15 +243,6 @@ namespace Multimeter_Controller
         : 0;
 
 
-
-
-    // ── In Instrument_Series ─────────────────────────────────────────────
-
-
-
-   
-
-  
 
 
     // ── Incremental stats ────────────────────────────────────────────

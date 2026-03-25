@@ -307,16 +307,19 @@ namespace Multimeter_Controller
 
       _Chart_Refresh_Timer = new System.Windows.Forms.Timer ( );
       _Chart_Refresh_Timer.Interval = Math.Max ( 50, _Settings.Chart_Refresh_Rate_Ms );
+
       _Chart_Refresh_Timer.Tick += ( s, e ) =>
       {
         if ( Chart_Panel_Control == null )
           return;
-
-        Chart_Panel_Control.Invalidate ( );
-
         if ( _Is_Running_State ( ) )
         {
+          Chart_Panel_Control.Invalidate ( );
           On_Chart_Refresh_Tick ( );
+        }
+        else
+        {
+          _Chart_Refresh_Timer?.Stop ( );  // self-healing safety net
         }
       };
     }
@@ -747,7 +750,7 @@ namespace Multimeter_Controller
       Chart_Panel_Control.Invalidate ( );
     }
 
-  
+
 
     protected void Max_Points_Numeric_ValueChanged ( object? sender, EventArgs e )
     {
@@ -760,7 +763,7 @@ namespace Multimeter_Controller
         return;
       }
 
-      if ( _Enable_Rolling && _Is_Running_State ( ) )
+      if ( _Enable_Rolling )  // ← removed _Is_Running_State() check
       {
         foreach ( var S in _Series )
         {
@@ -768,6 +771,7 @@ namespace Multimeter_Controller
             S.Points.RemoveRange ( 0, S.Points.Count - _Max_Display_Points );
         }
       }
+
       Chart_Panel_Control.Invalidate ( );
     }
 
@@ -3123,7 +3127,7 @@ namespace Multimeter_Controller
       Chart_Panel_Control.Invalidate ( );
     }
 
-    protected void Show_Analysis_Results ( List<Instrument_Series> Series )
+    protected void old_Show_Analysis_Results ( List<Instrument_Series> Series )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
 
@@ -3195,6 +3199,103 @@ namespace Multimeter_Controller
 
       Dlg.Show ( this );   // non-modal so user can still interact with the chart
     }
+
+
+
+
+    protected void Show_Analysis_Results ( List<Instrument_Series> Series )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+      var Dlg = new Form
+      {
+        Text = "Auto Analysis Results",
+        Size = new Size ( 560, 600 ),
+        MinimumSize = new Size ( 400, 350 ),
+        StartPosition = FormStartPosition.CenterParent,
+        FormBorderStyle = FormBorderStyle.Sizable,
+        BackColor = SystemColors.Control,
+      };
+
+      var Header = new Panel
+      {
+        Dock = DockStyle.Top,
+        Height = 48,
+        BackColor = Color.FromArgb ( 45, 45, 48 ),
+      };
+      Header.Controls.Add ( new Label
+      {
+        Text = "Auto Analysis Results",
+        ForeColor = Color.White,
+        Font = new Font ( "Segoe UI", 13f, FontStyle.Bold ),
+        Dock = DockStyle.Fill,
+        TextAlign = ContentAlignment.MiddleLeft,
+        Padding = new Padding ( 16, 0, 0, 0 ),
+      } );
+
+      var Rtb = new RichTextBox
+      {
+        Dock = DockStyle.Fill,
+        ReadOnly = true,
+        BorderStyle = BorderStyle.None,
+        BackColor = SystemColors.Control,
+        Font = new Font ( "Consolas", 9.5f ),
+        ScrollBars = RichTextBoxScrollBars.Vertical,
+        Padding = new Padding ( 12 ),
+      };
+      Build_Analysis_Rtb ( Rtb, Series );
+
+      var Footer = new Panel
+      {
+        Dock = DockStyle.Bottom,
+        Height = 44,
+        BackColor = SystemColors.ControlLight,
+      };
+
+      var Close_Btn = new Button
+      {
+        Text = "Close",
+        Size = new Size ( 88, 28 ),
+        Anchor = AnchorStyles.Top | AnchorStyles.Right,
+      };
+      Close_Btn.Click += ( s, e ) => Dlg.Close ( );
+
+      // ── Deep analysis button ──────────────────────────────────────────
+      var Deep_Btn = new Button
+      {
+        Text = "Deep Analysis...",
+        Size = new Size ( 120, 28 ),
+        Location = new Point ( 8, 8 ),
+        Anchor = AnchorStyles.Top | AnchorStyles.Left,
+      };
+      Deep_Btn.Click += ( s, e ) =>
+      {
+        var Points_A = Series [ 0 ].Points;
+        var Points_B = Series.Count > 1 ? Series [ 1 ].Points : null;
+        string Name_A = Series [ 0 ].Name;
+        string Name_B = Series.Count > 1 ? Series [ 1 ].Name : "";
+
+        var Popup = new Analysis_Popup_Form (
+            Points_A,
+            Points_B,
+            Name_A,
+            Name_B,
+            _Theme
+        );
+        Popup.ShowDialog ( Dlg );
+      };
+
+      Footer.Controls.Add ( Close_Btn );
+      Footer.Controls.Add ( Deep_Btn );
+
+      Dlg.Controls.Add ( Rtb );
+      Dlg.Controls.Add ( Footer );
+      Dlg.Controls.Add ( Header );
+      Dlg.Shown += ( s, e ) => Close_Btn.Location = new Point ( Footer.Width - 100, 8 );
+      Dlg.Resize += ( s, e ) => Close_Btn.Location = new Point ( Footer.Width - 100, 8 );
+      Dlg.Show ( this );
+    }
+
+
 
     private void Build_Analysis_Rtb ( RichTextBox Rtb, List<Instrument_Series> Series )
     {

@@ -109,11 +109,17 @@ namespace Multimeter_Controller
     private bool _Cleanup_Done = false;
     private NPLC_Info_Form? _NPLC_Info_Form;
     private Session_Settings_Form? _Session_Settings_Form;
+    private bool _Adding_Instrument = false;      // true while async add is in progress
+    
+
 
     public Form1 ( )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
       InitializeComponent ( );
+
+
+      
 
       // Populate instrument type combo first, then set selection
       _Updating_Controls = true;
@@ -146,6 +152,8 @@ namespace Multimeter_Controller
       Subnet_Textbox.Text = _Settings.Network_Scan_Subnet;
       Capture_Trace.Write ( $"Subnet set to : [{_Settings.Network_Scan_Subnet}]" );
       Capture_Trace.Write ( $"Control name  : [{Subnet_Textbox.Name}]" );
+
+      Instruments_List.SelectedIndexChanged += Instruments_List_SelectedIndexChanged;
 
       Set_Button_State ( );
     }
@@ -439,35 +447,6 @@ namespace Multimeter_Controller
 
 
 
-    private void old_Multi_Poll_Button_Click ( object sender, EventArgs e )
-    {
-      using var Block = Trace_Block.Start_If_Enabled ( );
-      Cursor = Cursors.WaitCursor;
-      if ( _Instruments.Count == 0 )
-      {
-        MessageBox.Show (
-            "No instruments configured. Please scan for instruments first.",
-            "No Instruments",
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Warning );
-        Cursor = Cursors.Default;
-        return;
-      }
-
-      var Cloned = _Instruments.Select ( Ins => new Instrument
-      {
-        Name = $"{Ins.Name}",
-        Address = Ins.Address,
-        Type = Ins.Type,
-        Visible = Ins.Visible,
-        NPLC = Ins.NPLC,
-        Meter_Roll = Ins.Meter_Roll
-      } ).ToList ( );
-
-      var Form = new Multi_Instrument_Poll_Form ( _Comm, Cloned, _Settings, _Selected_Meter );
-      Cursor = Cursors.Default;
-      Form.Show ( );
-    }
 
     private void Multi_Poll_Button_Click ( object Sender, EventArgs E )
     {
@@ -537,10 +516,15 @@ namespace Multimeter_Controller
 
       int Address = (int) GPIB_Address_Numeric.Value;
       Meter_Type Type = Meter_Type_Extensions.From_Combo_Index ( Instrument_Type_Combo.SelectedIndex );
+
+      Capture_Trace.Write ( $"Type captured on entry: {Type}  ComboIndex: {Instrument_Type_Combo.SelectedIndex}" );
+
       string Name = Instrument_Name_Text.Text.Trim ( );
 
+      string Default_Name = Meter_Type_Extensions.Get_Name ( Type );  // ← capture before await
+
       if ( string.IsNullOrEmpty ( Name ) )
-        Name = Meter_Type_Extensions.Get_Name ( Type );
+        Name = Default_Name;
 
       // ── Duplicate address check ───────────────────────────────────────
       if ( _Instruments.Any ( i => i.Address == Address ) )
@@ -584,8 +568,13 @@ namespace Multimeter_Controller
 
             Meter_Type Detected = Multimeter_Common_Helpers_Class.Get_Meter_Type ( ID_Response );
 
+            // Always accept Generic_GPIB — no point asking the user
+            if ( Detected == Meter_Type.Generic_GPIB )
+            {
+              Append_Response ( $"[Instrument at address {Address} did not respond to *IDN? — added as {Meter_Type_Extensions.Get_Name ( Type )}]" );
+            }
             // ── Type mismatch check ───────────────────────────────────
-            if ( Detected != Meter_Type.Generic_GPIB && Detected != Type )
+            else if ( Detected != Type )
             {
               string Detected_Name = Meter_Type_Extensions.Get_Name ( Detected );
               string Selected_Name = Meter_Type_Extensions.Get_Name ( Type );
@@ -622,8 +611,7 @@ namespace Multimeter_Controller
             }
 
             // ── Update name to match final type if still at default ───
-            if ( Name == Meter_Type_Extensions.Get_Name (
-                Meter_Type_Extensions.From_Combo_Index ( Instrument_Type_Combo.SelectedIndex ) ) )
+            if ( Name == Default_Name )
               Name = Meter_Type_Extensions.Get_Name ( Type );
           }
         }
@@ -647,6 +635,8 @@ namespace Multimeter_Controller
         Capture_Trace.Write ( $"NPLC overridden by user: {Default_NPLC} → {NPLC}" );
         Append_Response ( $"[Note: NPLC set to {NPLC} (default is {Default_NPLC})]" );
       }
+
+      Capture_Trace.Write ( $"Creating instrument: Type={Type}  Name={Name}  Address={Address}" );
 
       var Inst = new Instrument
       {
@@ -673,9 +663,10 @@ namespace Multimeter_Controller
       finally
       {
         Roll_Name_Textbox.Enabled = false;
+        _Selected_Index = _Instruments.IndexOf ( Inst );  // ← select the newly added instrument
         Refresh_Instrument_List ( );
         Set_Button_State ( );
-        Populate_Command_List ( );
+        //   Populate_Command_List ( );
         Cursor = Cursors.Default;
       }
     }
@@ -686,16 +677,23 @@ namespace Multimeter_Controller
 
     private void Refresh_Instrument_List ( )
     {
-
       using var Block = Trace_Block.Start_If_Enabled ( );
+
+      Instruments_List.SelectedIndexChanged -= Instruments_List_SelectedIndexChanged;
 
       Instruments_List.DataSource = null;
       Instruments_List.DataSource = _Instruments
           .Where ( i => i.Visible )
           .ToList ( );
       Instruments_List.DisplayMember = "Display";
-    }
 
+      if ( _Selected_Index >= 0 && _Selected_Index < Instruments_List.Items.Count )
+        Instruments_List.SelectedIndex = _Selected_Index;
+
+      Instruments_List.SelectedIndexChanged += Instruments_List_SelectedIndexChanged;  // ← resubscribe first
+
+      Instruments_List_SelectedIndexChanged ( this, EventArgs.Empty );  // ← then fire once manually
+    }
 
     public void Set_GPID_Controls ( bool State )
     {
@@ -734,19 +732,17 @@ namespace Multimeter_Controller
     private void Instrument_Type_Combo_SelectedIndexChanged ( object Sender, EventArgs E )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
-
       if ( _Updating_Controls )
         return;
-
+      if ( _Adding_Instrument )   // ← don't stomp combo while async add is running
+        return;
       _Selected_Meter = Meter_Type_Extensions.From_Combo_Index ( Instrument_Type_Combo.SelectedIndex );
       _Comm.Connected_Meter = _Selected_Meter;
       _All_Commands = Command_Dictionary_Class.Get_All_Commands ( _Selected_Meter );
-
       Command_List_Label.Text = $"{_Selected_Meter.Get_Name ( )} Commands";
-      Instrument_Name_Text.Text = _Selected_Meter.Get_Name ( );  // ← updates on every selection
+      Instrument_Name_Text.Text = _Selected_Meter.Get_Name ( );
       Detail_Text_Box.Text = "";
       Send_Command_Text_Box.Text = "";
-
       Load_NPLC_Combo ( _Selected_Meter );
     }
 
@@ -886,13 +882,18 @@ namespace Multimeter_Controller
 
 
 
-    private void Remove_Instrument_Button_Click (
-      object Sender, EventArgs E )
+    private void Remove_Instrument_Button_Click ( object Sender, EventArgs E )
     {
+      using var Block = Trace_Block.Start_If_Enabled ( );
       int Index = Instruments_List.SelectedIndex;
       if ( Index < 0 )
-      {
         return;
+
+      bool Removing_Active = ( _Instruments [ Index ].Type == _Selected_Meter );
+      if ( Removing_Active )
+      {
+        Command_List.Items.Clear ( );
+        Command_List_Label.Text = "Commands";   // ← reset title when active removed
       }
 
       _Instruments.RemoveAt ( Index );
@@ -903,27 +904,53 @@ namespace Multimeter_Controller
     private void Select_Instrument_Button_Click ( object Sender, EventArgs E )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
+
       int Index = Instruments_List.SelectedIndex;
+
+      Capture_Trace.Write ( $"Index -> {Index}" );
+
+
       if ( Index < 0 || Index >= _Instruments.Count )
         return;
 
+      _Selected_Index = Index;   // ← this is the only thing this method adds
+      Instruments_List_SelectedIndexChanged ( Sender, E );
+    }
+
+    private void Instruments_List_SelectedIndexChanged ( object? Sender, EventArgs E )
+    {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
+      if ( Instruments_List.SelectedItem is not Instrument Instrument )
+        return;
+
+      Command_List.BeginUpdate ( );
+
+      //_Selected_Index = _Instruments.IndexOf ( Instrument );  // ← true index in master list
+
+      int Index = Instruments_List.SelectedIndex;
       _Selected_Index = Index;
-      var Instrument = _Instruments [ Index ];
+
+
       _Selected_Meter = Instrument.Type;
       _Selected_Address = Instrument.Address;
-
       _Comm.Change_GPIB_Address ( Instrument.Address );
+      _Comm.Connected_Meter = _Selected_Meter;
+      _All_Commands = Command_Dictionary_Class.Get_All_Commands ( _Selected_Meter );
 
       _Updating_Controls = true;
       Instrument_Type_Combo.SelectedIndex = _Selected_Meter.To_Combo_Index ( );
-      Load_NPLC_Combo ( _Selected_Meter, Instrument.NPLC );  // restore this instrument's NPLC
+      Load_NPLC_Combo ( _Selected_Meter, Instrument.NPLC );
       _Updating_Controls = false;
 
+    
+
+      Capture_Trace.Write ( $"Meter: {_Selected_Meter}  Commands: {_All_Commands?.Count}" );
       Populate_Command_List ( );
+      Command_List_Label.Text = $"{Instrument.Name} Commands";
+
+      Command_List.EndUpdate ( );
     }
-
-
-
 
     private async void Scan_Bus_Button_Click ( object sender, EventArgs e )
     {
@@ -2047,7 +2074,7 @@ namespace Multimeter_Controller
         Capture_Trace.Write ( $"NPLC set to default {NPLC} for {Inst.Name}" );
       }
 
-      Update_NPLC_Display ( );   // refresh integration/settle time labels if you have them
+    
 
       _Settings.Default_NPLC = NPLC.ToString ( CultureInfo.InvariantCulture );
       _Settings.Save ( );
@@ -2092,15 +2119,7 @@ namespace Multimeter_Controller
     }
 
 
-    private void Update_NPLC_Display ( )
-    {
-      if ( _Selected_Index < 0 || _Selected_Index >= _Instruments.Count )
-        return;
-
-      // Nothing to display on main form — NPLC data shown on polling form only
-      // Just ensure the instrument list reflects the change
-      Refresh_Instrument_List ( );
-    }
+  
 
 
     private void Roll_Name_Textbox_Leave ( object sender, EventArgs e )
@@ -2124,7 +2143,7 @@ namespace Multimeter_Controller
     {
 
       using var Block = Trace_Block.Start_If_Enabled ( );
-
+    
       Cursor = Cursors.WaitCursor;
 
       var Form = new Recording_Playback_Form ( _Settings );

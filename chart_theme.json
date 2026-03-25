@@ -1,18 +1,13 @@
 {
-    "_comment": "Chart theme for Multimeter Controller. Edit colors as KnownColor names or #RRGGBB hex. Loaded by Chart_Theme.Load() — see Chart_Theme.cs.",
-    "Name": "Dark",
-    "..."
-}
-{
   "Name": "Dark",
-  "Background": "WhiteSmoke",
+  "Background": "LightYellow",
   "Foreground": "#1E1E1E",
   "Accent": "DarkGoldenrod",
-  "Grid": "#D2D7DC",
-  "Labels": "#3C4650",
-  "Separator": "Silver",
-  "Line_1": "ForestGreen",
-  "Line_2": "RoyalBlue",
-  "Line_3": "DarkOrange",
-  "Line_4": "MediumPurple"
+  "Grid": "Goldenrod",
+  "Labels": "Black",
+  "Separator": "DarkKhaki",
+  "Line_1": "Orange",
+  "Line_2": "Goldenrod",
+  "Line_3": "OliveDrab",
+  "Line_4": "DarkOrange"
 }

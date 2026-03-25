@@ -120,7 +120,7 @@ namespace Multimeter_Controller
       Command_List.HorizontalScrollbar = true;
       Command_List.Location = new Point ( 12, 32 );
       Command_List.Name = "Command_List";
-      Command_List.Size = new Size ( 184, 199 );
+      Command_List.Size = new Size ( 184, 244 );
       Command_List.TabIndex = 2;
       Command_List.SelectedIndexChanged +=  Command_List_Selected_Index_Changed ;
       // 
@@ -139,7 +139,7 @@ namespace Multimeter_Controller
       // Open_Dictionary_Button
       // 
       Open_Dictionary_Button.Anchor =   AnchorStyles.Bottom  |  AnchorStyles.Left ;
-      Open_Dictionary_Button.Location = new Point ( 65, 239 );
+      Open_Dictionary_Button.Location = new Point ( 65, 295 );
       Open_Dictionary_Button.Name = "Open_Dictionary_Button";
       Open_Dictionary_Button.Size = new Size ( 72, 35 );
       Open_Dictionary_Button.TabIndex = 11;
@@ -199,7 +199,7 @@ namespace Multimeter_Controller
       Connection_Group.Controls.Add ( Connection_Status_Label );
       Connection_Group.Location = new Point ( 1080, 12 );
       Connection_Group.Name = "Connection_Group";
-      Connection_Group.Size = new Size ( 248, 520 );
+      Connection_Group.Size = new Size ( 248, 576 );
       Connection_Group.TabIndex = 15;
       Connection_Group.TabStop = false;
       Connection_Group.Text = "Connection Settings";
@@ -509,7 +509,7 @@ namespace Multimeter_Controller
       Response_Text_Box.Name = "Response_Text_Box";
       Response_Text_Box.ReadOnly = true;
       Response_Text_Box.ScrollBars = ScrollBars.Vertical;
-      Response_Text_Box.Size = new Size ( 622, 164 );
+      Response_Text_Box.Size = new Size ( 622, 220 );
       Response_Text_Box.TabIndex = 10;
       // 
       // Instruments_Group
@@ -535,7 +535,7 @@ namespace Multimeter_Controller
       Instruments_Group.Controls.Add ( Multi_Poll_Button );
       Instruments_Group.Location = new Point ( 830, 12 );
       Instruments_Group.Name = "Instruments_Group";
-      Instruments_Group.Size = new Size ( 240, 520 );
+      Instruments_Group.Size = new Size ( 240, 576 );
       Instruments_Group.TabIndex = 14;
       Instruments_Group.TabStop = false;
       Instruments_Group.Text = "GPIB Instruments";
@@ -673,14 +673,14 @@ namespace Multimeter_Controller
       Instruments_List.Anchor =     AnchorStyles.Top  |  AnchorStyles.Bottom   |  AnchorStyles.Left   |  AnchorStyles.Right ;
       Instruments_List.Location = new Point ( 15, 287 );
       Instruments_List.Name = "Instruments_List";
-      Instruments_List.Size = new Size ( 210, 184 );
+      Instruments_List.Size = new Size ( 210, 229 );
       Instruments_List.TabIndex = 10;
       Instruments_List.DoubleClick +=  Select_Instrument_Button_Click ;
       // 
       // Select_Instrument_Button
       // 
       Select_Instrument_Button.Anchor =    AnchorStyles.Bottom  |  AnchorStyles.Left   |  AnchorStyles.Right ;
-      Select_Instrument_Button.Location = new Point ( 39, 484 );
+      Select_Instrument_Button.Location = new Point ( 39, 540 );
       Select_Instrument_Button.Name = "Select_Instrument_Button";
       Select_Instrument_Button.Size = new Size ( 165, 30 );
       Select_Instrument_Button.TabIndex = 11;
@@ -690,7 +690,6 @@ namespace Multimeter_Controller
       // 
       // Multi_Poll_Button
       // 
-      Multi_Poll_Button.Anchor =   AnchorStyles.Bottom  |  AnchorStyles.Left ;
       Multi_Poll_Button.Location = new Point ( 16, 214 );
       Multi_Poll_Button.Name = "Multi_Poll_Button";
       Multi_Poll_Button.Size = new Size ( 71, 45 );
@@ -722,7 +721,7 @@ namespace Multimeter_Controller
       // Meter_Info_Button
       // 
       Meter_Info_Button.Anchor =   AnchorStyles.Bottom  |  AnchorStyles.Left ;
-      Meter_Info_Button.Location = new Point ( 25, 383 );
+      Meter_Info_Button.Location = new Point ( 25, 439 );
       Meter_Info_Button.Name = "Meter_Info_Button";
       Meter_Info_Button.Size = new Size ( 72, 56 );
       Meter_Info_Button.TabIndex = 18;
@@ -733,7 +732,7 @@ namespace Multimeter_Controller
       // Settings_Button
       // 
       Settings_Button.Anchor =   AnchorStyles.Bottom  |  AnchorStyles.Left ;
-      Settings_Button.Location = new Point ( 25, 445 );
+      Settings_Button.Location = new Point ( 25, 501 );
       Settings_Button.Name = "Settings_Button";
       Settings_Button.Size = new Size ( 72, 35 );
       Settings_Button.TabIndex = 19;
@@ -744,7 +743,7 @@ namespace Multimeter_Controller
       // Reset_Defaults_Button
       // 
       Reset_Defaults_Button.Anchor =   AnchorStyles.Bottom  |  AnchorStyles.Left ;
-      Reset_Defaults_Button.Location = new Point ( 103, 445 );
+      Reset_Defaults_Button.Location = new Point ( 103, 501 );
       Reset_Defaults_Button.Name = "Reset_Defaults_Button";
       Reset_Defaults_Button.Size = new Size ( 72, 38 );
       Reset_Defaults_Button.TabIndex = 20;
@@ -754,7 +753,7 @@ namespace Multimeter_Controller
       // Button_Show_Execution_Trace
       // 
       Button_Show_Execution_Trace.Anchor =   AnchorStyles.Bottom  |  AnchorStyles.Left ;
-      Button_Show_Execution_Trace.Location = new Point ( 103, 489 );
+      Button_Show_Execution_Trace.Location = new Point ( 103, 545 );
       Button_Show_Execution_Trace.Name = "Button_Show_Execution_Trace";
       Button_Show_Execution_Trace.Size = new Size ( 72, 38 );
       Button_Show_Execution_Trace.TabIndex = 21;
@@ -765,7 +764,7 @@ namespace Multimeter_Controller
       // Session_Settings_Button
       // 
       Session_Settings_Button.Anchor =   AnchorStyles.Bottom  |  AnchorStyles.Left ;
-      Session_Settings_Button.Location = new Point ( 25, 489 );
+      Session_Settings_Button.Location = new Point ( 25, 545 );
       Session_Settings_Button.Name = "Session_Settings_Button";
       Session_Settings_Button.Size = new Size ( 72, 38 );
       Session_Settings_Button.TabIndex = 22;
@@ -776,7 +775,7 @@ namespace Multimeter_Controller
       // Display_Recording_Button
       // 
       Display_Recording_Button.Anchor =   AnchorStyles.Bottom  |  AnchorStyles.Left ;
-      Display_Recording_Button.Location = new Point ( 103, 383 );
+      Display_Recording_Button.Location = new Point ( 103, 439 );
       Display_Recording_Button.Name = "Display_Recording_Button";
       Display_Recording_Button.Size = new Size ( 72, 56 );
       Display_Recording_Button.TabIndex = 23;
@@ -788,7 +787,7 @@ namespace Multimeter_Controller
       // 
       AutoScaleDimensions = new SizeF ( 7F, 15F );
       AutoScaleMode = AutoScaleMode.Font;
-      ClientSize = new Size ( 1340, 547 );
+      ClientSize = new Size ( 1340, 603 );
       Controls.Add ( Display_Recording_Button );
       Controls.Add ( Session_Settings_Button );
       Controls.Add ( Button_Show_Execution_Trace );
