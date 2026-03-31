@@ -1,13 +1,13 @@
 {
   "Name": "Dark",
-  "Background": "LightYellow",
+  "Background": "WhiteSmoke",
   "Foreground": "#1E1E1E",
   "Accent": "DarkGoldenrod",
-  "Grid": "Goldenrod",
-  "Labels": "Black",
-  "Separator": "DarkKhaki",
-  "Line_1": "Orange",
-  "Line_2": "Goldenrod",
-  "Line_3": "OliveDrab",
-  "Line_4": "DarkOrange"
+  "Grid": "#D2D7DC",
+  "Labels": "#3C4650",
+  "Separator": "Silver",
+  "Line_1": "ForestGreen",
+  "Line_2": "RoyalBlue",
+  "Line_3": "DarkOrange",
+  "Line_4": "MediumPurple"
 }

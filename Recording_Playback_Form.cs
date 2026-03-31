@@ -1380,9 +1380,52 @@ namespace Multimeter_Controller
       Popup.Show ( this );   // non-modal, matches Show_Analysis_Popup behaviour
     }
 
+    private void Analyze_Instrument_Data_Button_Click(object sender, EventArgs e)
+    {
+      using var Block = Trace_Block.Start_If_Enabled();
+
+      if (_Series == null || !_Series.Any())
+      {
+        Capture_Trace.Write("No series data loaded");
+        return;
+      }
+
+      Capture_Trace.Write($"Series count: {_Series.Count}");
+      foreach (var S in _Series)
+        Capture_Trace.Write($"  Series: '{S.Name}'  Points: {S.Points?.Count ?? -1}");
+
+      var Instruments = _Series
+        .Where(S => S.Points != null && S.Points.Count >= 2)
+        .Select((S, Index) => new Analysis_Popup_Form.Instrument_Series(
+            _Series.Count(X => X.Name == S.Name) > 1
+              ? $"{S.Name} #{Index + 1}"
+              : S.Name,
+            S.Points.ToList()
+        ))
+        .ToList();
+
+      Capture_Trace.Write($"Instruments built: {Instruments.Count}");
+
+      if (!Instruments.Any())
+      {
+        MessageBox.Show("No instruments with enough data to analyse.",
+          "Analysis", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        return;
+      }
+
+      var Popup = new Analysis_Popup_Form(
+          Instruments,
+          _Theme ?? Chart_Theme.Dark_Preset(),
+          _Settings
+      );
+      Popup.Show(this);
+      Popup.Begin_Async_Load();
+    }
+
+
 
     // ── Call from a button (wire in designer) ────────────────────────────────
-    private void Analyze_Instrument_Data_Button_Click ( object Sender, EventArgs E )
+    private void old_Analyze_Instrument_Data_Button_Click ( object Sender, EventArgs E )
         => Show_Analysis_Popup ( );
 
     private void Show_Analysis_Popup ( )

@@ -202,7 +202,7 @@ namespace Multimeter_Controller
 
 
     // Timing ring buffer
-    protected const int _Timing_Buffer_Size = 10_000;
+    protected const int _Timing_Buffer_Size = 100_000;
     protected readonly Poll_Cycle_Sample [ ] _Cycle_Timing = new Poll_Cycle_Sample [ 10_000 ];
     protected int _Timing_Head = 0;
     protected int _Timing_Count = 0;
@@ -754,16 +754,9 @@ namespace Multimeter_Controller
 
     protected void Max_Points_Numeric_ValueChanged ( object? sender, EventArgs e )
     {
-      using var Block = Trace_Block.Start_If_Enabled ( );
       _Max_Display_Points = (int) Max_Points_Numeric_Control.Value;
 
-      if ( _Show_Timing_View )
-      {
-        Chart_Panel_Control.Invalidate ( );
-        return;
-      }
-
-      if ( _Enable_Rolling )  // ← removed _Is_Running_State() check
+      if ( _Enable_Rolling && _Is_Running_State ( ) )  // ← add the guard
       {
         foreach ( var S in _Series )
         {
@@ -3127,80 +3120,7 @@ namespace Multimeter_Controller
       Chart_Panel_Control.Invalidate ( );
     }
 
-    protected void old_Show_Analysis_Results ( List<Instrument_Series> Series )
-    {
-      using var Block = Trace_Block.Start_If_Enabled ( );
-
-      var Dlg = new Form
-      {
-        Text = "Auto Analysis Results",
-        Size = new Size ( 560, 600 ),
-        MinimumSize = new Size ( 400, 350 ),
-        StartPosition = FormStartPosition.CenterParent,
-        FormBorderStyle = FormBorderStyle.Sizable,
-        BackColor = SystemColors.Control,
-      };
-
-      // ── Header ────────────────────────────────────────────────────────
-      var Header = new Panel
-      {
-        Dock = DockStyle.Top,
-        Height = 48,
-        BackColor = Color.FromArgb ( 45, 45, 48 ),
-      };
-      Header.Controls.Add ( new Label
-      {
-        Text = "Auto Analysis Results",
-        ForeColor = Color.White,
-        Font = new Font ( "Segoe UI", 13f, FontStyle.Bold ),
-        Dock = DockStyle.Fill,
-        TextAlign = ContentAlignment.MiddleLeft,
-        Padding = new Padding ( 16, 0, 0, 0 ),
-      } );
-
-      // ── Rich text area ─────────────────────────────────────────────────
-      var Rtb = new RichTextBox
-      {
-        Dock = DockStyle.Fill,
-        ReadOnly = true,
-        BorderStyle = BorderStyle.None,
-        BackColor = SystemColors.Control,
-        Font = new Font ( "Consolas", 9.5f ),
-        ScrollBars = RichTextBoxScrollBars.Vertical,
-        Padding = new Padding ( 12 ),
-      };
-
-      Build_Analysis_Rtb ( Rtb, Series );
-
-      // ── Footer ────────────────────────────────────────────────────────
-      var Footer = new Panel
-      {
-        Dock = DockStyle.Bottom,
-        Height = 44,
-        BackColor = SystemColors.ControlLight,
-      };
-
-      var Close_Btn = new Button
-      {
-        Text = "Close",
-        Size = new Size ( 88, 28 ),
-        Anchor = AnchorStyles.Top | AnchorStyles.Right,
-      };
-      Close_Btn.Click += ( s, e ) => Dlg.Close ( );
-
-      Footer.Controls.Add ( Close_Btn );
-
-      Dlg.Controls.Add ( Rtb );
-      Dlg.Controls.Add ( Footer );
-      Dlg.Controls.Add ( Header );
-
-      Dlg.Shown += ( s, e ) => Close_Btn.Location = new Point ( Footer.Width - 100, 8 );
-      Dlg.Resize += ( s, e ) => Close_Btn.Location = new Point ( Footer.Width - 100, 8 );
-
-      Dlg.Show ( this );   // non-modal so user can still interact with the chart
-    }
-
-
+   
 
 
     protected void Show_Analysis_Results ( List<Instrument_Series> Series )

@@ -41,7 +41,17 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Remove="Meter_Info.txt" />
+    <Compile Remove="Info_Popup_Form.cs" />
+    <Compile Remove="Info_Popup_Form.Designer.cs" />
+    <Compile Remove="Session_Settings_Form.cs" />
+    <Compile Remove="Trace_Window.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Remove="Info_Popup_Form.resx" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Remove="Properties\Resources\Meter_Info.txt" />
     <None Remove="README.md" />
     <None Remove="Recording_Playback_Form.resx-old" />
@@ -50,10 +60,6 @@
   <ItemGroup>
     <PackageReference Include="System.IO.Ports" Version="10.0.5" />
     <PackageReference Include="System.Windows.Forms.DataVisualization" Version="1.0.0-prerelease.20110.1" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <EmbeddedResource Include="Meter_Info.txt" />
   </ItemGroup>
 
   <ItemGroup>

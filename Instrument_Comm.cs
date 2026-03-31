@@ -158,6 +158,7 @@
 
 using System.CodeDom;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO.Ports;
 using System.Net;
 using System.Net.Sockets;
@@ -808,7 +809,11 @@ namespace Multimeter_Controller
       Raw_Write_Instrument ( Command.Trim ( ), Connected_Meter );
     }
 
-
+    public void Send_Instrument_Command( string Command, Meter_Type Meter )
+    {
+      using var Block = Trace_Block.Start_If_Enabled();
+      Raw_Write_Instrument( Command.Trim(), Meter );
+    }
 
     public Task Send_Prologix_CommandAsync ( string command )
     {
@@ -1505,104 +1510,7 @@ namespace Multimeter_Controller
     }
 
 
-    public string old_Verify_GPIB_Address ( int Address, bool Try_Legacy_ID = false, bool Restore_Address = true )
-    {
-      using var Block = Trace_Block.Start_If_Enabled ( );
-
-      if ( !Is_Connected )
-        return "";
-
-
-      // Check cache first
-      if ( _Verified_Cache.TryGetValue ( Address, out var Cached ) )
-      {
-        Capture_Trace.Write ( $"Cache hit for address {Address}: {Cached.ID_String}" );
-        return Cached.ID_String;
-      }
-
-
-      if ( Mode == Connection_Mode.Direct_Serial )
-      {
-        return Try_Legacy_ID
-            ? Try_Query_Short ( "ID?" )
-            : Try_Query_Short ( "*IDN?" );
-      }
-
-      int Original_Address = GPIB_Address;
-
-      try
-      {
-        // Switch to target address
-        Raw_Write ( $"++addr {Address}" );
-        GPIB_Address = Address;
-        Thread.Sleep ( 200 );   // was 50 -- give bus time to settle
-
-        // Stop auto-read
-        Raw_Write ( "++auto 0" );
-        Thread.Sleep ( 200 );   // was 50
-
-        // Flush any stale data on THIS address before querying
-        Flush_Device_Buffer ( );
-
-        // For 3458 -- stop trigger and drain buffered readings
-        if ( Try_Legacy_ID )
-        {
-          Raw_Write ( "TRIG HOLD" );
-          Thread.Sleep ( 200 );
-          Drain_Buffer ( );   // now loops until empty
-          Flush_Device_Buffer ( );
-        }
-
-        string Response = Try_Legacy_ID
-            ? Try_Query_Short ( "ID?" )
-            : Try_Query_Short ( "*IDN?" );
-
-
-        if ( !string.IsNullOrEmpty ( Response ) )
-        {
-          Meter_Type? Detected = null;
-          string Upper = Response.ToUpperInvariant ( );
-          if ( Upper.Contains ( "3458" ) )
-            Detected = Meter_Type.HP3458;
-          else if ( Upper.Contains ( "34401" ) )
-            Detected = Meter_Type.HP34401;
-          else if ( Upper.Contains ( "33120" ) )
-            Detected = Meter_Type.HP33120;
-          else if ( Upper.Contains ( "34420" ) )
-            Detected = Meter_Type.HP34420;
-          else if ( Upper.Contains ( "53132" ) )
-            Detected = Meter_Type.HP53132;
-          else
-            Detected = Meter_Type.Generic_GPIB;
-
-          _Verified_Cache [ Address ] = new Scan_Result
-          {
-            Address = Address,
-            ID_String = Response,
-            Detected_Type = Detected
-          };
-        }
-
-
-
-        return Response;
-      }
-      catch ( Exception Ex )
-      {
-        Capture_Trace.Write ( $"Verify failed at address {Address}: {Ex.Message}" );
-        return "";
-      }
-      finally
-      {
-        if ( Restore_Address )
-        {
-          Raw_Write ( $"++addr {Original_Address}" );
-          Thread.Sleep ( 100 );
-          GPIB_Address = Original_Address;
-        }
-      }
-    }
-
+   
 
 
 
@@ -1627,6 +1535,10 @@ namespace Multimeter_Controller
       int Original_Address = GPIB_Address;
       try
       {
+
+        bool Got_Any_Response = false;
+        string Response = "";
+
         // ── Always initialize Prologix fully before any query ────────────
         Capture_Trace.Write ( $"Initializing Prologix for address {Address}" );
         Raw_Write ( "++mode 1" );
@@ -1639,30 +1551,40 @@ namespace Multimeter_Controller
 
         Flush_Device_Buffer ( );
 
-        string Response = "";
+   
 
         // ── Pass 1: SCPI *IDN? (modern instruments) ──────────────────────
-        Capture_Trace.Write ( $"Pass 1: trying *IDN? at {Address}" );
-        Raw_Write ( "++eos 2" );    // LF terminator for SCPI
-        Thread.Sleep ( 50 );
-        Response = Try_Query_Short ( "*IDN?" );
+        Capture_Trace.Write( $"Pass 1: trying *IDN? at {Address}" );
+        Raw_Write( "++eos 2" );    // LF terminator for SCPI
+        Thread.Sleep( 50 );
+        Response = Try_Query_Short( "*IDN?" );
 
-        // ── Pass 2: Legacy ID? (3458A, pre-SCPI HP instruments) ──────────
-        if ( string.IsNullOrEmpty ( Response ) )
+        // Reject numeric responses — instrument returned a measurement not an ID
+        if (!string.IsNullOrEmpty( Response ))
         {
-          Capture_Trace.Write ( $"Pass 2: trying ID? at {Address}" );
-          Flush_Device_Buffer ( );
-          Raw_Write ( "++eos 2" );    // 3458A still uses LF
-          Thread.Sleep ( 50 );
-
-          // Stop any running measurement first
-          Raw_Write ( "TRIG HOLD" );
-          Thread.Sleep ( 200 );
-          Drain_Buffer ( );
-
-          Response = Try_Query_Short ( "ID?" );
+          Got_Any_Response = true;  // ← something is there
+          if (double.TryParse( Response.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out _ ))
+          {
+            Capture_Trace.Write( $"Pass 1: numeric response '{Response}' — not an IDN" );
+            Response = "";
+          }
         }
 
+        // ── Pass 2: Legacy ID? (3458A, pre-SCPI HP instruments) ──────────
+        if (string.IsNullOrEmpty( Response ))
+        {
+          Capture_Trace.Write( $"Pass 2: trying ID? at {Address}" );
+          Flush_Device_Buffer();
+          Raw_Write( "++eos 2" );    // 3458A still uses LF
+          Thread.Sleep( 50 );
+          // Stop any running measurement first
+          Raw_Write( "TRIG HOLD" );
+          Thread.Sleep( 200 );
+          Drain_Buffer();
+          Response = Try_Query_Short( "ID?" );
+          if (!string.IsNullOrEmpty( Response ))
+            Got_Any_Response = true;
+        }
         // ── Pass 3: Numeric probe (3456A, truly pre-SCPI) ────────────────
         if ( string.IsNullOrEmpty ( Response ) )
         {
@@ -1681,12 +1603,9 @@ namespace Multimeter_Controller
           Raw_Write ( "++read eoi" );
           string Numeric = Read_With_Timeout ( 3000 );
 
-          if ( double.TryParse ( Numeric.Trim ( ),
-                   System.Globalization.NumberStyles.Float,
-                   System.Globalization.CultureInfo.InvariantCulture,
-                   out _ ) )
+          if (double.TryParse( Numeric.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out _ ))
           {
-            Capture_Trace.Write ( $"Pass 3 succeeded: numeric response {Numeric}" );
+            Got_Any_Response = true;  // ← already handled
             Response = "HP3456A";
           }
           else
@@ -1725,6 +1644,9 @@ namespace Multimeter_Controller
 
           Capture_Trace.Write ( $"Detected {Detected} at address {Address}: {Response}" );
         }
+
+        if (string.IsNullOrEmpty( Response ) && Got_Any_Response)
+          return "UNIDENTIFIED";
 
         return Response;
       }

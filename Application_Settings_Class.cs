@@ -438,6 +438,26 @@ namespace Multimeter_Controller
     [JsonPropertyName ( "play_sound_on_complete" )]
     public bool Play_Sound_On_Complete { get; set; } = false;
 
+    [JsonPropertyName("analysis_tab_alignment")]
+    public string Analysis_Tab_Alignment_str { get; set; } = "Left";
+
+    [JsonIgnore]
+    public TabAlignment Analysis_Tab_Alignment
+    {
+      get => Analysis_Tab_Alignment_str switch
+      {
+        "Left" => TabAlignment.Left,
+        "Right" => TabAlignment.Right,
+        _ => TabAlignment.Top,
+      };
+      set => Analysis_Tab_Alignment_str = value switch
+      {
+        TabAlignment.Left => "Left",
+        TabAlignment.Right => "Right",
+        _ => "Top",
+      };
+    }
+
     // ===== ZOOM SETTINGS =====
 
     [JsonPropertyName ( "default_zoom_level" )]

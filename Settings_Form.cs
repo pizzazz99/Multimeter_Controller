@@ -1884,7 +1884,7 @@ namespace Multimeter_Controller
 
 
       // Polling tab
-      _Settings.Default_Poll_Delay_Ms = (int) _Poll_Delay_Numeric.Value;
+      
       _Settings.Default_NPLC = _NPLC_Combo.SelectedItem?.ToString ( ) ?? "10";
       _Settings.Default_Measurement_Type = _Measurement_Type_Combo.SelectedItem?.ToString ( ) ?? "DC Voltage";
       _Settings.Default_Continuous_Poll = _Continuous_Poll_Check.Checked;

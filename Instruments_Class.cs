@@ -133,6 +133,10 @@ namespace Multimeter_Controller
 {
   public class Instrument
   {
+
+    public int Poll_Delay_Ms => (int) ((double) NPLC / 60.0 * 1000) + Comms_Overhead_Ms;
+    public bool Is_Master { get; set; } = false;
+
     public string Name { get; set; } = "";
     public string Meter_Roll { get; set; } = string.Empty;
     public int Address
@@ -177,6 +181,15 @@ namespace Multimeter_Controller
           _ => 6,
         };
 
+
+    public int Comms_Overhead_Ms => Type switch
+    {
+      Meter_Type.HP3458 => 333,  // ~333ms comms overhead on top of NPLC time
+      Meter_Type.HP34401 => 20,
+      Meter_Type.Generic_GPIB => 50,
+      _ => 20
+    };
+
     public string Display => $"{Name}  (GPIB {Address})";
 
     public string DisplayString ( string Transport_Mode )
@@ -185,6 +198,10 @@ namespace Multimeter_Controller
       return Is_GPIB ? $"{Name}  (GPIB {Address})" : Name;
     }
   }
+
+
+
+
 
 
   // ===== Data Model =====

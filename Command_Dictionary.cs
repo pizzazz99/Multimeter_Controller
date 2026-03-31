@@ -290,6 +290,7 @@ namespace Multimeter_Controller
     }
 
 
+ 
 
 
     public CommandMode Get_Command_Mode ( )
