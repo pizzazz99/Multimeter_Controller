@@ -1,3 +1,112 @@
+
+// ════════════════════════════════════════════════════════════════════════════════
+// FILE:    Settings_Form.cs
+// PROJECT: Multimeter_Controller
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// PURPOSE
+//   Multi-tab settings dialog that exposes every Application_Settings property
+//   through a WinForms UI.  Changes are applied to the settings object and
+//   persisted to disk when the user clicks OK or Apply.  Cancel discards all
+//   changes; Reset replaces the settings object with a fresh default instance.
+//
+// TABS  (one Initialize_*() / Build_*() method per tab)
+//
+//   Display
+//     Tooltip pixel distance threshold, tooltip enable / duration, chart
+//     refresh rate, grid lines, data dots (size), line thickness, default
+//     view (Combined / Split), default normalized mode, legend on startup.
+//
+//   Polling
+//     Max display points, stop-at-max flag, poll delay, default NPLC,
+//     default measurement type, continuous-poll default, GPIB timeout,
+//     max retry attempts.  Error Handling sub-section: max consecutive
+//     errors before disable, auto-retry toggle, retry delay.  Data
+//     Freshness sub-section: skew warning threshold (orange) and stale
+//     data threshold (red) in seconds.
+//
+//   Files
+//     Default save folder (with Browse button → FolderBrowserDialog),
+//     filename pattern ({date}/{time}/{function} tokens), auto-save enable
+//     and interval, auto-save-on-stop, include-stats-in-save,
+//     prompt-before-clear, auto-load-last-session, export format ComboBox.
+//
+//   Performance
+//     Max data points in memory, warning threshold %, warn-at-threshold
+//     flag.  Performance Optimization sub-section: throttle-when-many
+//     toggle and point threshold, auto-trim toggle and keep-last-N count,
+//     reduce-refresh-rate flag.
+//
+//   Analysis
+//     Auto-analyze-after-recording flag, series count radio buttons
+//     (Single / Two series), seven stat-include checkboxes (Mean, Std Dev,
+//     Min/Max, RMS, Trend, Sample Rate, Error Count).
+//
+//   UI
+//     Default window title, remember size / position flags, keyboard pan
+//     and Ctrl+scroll zoom toggles, progress messages / flash-on-error /
+//     play-sound-on-complete flags.  Appearance sub-section: theme ComboBox
+//     (Dark / Light / Brown / Grey / Golden / Light Yellow) with immediate
+//     application via Application_Settings.Set_Theme().
+//
+//   Zoom
+//     Default zoom level NumericUpDown (1–100, 50 = 1.0×), zoom sensitivity
+//     TrackBar (1–50, displayed as N/10 ×), remember-zoom-level flag.
+//
+//   HP3458A  (scrollable Panel)
+//     Connection & Reset: send-reset-on-connect, reset settle delay,
+//     send-END-always.  Timing: instrument settle, ERR? read delay, NPLC
+//     apply delay.  Measurement Defaults: default NPLC ComboBox
+//     (0.001–100), default trigger mode ComboBox, display digits (4–10).
+//
+//   Prologix  (built by Build_Prologix_Tab())
+//     IP address, scan subnet (with hint label), TCP port, MAC/OUI prefix,
+//     default GPIB address (0–30), auto-read toggle, read timeout, scan
+//     timeout, fetch delay.
+//
+// LOAD / SAVE FLOW
+//   Load_Settings()   Called from the constructor after all tabs are built.
+//                     Copies every Application_Settings field into its
+//                     corresponding control.  ComboBox selections use
+//                     SelectedItem string matching.
+//   Save_Settings()   Reads every control back into _Settings, calls
+//                     Validate_And_Fix(), then Settings.Save().  Called by
+//                     OK_Button_Click and Apply_Button_Click.
+//   Get_Settings()    Returns the (possibly modified) _Settings reference
+//                     so the caller can update its own reference after OK.
+//
+// BUTTON HANDLERS
+//   OK_Button_Click       Save_Settings() → DialogResult.OK → Close().
+//   Apply_Button_Click    Save_Settings() (form stays open).
+//   Cancel_Button_Click   DialogResult.Cancel → Close() (no save).
+//   Reset_Button_Click    Confirms via MessageBox, replaces _Settings with
+//                         new Application_Settings(), calls Load_Settings().
+//   Browse_Folder_Button  Opens FolderBrowserDialog, writes path to
+//                         _Save_Folder_Text.
+//   Zoom_Sensitivity_Slider_ValueChanged  Updates the adjacent label to
+//                         show the slider value as "N.Nx".
+//
+// NOTES
+//   • The form uses a partial class; the designer file supplies the TabControl
+//     and its named TabPage references (Display_Tab, Polling_Tab, Files_Tab,
+//     Performance_Tab, Analysis_Tab, UI_Tab, Zoom_Tab, HP3458_Tab,
+//     Prologix_Tab) as well as the OK / Apply / Cancel / Reset buttons.
+//   • All tab content controls are constructed programmatically in the
+//     Initialize_*() / Build_*() methods — no controls are placed in the
+//     designer beyond the tab pages themselves.
+//   • The theme ComboBox applies the new theme immediately via
+//     Settings.Set_Theme(), which raises Theme_Changed so open chart forms
+//     repaint without needing to close the settings dialog first.
+//   • _Prologic_Scan_Timeout_MS_Textbox uses a plain TextBox with int.Parse
+//     in Save_Settings(); no validation is performed beyond what
+//     Validate_And_Fix() enforces.
+//
+// AUTHOR:  [Your name]
+// CREATED: [Date]
+// ════════════════════════════════════════════════════════════════════════════════
+
+
+
 using System;
 using System.Drawing;
 using System.Windows.Forms;
@@ -31,8 +140,8 @@ namespace Multimeter_Controller
     private ComboBox _NPLC_Combo;
     private ComboBox _Measurement_Type_Combo;
     private CheckBox _Continuous_Poll_Check;
-    private NumericUpDown _GPIB_Timeout_Numeric;        // ADD THIS
-    private NumericUpDown _Max_Retry_Attempts_Numeric;  // ADD THIS
+    private NumericUpDown _GPIB_Timeout_Numeric;
+    private NumericUpDown _Max_Retry_Attempts_Numeric;
     private NumericUpDown _Max_Errors_Numeric;
     private CheckBox _Auto_Retry_Check;
     private NumericUpDown _Retry_Delay_Numeric;
@@ -46,6 +155,8 @@ namespace Multimeter_Controller
     private TextBox _Prologix_IP_Textbox;
     private NumericUpDown _Prologix_Port_Numeric;
     private TextBox _Prologix_MAC_Textbox;
+    private TextBox _Prologic_Scan_Timeout_MS_Textbox;
+
 
     private NumericUpDown _Prologix_GPIB_Address_Numeric;
     private CheckBox _Prologix_Auto_Read_Check;
@@ -75,6 +186,18 @@ namespace Multimeter_Controller
     private CheckBox _Auto_Trim_Check;
     private NumericUpDown _Keep_Last_N_Numeric;
     private CheckBox _Reduce_Refresh_Check;
+
+    // Analysis tab controls
+   
+    private RadioButton _Analysis_One_Series_Radio;
+    private RadioButton _Analysis_Two_Series_Radio;
+    private CheckBox _Analysis_Mean_Check;
+    private CheckBox _Analysis_StdDev_Check;
+    private CheckBox _Analysis_MinMax_Check;
+    private CheckBox _Analysis_RMS_Check;
+    private CheckBox _Analysis_Trend_Check;
+    private CheckBox _Analysis_Sample_Rate_Check;
+    private CheckBox _Analysis_Errors_Check;
 
     // UI tab controls
     private TextBox _Window_Title_Text;
@@ -122,6 +245,7 @@ namespace Multimeter_Controller
       Initialize_Zoom_Tab ( );
       Initialize_HP_Tab ( );
       Build_Prologix_Tab ( );
+      Initialize_Analysis_Tab ( );
       Load_Settings ( );
     }
     public Application_Settings Get_Settings ( )
@@ -132,7 +256,7 @@ namespace Multimeter_Controller
     private void Build_Prologix_Tab ( )
     {
       int Left_Col = 15;
-      int Right_Col = 250;
+      int Right_Col = 180;
       int Y = 15;
       int Row_H = 30;
 
@@ -271,6 +395,29 @@ namespace Multimeter_Controller
         Value = _Settings.Prologix_Read_Tmo_Ms
       };
       Prologix_Tab.Controls.Add ( _Prologix_Read_Tmo_Numeric );
+
+      Y += Row_H;
+
+      // Prologix Scan Timeout
+      Prologix_Tab.Controls.Add ( new Label
+      {
+        Text = "Prologic Scan Timeout MS:",
+        Location = new Point ( Left_Col, Y ),
+        AutoSize = true
+      } );
+      _Prologic_Scan_Timeout_MS_Textbox = new TextBox
+      {
+        Location = new Point ( Right_Col, Y - 2 ),
+        Size = new Size ( 150, 23 )
+      };
+      Prologix_Tab.Controls.Add ( _Prologic_Scan_Timeout_MS_Textbox );
+      Prologix_Tab.Controls.Add ( new Label
+      {
+        Text = "(Value is milliseconds 1000 = 1 second)",
+        Location = new Point ( Right_Col + 160, Y ),
+        AutoSize = true,
+        ForeColor = SystemColors.GrayText
+      } );
 
       Y += Row_H;
 
@@ -737,6 +884,105 @@ namespace Multimeter_Controller
       Y += 30;
 
 
+    }
+
+
+
+    private void Initialize_Analysis_Tab ( )
+    {
+      int Left_Col = 15;
+      int Y = 15;
+      int Row_H = 28;
+
+      // ── Auto-run ─────────────────────────────────────────────────────
+      Analysis_Tab.Controls.Add ( new Label
+      {
+        Text = "Trigger:",
+        Location = new Point ( Left_Col, Y ),
+        Font = new Font ( "Segoe UI", 9F, FontStyle.Bold ),
+        AutoSize = true
+      } );
+      Y += 22;
+
+      _Auto_Analyze_Check = new CheckBox
+      {
+        Text = "Automatically show analysis popup when recording stops",
+        Location = new Point ( Left_Col, Y ),
+        AutoSize = true
+      };
+      Analysis_Tab.Controls.Add ( _Auto_Analyze_Check );
+      Y += Row_H + 8;
+
+      // ── Series count ─────────────────────────────────────────────────
+      Analysis_Tab.Controls.Add ( new Label
+      {
+        Text = "Compare:",
+        Location = new Point ( Left_Col, Y ),
+        Font = new Font ( "Segoe UI", 9F, FontStyle.Bold ),
+        AutoSize = true
+      } );
+      Y += 22;
+
+      _Analysis_One_Series_Radio = new RadioButton
+      {
+        Text = "Single series  (summary stats only)",
+        Location = new Point ( Left_Col, Y ),
+        AutoSize = true
+      };
+      Analysis_Tab.Controls.Add ( _Analysis_One_Series_Radio );
+      Y += Row_H;
+
+      _Analysis_Two_Series_Radio = new RadioButton
+      {
+        Text = "Two series  (full delta / σ / histogram comparison)",
+        Location = new Point ( Left_Col, Y ),
+        AutoSize = true
+      };
+      Analysis_Tab.Controls.Add ( _Analysis_Two_Series_Radio );
+      Y += Row_H + 8;
+
+      // ── Which stats ──────────────────────────────────────────────────
+      Analysis_Tab.Controls.Add ( new Label
+      {
+        Text = "Include in analysis:",
+        Location = new Point ( Left_Col, Y ),
+        Font = new Font ( "Segoe UI", 9F, FontStyle.Bold ),
+        AutoSize = true
+      } );
+      Y += 22;
+
+      var Stat_Checks = new (string Text, Action<CheckBox> Assign) [ ]
+      {
+        ( "Mean / Average",  C => _Analysis_Mean_Check        = C ),
+        ( "Std Dev (σ)",     C => _Analysis_StdDev_Check      = C ),
+        ( "Min / Max",       C => _Analysis_MinMax_Check      = C ),
+        ( "RMS",             C => _Analysis_RMS_Check         = C ),
+        ( "Trend direction", C => _Analysis_Trend_Check       = C ),
+        ( "Sample rate",     C => _Analysis_Sample_Rate_Check = C ),
+        ( "Error count",     C => _Analysis_Errors_Check      = C ),
+      };
+
+      foreach ( var (Text, Assign) in Stat_Checks )
+      {
+        var CB = new CheckBox
+        {
+          Text = Text,
+          Location = new Point ( Left_Col, Y ),
+          AutoSize = true
+        };
+        Assign ( CB );
+        Analysis_Tab.Controls.Add ( CB );
+        Y += Row_H;
+      }
+
+      Y += 8;
+      Analysis_Tab.Controls.Add ( new Label
+      {
+        Text = "Note: two-series comparison always shows delta, rolling σ, and histogram tabs.",
+        Location = new Point ( Left_Col, Y ),
+        AutoSize = true,
+        ForeColor = SystemColors.GrayText
+      } );
     }
 
     private void Initialize_Files_Tab ( )
@@ -1449,8 +1695,7 @@ namespace Multimeter_Controller
         Location = new Point ( 250, Y - 3 ),
         Size = new Size ( 60, 23 ),
         Minimum = 4,
-        Maximum = 10,
-        Value = _Settings.Display_Digits
+        Maximum = 10
       };
       Scroll_Panel.Controls.Add ( _Display_Digits_Numeric );
       Scroll_Panel.Controls.Add ( new Label
@@ -1495,6 +1740,23 @@ namespace Multimeter_Controller
       _Prologix_Read_Tmo_Numeric.Value = _Settings.Prologix_Read_Tmo_Ms;
       _Prologix_Fetch_Numeric.Value = _Settings.Prologix_Fetch_Ms;
       _Prologix_Subnet_Textbox.Text = _Settings.Network_Scan_Subnet;
+      _Prologic_Scan_Timeout_MS_Textbox.Text = _Settings.Prologic_Scan_Timeout_MS.ToString();
+
+
+      // Analysis tab
+      _Auto_Analyze_Check.Checked = _Settings.Auto_Analyze_After_Recording;
+      _Analysis_Mean_Check.Checked = _Settings.Analysis_Show_Mean;
+      _Analysis_StdDev_Check.Checked = _Settings.Analysis_Show_Std_Dev;
+      _Analysis_MinMax_Check.Checked = _Settings.Analysis_Show_Min_Max;
+      _Analysis_RMS_Check.Checked = _Settings.Analysis_Show_RMS;
+      _Analysis_Trend_Check.Checked = _Settings.Analysis_Show_Trend;
+      _Analysis_Sample_Rate_Check.Checked = _Settings.Analysis_Show_Sample_Rate;
+      _Analysis_Errors_Check.Checked = _Settings.Analysis_Show_Errors;
+      if ( _Settings.Analysis_Series_Count == 1 )
+        _Analysis_One_Series_Radio.Checked = true;
+      else
+        _Analysis_Two_Series_Radio.Checked = true;
+
       // Display tab
       _Tooltip_Distance_Numeric.Value = _Settings.Tooltip_Distance_Threshold;
       _Show_Tooltips_Check.Checked = _Settings.Show_Tooltips_On_Hover;
@@ -1507,7 +1769,7 @@ namespace Multimeter_Controller
       _Default_Combined_Check.Checked = _Settings.Default_To_Combined_View;
       _Default_Normalized_Check.Checked = _Settings.Default_To_Normalized_View;
       _Show_Legend_Check.Checked = _Settings.Show_Legend_On_Startup;
-      _Display_Digits_Numeric.Value = _Settings.Display_Digits;
+     
 
 
       // Polling tab
@@ -1591,6 +1853,19 @@ namespace Multimeter_Controller
       _Settings.Prologix_Read_Tmo_Ms = (int) _Prologix_Read_Tmo_Numeric.Value;
       _Settings.Prologix_Fetch_Ms = (int) _Prologix_Fetch_Numeric.Value;
       _Settings.Network_Scan_Subnet = _Prologix_Subnet_Textbox.Text.Trim ( ).TrimEnd ( '.' );
+      _Settings.Prologic_Scan_Timeout_MS = int.Parse ( _Prologic_Scan_Timeout_MS_Textbox.Text );
+
+      // Analysis tab
+      _Settings.Auto_Analyze_After_Recording = _Auto_Analyze_Check.Checked;
+      _Settings.Analysis_Series_Count = _Analysis_Two_Series_Radio.Checked ? 2 : 1;
+      _Settings.Analysis_Show_Mean = _Analysis_Mean_Check.Checked;
+      _Settings.Analysis_Show_Std_Dev = _Analysis_StdDev_Check.Checked;
+      _Settings.Analysis_Show_Min_Max = _Analysis_MinMax_Check.Checked;
+      _Settings.Analysis_Show_RMS = _Analysis_RMS_Check.Checked;
+      _Settings.Analysis_Show_Trend = _Analysis_Trend_Check.Checked;
+      _Settings.Analysis_Show_Sample_Rate = _Analysis_Sample_Rate_Check.Checked;
+      _Settings.Analysis_Show_Errors = _Analysis_Errors_Check.Checked;
+
       // Display tab
       _Settings.Tooltip_Distance_Threshold = (int) _Tooltip_Distance_Numeric.Value;
       _Settings.Show_Tooltips_On_Hover = _Show_Tooltips_Check.Checked;
@@ -1603,13 +1878,13 @@ namespace Multimeter_Controller
       _Settings.Default_To_Combined_View = _Default_Combined_Check.Checked;
       _Settings.Default_To_Normalized_View = _Default_Normalized_Check.Checked;
       _Settings.Show_Legend_On_Startup = _Show_Legend_Check.Checked;
-      _Settings.Display_Digits = (int) _Display_Digits_Numeric.Value;
+    
 
 
 
 
       // Polling tab
-      _Settings.Default_Poll_Delay_Ms = (int) _Poll_Delay_Numeric.Value;
+      
       _Settings.Default_NPLC = _NPLC_Combo.SelectedItem?.ToString ( ) ?? "10";
       _Settings.Default_Measurement_Type = _Measurement_Type_Combo.SelectedItem?.ToString ( ) ?? "DC Voltage";
       _Settings.Default_Continuous_Poll = _Continuous_Poll_Check.Checked;

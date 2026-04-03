@@ -1,24 +1,226 @@
-// ============================================================================
-// File:        HP33120_Command_Dictionary_Class.cs
-// Project:     HP3458 Multimeter Controller
-// Description: Command reference dictionary for the HP / Agilent 33120A
-//              15 MHz Function / Arbitrary Waveform Generator. Uses standard
-//              SCPI command syntax.
-//
-// Author:       Mike
-// Framework:    .NET 9.0, Windows Forms
-// ============================================================================
 
-// ============================================================================
-// File:        HP33120_Command_Dictionary.cs
-// Project:     HP3458 Multimeter Controller
-// Description: Command reference dictionary for the HP / Agilent 33120A
-//              15 MHz Function / Arbitrary Waveform Generator. Uses standard
-//              SCPI command syntax.
+// =============================================================================
+// FILE:     HP33120_Command_Dictionary_Class.cs
+// PROJECT:  Multimeter_Controller
+// =============================================================================
 //
-// Author:       Mike
-// Framework:    .NET 9.0, Windows Forms
-// ============================================================================
+// DESCRIPTION:
+//   Static command dictionary for the HP / Agilent 33120A 15 MHz Function /
+//   Arbitrary Waveform Generator. Provides a structured, searchable registry
+//   of all supported SCPI instrument commands, organized by functional category.
+//   Each entry captures the full command syntax, description, valid parameter
+//   ranges, query form, factory default value, and a usage example.
+//
+//   Although this class resides in the Multimeter_Controller namespace, it
+//   describes a signal source rather than a measurement instrument. It follows
+//   the same Command_Entry / Command_Category conventions used by the 3458A
+//   and 34401A dictionaries for consistency across the project.
+//
+// -----------------------------------------------------------------------------
+// INSTRUMENT:
+//   HP / Agilent 33120A Function / Arbitrary Waveform Generator
+//   Command Set:  SCPI (Standard Commands for Programmable Instruments)
+//   Interface:    GPIB (IEEE-488.2) / RS-232
+//   Frequency:    100 µHz to 15 MHz (waveform dependent)
+//   Amplitude:    10 mVpp to 10 Vpp into 50 Ω (20 Vpp open circuit)
+//
+// -----------------------------------------------------------------------------
+// COMMAND SET OVERVIEW:
+//   This dictionary uses SCPI short-form mnemonics with colon-separated node
+//   paths (e.g. "APPLy:SIN", "FM:INT:FREQ"). The long-form expansion is shown
+//   in the Syntax field of each entry.
+//
+//   IMPORTANT — APPLy vs FUNC/FREQ/VOLT distinction:
+//     APPLy:xxxx   Combines function selection, frequency, amplitude, and
+//                  offset into a single call. Resets all modulation, sweep,
+//                  and burst settings as a side effect. Use for quick one-shot
+//                  setup. All three parameters (freq, amp, offset) are
+//                  optional; omitted values default to the current setting or
+//                  the factory default for that waveform type.
+//     FUNC / FREQ / VOLT / VOLT:OFFS
+//                  Set individual parameters without disturbing others. Use
+//                  this approach when modulation, sweep, or burst is active,
+//                  or when changing only one attribute of the current output.
+//
+//   IMPORTANT — Output load impedance (OUTP:LOAD):
+//     All amplitude and offset values are specified relative to the configured
+//     load impedance. The default is 50 Ω. If the actual load is high
+//     impedance (e.g. oscilloscope input), set OUTP:LOAD INF so the instrument
+//     displays and accepts values in open-circuit terms. Failure to match this
+//     setting results in amplitude readings that are off by a factor of 2.
+//
+//   IMPORTANT — Volatile vs non-volatile arbitrary waveform memory:
+//     DATA:DAC VOLATILE downloads a waveform to a single volatile slot that is
+//     lost on power cycle. DATA:COPY transfers it to one of the named
+//     non-volatile slots. The instrument ships with five built-in waveforms in
+//     non-volatile memory (SINC, NEG_RAMP, EXP_RISE, EXP_FALL, CARDIAC) that
+//     cannot be deleted.
+//
+// -----------------------------------------------------------------------------
+// COMMAND CATEGORIES:
+//
+//   Configuration — Waveform and output parameter commands: function selection
+//                   via APPLy shortcuts (APPLy:SIN, APPLy:SQU, APPLy:TRI,
+//                   APPLy:RAMP, APPLy:NOIS, APPLy:DC, APPLy:USER) and
+//                   individual parameter commands (FUNC, FREQ, VOLT, VOLT:OFFS,
+//                   VOLT:UNIT, FUNC:SQU:DCYC, PHAS, PHAS:REF). Also includes
+//                   all modulation commands (AM, FM, FSK) and sweep commands
+//                   (SWE:STAT, SWE:SPAC, SWE:TIME, FREQ:STAR, FREQ:STOP,
+//                   MARK:FREQ, MARK:STAT).
+//
+//   Trigger       — Burst mode (BURS:STAT, BURS:NCYC, BURS:INT:PER,
+//                   BURS:PHAS, BURS:SOUR), trigger source and slope selection
+//                   (TRIG:SOUR, TRIG:SLOP), and bus trigger (*TRG).
+//
+//   Memory        — Arbitrary waveform download (DATA:DAC), copy to
+//                   non-volatile (DATA:COPY), delete (DATA:DEL), catalog query
+//                   (DATA:CAT?), free memory query (DATA:NVOL:FREE?), waveform
+//                   selection (FUNC:USER), and instrument state save/recall
+//                   (*SAV / *RCL, registers 0–3).
+//
+//   System        — Identification (*IDN?), reset (*RST), clear status (*CLS),
+//                   operation complete (*OPC / *OPC?), self-test (*TST?),
+//                   error queue (SYST:ERR?), SCPI version (SYST:VERS?), and
+//                   status/event registers (*STB?, *SRE, *ESE, *ESR?).
+//
+//   I/O           — Output enable/disable (OUTP), output load impedance
+//                   (OUTP:LOAD), sync output (OUTP:SYNC), display control
+//                   (DISP, DISP:TEXT, DISP:TEXT:CLE), and beeper (SYST:BEEP).
+//
+//   Calibration   — Calibration security (CAL:SEC:STAT), calibration count
+//                   query (CAL:COUN?), and calibration string label (CAL:STR).
+//
+// -----------------------------------------------------------------------------
+// MODULATION OVERVIEW:
+//
+//   AM (Amplitude Modulation)
+//     Carrier set by FUNC/FREQ/VOLT. Modulating source is internal (sine,
+//     square, triangle, ramp, noise, or arbitrary) or external via the rear
+//     Modulation In BNC. Depth is 0–120%. Enable with AM:STAT ON.
+//     AM and FM are mutually exclusive — enabling one disables the other.
+//
+//   FM (Frequency Modulation)
+//     Carrier set by FUNC/FREQ. Deviation is the peak frequency shift in Hz;
+//     carrier ± deviation must remain within the waveform's valid frequency
+//     range. Internal source options match AM. Enable with FM:STAT ON.
+//
+//   FSK (Frequency-Shift Keying)
+//     Alternates between the carrier frequency (FREQ) and a hop frequency
+//     (FSK:FREQ) at a rate set by FSK:INT:RATE or driven by an external
+//     signal on the Trig In/FSK BNC. Enable with FSK:STAT ON.
+//     FSK is mutually exclusive with AM, FM, sweep, and burst.
+//
+// -----------------------------------------------------------------------------
+// SWEEP OVERVIEW:
+//   Frequency sweep runs from FREQ:STAR to FREQ:STOP over SWE:TIME seconds.
+//   Spacing is linear (LIN) or logarithmic (LOG). MARK:FREQ sets a frequency
+//   at which the Sync output transitions high, useful for scope triggering.
+//   Sweep trigger source is shared with burst via TRIG:SOUR. Sweep is only
+//   available for sine, square, triangle, and ramp waveforms.
+//
+// -----------------------------------------------------------------------------
+// BURST OVERVIEW:
+//   Burst mode outputs BURS:NCYC complete waveform cycles per trigger event.
+//   In INTernal mode, bursts repeat at the period set by BURS:INT:PER.
+//   In EXTernal or BUS mode, each trigger edge starts one burst. BURS:PHAS
+//   sets the waveform phase at the start of each burst. Burst is available
+//   for all waveforms except noise and DC.
+//
+// -----------------------------------------------------------------------------
+// KEY METHOD:
+//
+//   Get_All_Commands()
+//     Returns a List<Command_Entry> containing all registered commands,
+//     sorted alphabetically by Command name (case-insensitive). The list
+//     is rebuilt on every call — it is not cached.
+//
+//   NOTE: This class does not implement Get_Command_By_Name(). If name-based
+//   lookup is needed, add it following the pattern in HP3458_Command_Dictionary_
+//   Class, with a null guard on Query_Form before comparison.
+//
+// -----------------------------------------------------------------------------
+// DATA MODEL — Command_Entry fields:
+//
+//   Command       The primary SCPI short-form mnemonic (e.g. "APPLy:SIN").
+//                 IEEE-488.2 common commands use the asterisk prefix (e.g. "*RST").
+//   Syntax        Full long-form syntax string including optional parameters.
+//   Description   Human-readable description of the command's purpose.
+//   Category      Command_Category enum value for grouping/filtering.
+//   Parameters    Enumeration of valid parameter values and their meanings.
+//   Query_Form    The query variant of the command (e.g. "FREQ?"), or an
+//                 empty string if no query form exists. May also be null for
+//                 certain IO/system commands — callers must null-check.
+//   Default_Value The factory default state for this setting after *RST.
+//   Example       A representative usage string suitable for direct GPIB/RS-232
+//                 transmission.
+//
+// -----------------------------------------------------------------------------
+// USAGE NOTES:
+//
+//   - All APPLy:xxxx commands share the same query form: APPLy? (no subcommand
+//     qualifier). The response identifies the currently active function as well
+//     as the current frequency, amplitude, and offset.
+//
+//   - APPLy:DC syntax requires DEF placeholders for the unused freq and amp
+//     parameters: APPLy:DC DEF,DEF,<offset>. Omitting them causes a syntax
+//     error on the instrument.
+//
+//   - FREQ:STAR, FREQ:STOP, and MARK:FREQ share the FREQuency node but are
+//     sweep-specific sub-commands. Setting FREQ:STAR or FREQ:STOP outside of
+//     sweep mode has no effect on the current output frequency (use FREQ for
+//     that). MARK:STAT must be ON for the marker frequency to have any effect
+//     on the Sync output.
+//
+//   - DATA:DAC VOLATILE accepts 8 to 16000 integer points in the range
+//     −2047 to +2047. These map linearly to the full output amplitude range.
+//     The points are not normalized — the instrument scales them to the
+//     current VOLT and VOLT:OFFS settings at playback time.
+//
+//   - *SAV / *RCL support registers 0–3 (four registers, one more than the
+//     34401A's three). Arbitrary waveform data is NOT saved to state registers;
+//     only instrument configuration is stored.
+//
+//   - There is a syntax error in the source file for the *CLS entry: the
+//     Example field is written as a bare string literal ("*CLS") without the
+//     named parameter label (Example:). This will cause a compile error.
+//     Correct form: Example: "*CLS"
+//
+// -----------------------------------------------------------------------------
+// KNOWN SOURCE FILE ISSUE:
+//   Line approx. at the *CLS Command_Entry:
+//     DEFAULT_Value: "N/A",
+//     "*CLS" ),        ← Missing 'Example:' label — will not compile as-is.
+//   Correct to:
+//     Default_Value: "N/A",
+//     Example: "*CLS" ),
+//
+// -----------------------------------------------------------------------------
+// DEPENDENCIES:
+//   System.Collections.Generic    List<T>
+//   System.StringComparison       OrdinalIgnoreCase
+//   Command_Entry                 Data record defined elsewhere in namespace
+//   Command_Category              Enum defined elsewhere in namespace
+//
+// -----------------------------------------------------------------------------
+// MAINTENANCE:
+//   To add a command: append a new Command_Entry to the list in
+//   Get_All_Commands(). The list is re-sorted alphabetically on every call,
+//   so insertion order does not matter.
+//
+//   To add name-based lookup: implement Get_Command_By_Name() following the
+//   pattern in HP3458_Command_Dictionary_Class, with a null guard on
+//   Query_Form before the query-form comparison branch.
+//
+//   To add a waveform type: register the APPLy:xxxx command and any
+//   associated parameter sub-commands. Also update DATA:CAT? handling in any
+//   consumer that parses the catalog response, as user waveform names appear
+//   alongside built-in names in the returned list.
+//
+// =============================================================================
+
+
+
+
 
 namespace Multimeter_Controller
 {

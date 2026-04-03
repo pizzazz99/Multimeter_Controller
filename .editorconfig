@@ -1,10 +1,12 @@
+
+
+# Top-most EditorConfig file
 ###############################
 # Data Dictionary Generator
 # C# EditorConfig - Code Formatting Rules
 # Equivalent to .clang-format for C#
 ###############################
 
-# Top-most EditorConfig file
 root = true
 
 ###############################
@@ -24,7 +26,7 @@ insert_final_newline = true
 [*.cs]
 indent_size = 2
 tab_width = 2
-max_line_length = 100
+max_line_length = 110                          # ++ CHANGED: match your clang-format ColumnLimit
 
 ###############################
 # .NET Code Style Settings
@@ -62,6 +64,14 @@ dotnet_style_prefer_inferred_anonymous_type_member_names = true:suggestion
 dotnet_style_prefer_auto_properties = true:suggestion
 dotnet_style_prefer_conditional_expression_over_assignment = true:suggestion
 dotnet_style_prefer_conditional_expression_over_return = true:suggestion
+# ++ NEW: prefer compound assignment (x += 1 over x = x + 1)
+dotnet_style_prefer_compound_assignment = true:suggestion
+# ++ NEW: prefer simplified boolean expressions
+dotnet_style_prefer_simplified_boolean_expressions = true:suggestion
+# ++ NEW: prefer simplified interpolation
+dotnet_style_prefer_simplified_interpolation = true:suggestion
+# ++ NEW: operator placement on new lines matches your clang-format
+dotnet_style_operator_placement_when_wrapping = beginning_of_line
 
 ###############################
 # C# Code Style Settings
@@ -85,6 +95,14 @@ csharp_style_expression_bodied_local_functions = false:silent
 # Pattern matching preferences
 csharp_style_pattern_matching_over_is_with_cast_check = true:suggestion
 csharp_style_pattern_matching_over_as_with_null_check = true:suggestion
+# ++ NEW: prefer switch expressions over switch statements
+csharp_style_prefer_switch_expression = true:suggestion
+# ++ NEW: prefer pattern matching over mixed is/cast
+csharp_style_prefer_pattern_matching = true:suggestion
+# ++ NEW: prefer not-pattern (is not null over != null)
+csharp_style_prefer_not_pattern = true:suggestion
+# ++ NEW: prefer extended property patterns
+csharp_style_prefer_extended_property_pattern = true:suggestion
 
 # Null-checking preferences
 csharp_style_throw_expression = true:suggestion
@@ -93,6 +111,20 @@ csharp_style_conditional_delegate_call = true:suggestion
 # Code block preferences
 csharp_prefer_braces = true:suggestion
 csharp_prefer_simple_using_statement = true:suggestion
+# ++ NEW: prefer tuple swap over temp variable
+csharp_style_prefer_tuple_swap = true:suggestion
+# ++ NEW: prefer local over anonymous functions
+csharp_style_prefer_local_over_anonymous_function = true:suggestion
+# ++ NEW: prefer index operator (^1 over Count - 1)
+csharp_style_prefer_index_operator = true:suggestion
+# ++ NEW: prefer range operator (x[1..3] over x.Slice)
+csharp_style_prefer_range_operator = true:suggestion
+# ++ NEW: implicit object creation where type is apparent (new() over new Foo())
+csharp_style_implicit_object_creation_when_type_is_apparent = true:suggestion
+# ++ NEW: prefer null check over type check
+csharp_style_prefer_null_check_over_type_check = true:suggestion
+# ++ NEW: deconstructed variable declaration
+csharp_style_deconstructed_variable_declaration = true:suggestion
 
 # 'using' directive preferences
 csharp_using_directive_placement = outside_namespace:suggestion
@@ -123,29 +155,27 @@ csharp_indent_block_contents = true
 csharp_indent_braces = false
 csharp_indent_case_contents_when_block = true
 
-# Space preferences (matches SpaceBeforeParens: Always, SpacesInParentheses: true)
+# Spacing preferences
+# ++ NEW: full spacing section to match your clang-format SpacesInParentheses
 csharp_space_after_cast = true
 csharp_space_after_keywords_in_control_flow_statements = true
-csharp_space_between_parentheses = control_flow_statements,expressions
-csharp_space_before_colon_in_inheritance_clause = true
-csharp_space_after_colon_in_inheritance_clause = true
-csharp_space_around_binary_operators = before_and_after
 csharp_space_between_method_declaration_parameter_list_parentheses = true
-csharp_space_between_method_declaration_empty_parameter_list_parentheses = true
-csharp_space_between_method_declaration_name_and_open_parenthesis = true
 csharp_space_between_method_call_parameter_list_parentheses = true
-csharp_space_between_method_call_empty_parameter_list_parentheses = true
-csharp_space_between_method_call_name_and_opening_parenthesis = true
+csharp_space_between_method_declaration_empty_parameter_list_parentheses = false
+csharp_space_between_method_call_empty_parameter_list_parentheses = false
+csharp_space_between_method_declaration_name_and_open_parenthesis = false
+csharp_space_between_method_call_name_and_opening_parenthesis = false
 csharp_space_after_comma = true
 csharp_space_before_comma = false
 csharp_space_after_dot = false
 csharp_space_before_dot = false
 csharp_space_after_semicolon_in_for_statement = true
 csharp_space_before_semicolon_in_for_statement = false
+csharp_space_around_binary_operators = before_and_after
 csharp_space_around_declaration_statements = false
-csharp_space_before_open_square_brackets = true
-csharp_space_between_empty_square_brackets = true
-csharp_space_between_square_brackets = true
+csharp_space_before_open_square_brackets = false
+csharp_space_between_empty_square_brackets = false
+csharp_space_between_square_brackets = true                # matches SpacesInSquareBrackets
 
 # Wrapping preferences
 csharp_preserve_single_line_statements = false
@@ -197,6 +227,11 @@ dotnet_naming_rule.constants_should_be_ada_style.severity = warning
 dotnet_naming_rule.constants_should_be_ada_style.symbols = constants
 dotnet_naming_rule.constants_should_be_ada_style.style = ada_style
 
+# ++ NEW: local functions follow ada style too
+dotnet_naming_rule.local_functions_should_be_ada_style.severity = warning
+dotnet_naming_rule.local_functions_should_be_ada_style.symbols = local_functions
+dotnet_naming_rule.local_functions_should_be_ada_style.style = ada_style
+
 # Symbol specifications
 dotnet_naming_symbols.interface.applicable_kinds = interface
 dotnet_naming_symbols.interface.applicable_accessibilities = public, internal, private, protected, protected_internal, private_protected
@@ -229,6 +264,10 @@ dotnet_naming_symbols.constants.applicable_kinds = field, local
 dotnet_naming_symbols.constants.required_modifiers = const
 dotnet_naming_symbols.constants.applicable_accessibilities = *
 
+# ++ NEW: local functions symbol spec
+dotnet_naming_symbols.local_functions.applicable_kinds = local_function
+dotnet_naming_symbols.local_functions.applicable_accessibilities = *
+
 # Naming styles - Ada Style (This_Is_My_Example)
 dotnet_naming_style.ada_style.capitalization = pascal_case
 dotnet_naming_style.ada_style.word_separator = _
@@ -248,11 +287,40 @@ dotnet_naming_style.ada_private_style.word_separator = _
 # IDE0055: Fix formatting
 dotnet_diagnostic.IDE0055.severity = warning
 
+# ── Suppress spacing enforcement squiggles ────────────────────
+dotnet_diagnostic.IDE0055.severity = none   
+
+
 # IDE0005: Remove unnecessary usings
 dotnet_diagnostic.IDE0005.severity = warning
 
 # CS8618: Non-nullable field not initialized
 dotnet_diagnostic.CS8618.severity = suggestion
+
+# ++ NEW: enforce file-scoped namespaces
+dotnet_diagnostic.IDE0161.severity = suggestion
+
+# ++ NEW: flag unused private members
+dotnet_diagnostic.IDE0051.severity = warning
+
+# ++ NEW: flag unread private members
+dotnet_diagnostic.IDE0052.severity = warning
+
+# ++ NEW: simplify LINQ expressions where possible
+dotnet_diagnostic.IDE0120.severity = suggestion
+
+# ++ NEW: use collection expression where applicable
+dotnet_diagnostic.IDE0300.severity = suggestion
+dotnet_diagnostic.IDE0301.severity = suggestion
+dotnet_diagnostic.IDE0302.severity = suggestion
+
+# ++ NEW: nullable reference type warnings — important for your null-heavy WinForms code
+dotnet_diagnostic.CS8600.severity = warning    # null assigned to non-nullable
+dotnet_diagnostic.CS8601.severity = warning    # possible null reference assignment
+dotnet_diagnostic.CS8602.severity = warning    # dereference of possibly null reference
+dotnet_diagnostic.CS8603.severity = warning    # possible null reference return
+dotnet_diagnostic.CS8604.severity = suggestion # possible null reference argument
+dotnet_diagnostic.CS8625.severity = warning    # null literal to non-nullable
 
 ###############################
 # JSON Files
@@ -271,3 +339,10 @@ indent_size = 2
 ###############################
 [*.md]
 trim_trailing_whitespace = false
+
+###############################
+# ++ NEW: Project / Solution files
+###############################
+[*.{csproj,vbproj,vcxproj,sln,props,targets}]
+indent_size = 2
+end_of_line = crlf

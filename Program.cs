@@ -1,3 +1,5 @@
+using Trace_Execution_Namespace;
+
 namespace Multimeter_Controller
 {
   internal static class Program
@@ -7,6 +9,7 @@ namespace Multimeter_Controller
     {
       Application.EnableVisualStyles ( );
       Application.SetCompatibleTextRenderingDefault ( false );
+      Trace_Execution.Initialize ( true );
       Application.Run ( new Form1 ( ) );
     }
   }

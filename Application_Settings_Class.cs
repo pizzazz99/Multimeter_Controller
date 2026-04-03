@@ -1,3 +1,154 @@
+
+// ════════════════════════════════════════════════════════════════════════════════
+// FILE:    Application_Settings.cs
+// PROJECT: Multimeter_Controller
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// PURPOSE
+//   Single source of truth for all user-configurable behaviour in the
+//   Multimeter Controller application.  Settings are persisted as indented
+//   JSON in the user's AppData\Roaming folder and loaded/saved via the
+//   static Load() / instance Save() methods.  The active Chart_Theme is
+//   always loaded from its own separate file and is never serialised here.
+//
+// PERSISTENCE
+//   File location : %AppData%\Multimeter_Controller\multi_poll_settings.json
+//   Format        : UTF-8 JSON, WriteIndented = true
+//   On load error : silently falls back to a default instance; no exception
+//                   is propagated to the caller.
+//   Theme         : [JsonIgnore] — loaded independently via Chart_Theme.Load()
+//                   on every settings load, guaranteeing theme and settings
+//                   files stay in sync.
+//
+// SETTINGS GROUPS
+//
+//   Prologix / GPIB Hardware
+//     Default_Prologic_Port              TCP port for Prologix GPIB-ETHERNET
+//     Prologic_Scan_Timeout_MS           UDP discovery timeout (ms)
+//     Prologic_MAC_Address               MAC prefix/address for adapter scan
+//     Default_GPIB_Instrument_Address    Default primary listen address (0–30)
+//     Prologix_Auto_Read                 Enable auto-read mode on the adapter
+//     Prologix_Read_Tmo_Ms               Read timeout when auto-read is on
+//     Prologix_Fetch_Ms                  Polling interval for adapter fetch
+//     Network_Scan_Subnet                Override subnet; empty = auto-detect
+//     Default_IP_Address                 Pre-filled IP for manual connection
+//
+//   HP 3458A Instrument Behaviour
+//     Send_Reset_On_Connect_3458         Issue RESET on first connect
+//     Reset_Settle_Delay_Ms              Delay after RESET before commands
+//     Send_End_Always_3458               Assert EOI on every write
+//     Instrument_Settle_Ms               General post-command settle time
+//     ERR_Read_Delay_Ms                  Delay before reading ERR register
+//     NPLC_Apply_Delay_Ms                Settle time after NPLC change
+//     Default_NPLC_3458                  NPLC string sent to the 3458A
+//     Default_Trig_Mode_3458             Trigger mode string (e.g. TRIG HOLD)
+//
+//   Chart / Display
+//     Chart_Refresh_Rate_Ms              Base repaint interval (16–1000 ms)
+//     Show_Grid_Lines                    Horizontal and vertical grid lines
+//     Show_Data_Dots                     Individual sample dots on line charts
+//     Data_Dot_Size                      Dot diameter in pixels (1–10)
+//     Line_Thickness                     Chart line width in pixels (1–10)
+//     Default_To_Combined_View           Open chart in Combined view
+//     Default_To_Normalized_View         Open chart in Normalized mode
+//     Show_Legend_On_Startup             Show series legend on form open
+//     Show_Tooltips_On_Hover             Enable mouse-hover value tooltips
+//     Tooltip_Distance_Threshold         Max pixel distance for hit detection
+//     Tooltip_Display_Duration_Ms        How long the tooltip stays visible
+//
+//   Polling / Data Collection
+//     Max_Display_Points                 Rolling window hard cap (10–1 000 000)
+//     Default_Poll_Delay_Ms              Inter-cycle delay (50–60 000 ms)
+//     Stop_Polling_At_Max_Display_Points Halt polling vs. warn at cap
+//     Default_NPLC                       NPLC preset for new sessions
+//     Default_Measurement_Type           Measurement function for new sessions
+//     Default_Continuous_Poll            Start in continuous-poll mode
+//     Default_GPIB_Timeout_Ms            Per-read GPIB timeout (1–60 s)
+//     Max_Retry_Attempts                 Read retries before error (0–10)
+//     Max_Consecutive_Errors_Before_Disable  Errors before instrument disabled
+//     Auto_Retry_Failed_Instruments      Re-enable disabled instruments
+//     Retry_Delay_Seconds                Wait before retry attempt (1–300 s)
+//     Skew_Warning_Threshold_Seconds     Max allowed timestamp skew (0.2–10 s)
+//     Stale_Data_Threshold_Seconds       Age before reading flagged stale;
+//                                        always enforced > Skew_Warning_Threshold
+//
+//   File / Data Management
+//     Default_Save_Folder                Relative or absolute output path
+//     Resolved_Save_Folder               [JsonIgnore] — absolute path resolved
+//                                        by Multimeter_Common_Helpers_Class
+//     Filename_Pattern                   Token pattern: {date} {time} {function}
+//     Enable_Auto_Save                   Periodic CSV auto-save during recording
+//     Auto_Save_Interval_Minutes         Auto-save period (1–1440 min)
+//     Auto_Save_On_Stop                  Save immediately when polling stops
+//     Include_Statistics_In_Save         Append stats footer to CSV
+//     Prompt_Before_Clear                Confirm dialog before data clear
+//     Auto_Load_Last_Session             Reload previous file on startup
+//     Export_Format                      File format token (e.g. "CSV")
+//
+//   Performance / Memory
+//     Max_Data_Points_In_Memory          Absolute in-memory cap (1 000–10 000 000)
+//     Warning_Threshold_Percent          Memory warning level (50–99 %)
+//     Warn_At_Threshold                  Show warning when threshold reached
+//     Throttle_When_Many_Points          Reduce refresh rate at high point count
+//     Throttle_Point_Threshold           Point count that triggers throttling
+//     Auto_Trim_Old_Data                 Drop oldest points to stay under cap
+//     Keep_Last_N_Points                 Points to retain when trimming
+//     Reduce_Refresh_Rate_When_Large     Alias flag for throttle behaviour
+//
+//   Auto-Analysis
+//     Auto_Analyze_After_Recording       Launch analysis form on polling stop
+//     Analysis_Series_Count              Number of series to include
+//     Analysis_Show_Mean / _Std_Dev / _Min_Max / _RMS / _Trend /
+//       _Sample_Rate / _Errors           Toggle individual stats in the popup
+//
+//   UI / UX Preferences
+//     Default_Window_Title               Main form caption
+//     Remember_Window_Size/Position      Persist window geometry on exit
+//     Last_Window_Width/Height/X/Y       Stored geometry from previous session
+//     Enable_Keyboard_Pan                Arrow/Home/End/PgUp/PgDn chart pan
+//     Enable_Ctrl_Scroll_Zoom            Mouse-wheel zoom on chart panel
+//     Show_Progress_Messages             Status-strip progress text updates
+//     Flash_On_Error                     Visual flash on instrument error
+//     Play_Sound_On_Complete             Audio cue when recording completes
+//
+//   Zoom
+//     Default_Zoom_Level                 TrackBar position on open (1–100)
+//     Zoom_Sensitivity                   Scroll-wheel zoom speed (0.1–5.0)
+//     Remember_Zoom_Level                Persist zoom between sessions
+//     Last_Zoom_Level                    Zoom saved from previous session
+//
+// KEY METHODS
+//   static Load()              Reads JSON from AppData; falls back to defaults
+//                              on missing file or parse failure.  Always calls
+//                              Chart_Theme.Load() to populate Current_Theme.
+//   Save()                     Serialises this instance to JSON.  Shows a
+//                              MessageBox on IO failure — never throws.
+//   Validate_And_Fix()         Clamps every numeric field to its valid range
+//                              and repairs null/empty strings.  Call after
+//                              Load() before first use.
+//   Initialize_Default_Save_Folder()   Sets Default_Save_Folder to the
+//                              compile-time default if it is null or empty.
+//   Set_Theme(Chart_Theme)     Replaces Current_Theme and raises Theme_Changed
+//                              so subscribed forms can repaint immediately.
+//   Theme_Changed (event)      Raised by Set_Theme(); consumers should
+//                              invalidate their chart panels in the handler.
+//
+// NOTES
+//   • Validate_And_Fix() enforces Stale_Data_Threshold > Skew_Warning_Threshold
+//     by bumping Stale by +1 s when the invariant is violated.
+//   • Default_NPLC is reset to "0.02" if it is blank or was previously "10",
+//     preventing an accidental low-speed measurement mode on first run.
+//   • Resolved_Save_Folder is [JsonIgnore]; it is computed on every access
+//     by Multimeter_Common_Helpers_Class.Get_Graph_Captures_Folder() which
+//     handles relative-to-executable vs. absolute path resolution.
+//
+// AUTHOR:  [Your name]
+// CREATED: [Date]
+// ════════════════════════════════════════════════════════════════════════════════
+
+
+
+
 using System;
 using System.IO;
 using System.Text.Json;
@@ -19,6 +170,9 @@ namespace Multimeter_Controller
 
 
 
+
+    [JsonPropertyName ( "prologic_scan_timeout_ms" )]
+    public int Prologic_Scan_Timeout_MS { get; set; } = 50;
 
     [JsonPropertyName ( "prologic_mac_address" )]
     public string Prologic_MAC_Address { get; set; } = "00-21-69-01-3D-DD";
@@ -54,7 +208,7 @@ namespace Multimeter_Controller
     public string Default_Trig_Mode_3458 { get; set; } = "TRIG HOLD";
 
     [JsonPropertyName ( "prologix_auto_read" )]
-    public bool Prologix_Auto_Read { get; set; } = true;
+    public bool Prologix_Auto_Read { get; set; } = false;
 
     [JsonPropertyName ( "prologix_read_tmo_ms" )]
     public int Prologix_Read_Tmo_Ms { get; set; } = 5000;
@@ -69,8 +223,7 @@ namespace Multimeter_Controller
 
 
 
-    [JsonPropertyName ( "display_digits" )]
-    public int Display_Digits { get; set; } = 10;
+  
 
     [JsonPropertyName ( "tooltip_distance_threshold" )]
     public int Tooltip_Distance_Threshold { get; set; } = 50;
@@ -111,7 +264,7 @@ namespace Multimeter_Controller
     // ===== POLLING/DATA COLLECTION =====
 
     [JsonPropertyName ( "max_display_points" )]
-    public int Max_Display_Points { get; set; } = 100_000;
+    public int Max_Display_Points { get; set; } = 50_000_000;
 
 
     [JsonPropertyName ( "default_poll_delay_ms" )]
@@ -123,7 +276,7 @@ namespace Multimeter_Controller
 
 
     [JsonPropertyName ( "default_nplc" )]
-public string Default_NPLC { get; set; } = "1";
+    public string Default_NPLC { get; set; } = "1";
 
     [JsonPropertyName ( "default_measurement_type" )]
     public string Default_Measurement_Type { get; set; } = "DC Voltage";
@@ -156,8 +309,12 @@ public string Default_NPLC { get; set; } = "1";
 
     // ===== FILE/DATA MANAGEMENT =====
 
+    [JsonIgnore]
+    public string Resolved_Save_Folder =>
+    Multimeter_Common_Helpers_Class.Get_Graph_Captures_Folder ( this );
+
     [JsonPropertyName ( "default_save_folder" )]
-    public string Default_Save_Folder { get; set; } = "";
+    public string Default_Save_Folder { get; set; } = "Graph_Captures";
 
     [JsonPropertyName ( "filename_pattern" )]
     public string Filename_Pattern { get; set; } = "{date}_{time}_{function}";
@@ -209,6 +366,40 @@ public string Default_NPLC { get; set; } = "1";
     [JsonPropertyName ( "reduce_refresh_rate_when_large" )]
     public bool Reduce_Refresh_Rate_When_Large { get; set; } = true;
 
+
+    // ===== Analysis ======
+
+    // ===== Analysis ======
+    [JsonPropertyName ( "auto_analyze_after_recording" )]
+    public bool Auto_Analyze_After_Recording { get; set; } = false;
+
+    [JsonPropertyName ( "analysis_series_count" )]
+    public int Analysis_Series_Count { get; set; } = 2;
+
+    [JsonPropertyName ( "analysis_show_mean" )]
+    public bool Analysis_Show_Mean { get; set; } = true;
+
+    [JsonPropertyName ( "analysis_show_std_dev" )]
+    public bool Analysis_Show_Std_Dev { get; set; } = true;
+
+    [JsonPropertyName ( "analysis_show_min_max" )]
+    public bool Analysis_Show_Min_Max { get; set; } = true;
+
+    [JsonPropertyName ( "analysis_show_rms" )]
+    public bool Analysis_Show_RMS { get; set; } = true;
+
+    [JsonPropertyName ( "analysis_show_trend" )]
+    public bool Analysis_Show_Trend { get; set; } = true;
+
+    [JsonPropertyName ( "analysis_show_sample_rate" )]
+    public bool Analysis_Show_Sample_Rate { get; set; } = true;
+
+    [JsonPropertyName ( "analysis_show_errors" )]
+    public bool Analysis_Show_Errors { get; set; } = true;
+
+
+
+
     // ===== UI/UX PREFERENCES =====
 
     [JsonPropertyName ( "default_window_title" )]
@@ -246,6 +437,26 @@ public string Default_NPLC { get; set; } = "1";
 
     [JsonPropertyName ( "play_sound_on_complete" )]
     public bool Play_Sound_On_Complete { get; set; } = false;
+
+    [JsonPropertyName("analysis_tab_alignment")]
+    public string Analysis_Tab_Alignment_str { get; set; } = "Left";
+
+    [JsonIgnore]
+    public TabAlignment Analysis_Tab_Alignment
+    {
+      get => Analysis_Tab_Alignment_str switch
+      {
+        "Left" => TabAlignment.Left,
+        "Right" => TabAlignment.Right,
+        _ => TabAlignment.Top,
+      };
+      set => Analysis_Tab_Alignment_str = value switch
+      {
+        TabAlignment.Left => "Left",
+        TabAlignment.Right => "Right",
+        _ => "Top",
+      };
+    }
 
     // ===== ZOOM SETTINGS =====
 
@@ -348,22 +559,9 @@ public string Default_NPLC { get; set; } = "1";
 
     public void Initialize_Default_Save_Folder ( )
     {
-      string Documents = Environment.GetFolderPath ( Environment.SpecialFolder.MyDocuments );
-      Default_Save_Folder = Path.Combine ( Documents, "Multimeter_Data" );
-
-      try
-      {
-        Directory.CreateDirectory ( Default_Save_Folder );
-      }
-      catch
-      {
-        // If can't create in Documents, use app data
-        string App_Data = Environment.GetFolderPath ( Environment.SpecialFolder.ApplicationData );
-        Default_Save_Folder = Path.Combine ( App_Data, "Multimeter_Controller", "Data" );
-        Directory.CreateDirectory ( Default_Save_Folder );
-      }
+      if ( string.IsNullOrWhiteSpace ( Default_Save_Folder ) )
+        Default_Save_Folder = "Graph_Captures";
     }
-
     // ===== VALIDATION METHODS =====
 
 
@@ -388,7 +586,7 @@ public string Default_NPLC { get; set; } = "1";
       if ( Stale_Data_Threshold_Seconds <= Skew_Warning_Threshold_Seconds )
         Stale_Data_Threshold_Seconds = Skew_Warning_Threshold_Seconds + 1.0;
 
-      Display_Digits = Math.Max ( 4, Math.Min ( 10, Display_Digits ) );
+    
       Max_Display_Points = Math.Clamp ( Max_Display_Points, 10, 1_000_000 );
 
       // Poll delay: 50ms to 60000ms (0.05s to 60s)

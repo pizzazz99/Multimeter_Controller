@@ -1,19 +1,218 @@
+
+
+// =============================================================================
+// FILE:     HP34420_Command_Dictionary_Class.cs
+// PROJECT:  Multimeter_Controller
+// =============================================================================
+//
+// DESCRIPTION:
+//   Static command dictionary for the HP / Agilent 34420A Nano Volt / Micro
+//   Ohm Meter. Provides a structured, searchable registry of all supported
+//   SCPI instrument commands, organized by functional category. Each entry
+//   captures the full command syntax, description, valid parameter ranges,
+//   query form, factory default value, and a usage example.
+//
+//   The 34420A is a specialized low-level DC instrument optimized for
+//   nanovolt-range voltage measurement and micro-ohm resistance measurement.
+//   Its command set is deliberately narrower than the general-purpose 34401A —
+//   there is no AC voltage, no current, no frequency, no diode, and no
+//   continuity function. The distinguishing features relative to the 34401A
+//   are the DC voltage ratio function, per-function NPLC and range commands,
+//   a built-in digital averaging filter, and SYST:LOC for explicit local mode
+//   return.
+//
+// -----------------------------------------------------------------------------
+// INSTRUMENT:
+//   HP / Agilent 34420A Nano Volt / Micro Ohm Meter
+//   Command Set:  SCPI (Standard Commands for Programmable Instruments)
+//   Interface:    GPIB (IEEE-488.2) / RS-232
+//   DC Voltage:   100 nV resolution (100 mV range, MAX NPLC)
+//   Resistance:   2-wire and 4-wire, up to 100 MΩ
+//
+// -----------------------------------------------------------------------------
+// COMMAND SET OVERVIEW:
+//   This dictionary uses SCPI short-form mnemonics with colon-separated node
+//   paths (e.g. "CONF:VOLT:DC", "FRES:NPLC"). The long-form expansion is
+//   shown in the Syntax field of each entry.
+//
+//   IMPORTANT — MEAS vs CONF vs READ?/FETCH? distinction:
+//     MEAS:xxxx?   Combines CONFigure + INITiate + FETCh into a single call.
+//                  Resets all settings to defaults for the selected function,
+//                  then returns one reading. Use for quick one-shot measurements.
+//     CONF:xxxx    Configures the function and range without triggering.
+//                  Follow with INIT (or READ?) to acquire readings.
+//     READ?        Equivalent to INIT + FETCH? — triggers the measurement
+//                  state machine and returns the result. Respects current config.
+//     FETCH?       Returns the last completed reading without re-triggering.
+//                  Only valid after INIT has been issued.
+//
+//   IMPORTANT — DC voltage ratio (VOLT:DC:RAT):
+//     The ratio function divides the Input terminal voltage by the Sense
+//     terminal voltage and returns the dimensionless ratio. It is unique to
+//     the 34420A within this instrument family. Both terminals must be driven;
+//     the Sense terminal uses a separate low-level input path. This function
+//     is not present on the 34401A.
+//
+//   IMPORTANT — Digital averaging filter (VOLT:DC:AVER):
+//     The 34420A provides a software averaging filter independent of NPLC.
+//     MOVing mode averages the last N readings on a rolling basis (low latency,
+//     continuous output). REPeat mode accumulates exactly N readings and
+//     outputs one result (higher latency, lower noise). Enable with
+//     VOLT:DC:AVER:STAT ON; set count with VOLT:DC:AVER:COUN.
+//     The filter applies to DC voltage only — resistance measurements use
+//     NPLC alone for noise rejection.
+//
+// -----------------------------------------------------------------------------
+// COMMAND CATEGORIES:
+//
+//   Measurement   — One-shot measurement queries (MEAS:VOLT:DC?,
+//                   MEAS:VOLT:DC:RAT?, MEAS:RES?, MEAS:FRES?) plus READ? and
+//                   FETCH?. These commands return a reading immediately or
+//                   retrieve the last triggered result.
+//
+//   Configuration — Function setup commands (CONF:VOLT:DC, CONF:VOLT:DC:RAT,
+//                   CONF:RES, CONF:FRES) and per-function parameter commands:
+//                   DC voltage range (VOLT:DC:RANG / VOLT:DC:RANG:AUTO),
+//                   DC voltage integration time (VOLT:DC:NPLC),
+//                   DC voltage resolution (VOLT:DC:RES),
+//                   resistance range (RES:RANG / RES:RANG:AUTO),
+//                   resistance integration time (RES:NPLC),
+//                   4-wire resistance range (FRES:RANG / FRES:RANG:AUTO),
+//                   4-wire resistance integration time (FRES:NPLC),
+//                   autozero (ZERO:AUTO), and digital filter
+//                   (VOLT:DC:AVER:STAT / VOLT:DC:AVER:TCON / VOLT:DC:AVER:COUN).
+//
+//   Trigger       — Trigger source (TRIG:SOUR), trigger delay (TRIG:DEL /
+//                   TRIG:DEL:AUTO), trigger count (TRIG:COUN), sample count
+//                   per trigger (SAMP:COUN), trigger initiation (INIT), and
+//                   bus trigger (*TRG).
+//
+//   Math          — Math function selection (CALC:FUNC) and enable (CALC:STAT),
+//                   null offset (CALC:NULL:OFFS), limit test bounds
+//                   (CALC:LIM:LOW / CALC:LIM:UPP), and statistics queries
+//                   (CALC:AVER:MIN?, CALC:AVER:MAX?, CALC:AVER:AVER?,
+//                   CALC:AVER:COUN?). Note: DB and DBM math functions are
+//                   listed in CALC:FUNC parameters but are of limited utility
+//                   on a nanovolt meter — verify firmware support before use.
+//
+//   System        — Identification (*IDN?), reset (*RST), clear status (*CLS),
+//                   operation complete (*OPC / *OPC?), self-test (*TST?),
+//                   error queue (SYST:ERR?), remote/local mode (SYST:REM /
+//                   SYST:LOC), SCPI version (SYST:VERS?), status/event
+//                   registers (*STB?, *SRE, *ESE, *ESR?), and state save/recall
+//                   (*SAV / *RCL, registers 0–2).
+//
+//   I/O           — Display enable/disable (DISP), custom display text
+//                   (DISP:TEXT / DISP:TEXT:CLE), beeper (SYST:BEEP /
+//                   SYST:BEEP:STAT), terminal query (ROUT:TERM?), and output
+//                   data format (FORM).
+//
+//   Memory        — Reading memory point count (DATA:POINts?) and reading
+//                   memory destination routing (DATA:FEED).
+//
+//   Calibration   — Calibration security (CAL:SEC:STAT), calibration count
+//                   query (CAL:COUN?), and calibration string label (CAL:STR).
+//
+// -----------------------------------------------------------------------------
+// KEY METHOD:
+//
+//   Get_All_Commands()
+//     Returns a List<Command_Entry> containing all registered commands,
+//     sorted alphabetically by Command name (case-insensitive). The list
+//     is rebuilt on every call — it is not cached.
+//
+//   NOTE: This class does not implement Get_Command_By_Name(). If name-based
+//   lookup is needed, add it following the pattern in HP3458_Command_Dictionary_
+//   Class, with a null guard on Query_Form before the query-form comparison
+//   branch (several entries in this dictionary use null for Query_Form).
+//
+// -----------------------------------------------------------------------------
+// DATA MODEL — Command_Entry fields:
+//
+//   Command       The primary SCPI short-form mnemonic (e.g. "CONF:VOLT:DC").
+//                 IEEE-488.2 common commands use the asterisk prefix (e.g. "*RST").
+//   Syntax        Full long-form syntax string including optional parameters.
+//   Description   Human-readable description of the command's purpose.
+//   Category      Command_Category enum value for grouping/filtering.
+//   Parameters    Enumeration of valid parameter values and their meanings.
+//   Query_Form    The query variant of the command, or null / empty string if
+//                 no query form exists. Callers must null-check before use —
+//                 *CLS, SYST:BEEP, *RCL, and INIT all use null or empty here.
+//   Default_Value The factory default state for this setting after *RST.
+//   Example       A representative usage string suitable for direct GPIB/RS-232
+//                 transmission.
+//
+// -----------------------------------------------------------------------------
+// USAGE NOTES:
+//
+//   - ZERO:AUTO ONCE performs a single autozero measurement and then disables
+//     further autozero. This is the recommended mode for high-speed logging
+//     where the overhead of per-reading autozero is unacceptable but a baseline
+//     correction is still needed.
+//
+//   - VOLT:DC:NPLC 100 is the maximum integration time (100 power line cycles).
+//     At 60 Hz this is approximately 1.67 seconds per reading. At this setting
+//     the instrument achieves its lowest noise floor and is the appropriate
+//     mode for nanovolt-level measurements.
+//
+//   - RES:NPLC and FRES:NPLC are independent of VOLT:DC:NPLC. Each function
+//     retains its own NPLC setting. A CONF:xxxx or MEAS:xxxx? call does not
+//     reset the other function's NPLC.
+//
+//   - The digital filter (VOLT:DC:AVER) stacks on top of NPLC integration —
+//     total settling time is approximately NPLC × filter_count × line_period.
+//     With NPLC 100 and AVER:COUN 10 at 60 Hz, one output reading takes
+//     roughly 16.7 seconds. Size the filter count accordingly.
+//
+//   - SYST:LOC is present in this dictionary (unique among the instruments in
+//     this project). It explicitly returns the front panel to local control
+//     over RS-232, where GPIB GTL is not available. Over GPIB, asserting GTL
+//     is the preferred method; SYST:LOC is the RS-232 equivalent.
+//
+//   - *SAV / *RCL support registers 0–2 (three registers, same as the 34401A).
+//     Register 0 is recalled automatically at power-on.
+//
+//   - Query_Form is null for *CLS, SYST:BEEP, and *RCL. It is an empty string
+//     for INIT and *TRG. Callers must handle both cases.
+//
+// -----------------------------------------------------------------------------
+// DEPENDENCIES:
+//   System                        (using directive present in source)
+//   System.Collections.Generic    List<T>
+//   System.Linq                   (using directive present; not used here)
+//   System.Text                   (using directive present; not used here)
+//   System.Threading.Tasks        (using directive present; not used here)
+//   System.StringComparison       OrdinalIgnoreCase
+//   Command_Entry                 Data record defined elsewhere in namespace
+//   Command_Category              Enum defined elsewhere in namespace
+//
+// -----------------------------------------------------------------------------
+// MAINTENANCE:
+//   To add a command: append a new Command_Entry to the list in
+//   Get_All_Commands(). The list is re-sorted alphabetically on every call,
+//   so insertion order does not matter.
+//
+//   To add name-based lookup: implement Get_Command_By_Name() following the
+//   pattern in HP3458_Command_Dictionary_Class, with explicit null guards on
+//   Query_Form before any string comparison involving that field.
+//
+//   Unused using directives (System.Linq, System.Text, System.Threading.Tasks)
+//   can be removed without impact — they are boilerplate from the file template
+//   and are not referenced anywhere in this class.
+//
+// =============================================================================
+
+
+
+
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-// ============================================================================
-// File:        HP34420A_Command_Dictionary_Class.cs
-// Project:     HP3458 Multimeter Controller
-// Description: Command reference dictionary for the HP / Agilent HP 34420A
-//              7.5-digit nano-volt / micro-ohm meter. Uses standard SCPI
-//              command syntax.
-//
-// Author:       Mike
-// Framework:    .NET 9.0, Windows Forms
-// ============================================================================
+
 
 namespace Multimeter_Controller
 {
