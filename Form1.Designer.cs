@@ -30,6 +30,7 @@ namespace Multimeter_Controller
       Connection_Mode_Label = new Label();
       Connection_Mode_Combo = new ComboBox();
       Connection_Group = new GroupBox();
+      Prologix_Health_Button = new Button();
       Find_Prologix_Button = new Button();
       Subnet_Label = new Label();
       Subnet_Textbox = new TextBox();
@@ -65,6 +66,7 @@ namespace Multimeter_Controller
       Response_Label = new Label();
       Response_Text_Box = new TextBox();
       Instruments_Group = new GroupBox();
+      About_Selections_Button = new Button();
       label2 = new Label();
       Master_Instrument_Combobox = new ComboBox();
       button1 = new Button();
@@ -92,7 +94,6 @@ namespace Multimeter_Controller
       Button_Show_Execution_Trace = new Button();
       Session_Settings_Button = new Button();
       Display_Recording_Button = new Button();
-      About_Selections_Button = new Button();
       Connection_Group.SuspendLayout();
       ((System.ComponentModel.ISupportInitialize) GPIB_Address_Numeric).BeginInit();
       Instruments_Group.SuspendLayout();
@@ -171,6 +172,7 @@ namespace Multimeter_Controller
       // Connection_Group
       // 
       Connection_Group.Anchor =  AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Right;
+      Connection_Group.Controls.Add( Prologix_Health_Button );
       Connection_Group.Controls.Add( Find_Prologix_Button );
       Connection_Group.Controls.Add( Subnet_Label );
       Connection_Group.Controls.Add( Subnet_Textbox );
@@ -206,6 +208,16 @@ namespace Multimeter_Controller
       Connection_Group.TabIndex = 15;
       Connection_Group.TabStop = false;
       Connection_Group.Text = "Connection Settings";
+      // 
+      // Prologix_Health_Button
+      // 
+      Prologix_Health_Button.Location = new Point( 124, 410 );
+      Prologix_Health_Button.Name = "Prologix_Health_Button";
+      Prologix_Health_Button.Size = new Size( 102, 25 );
+      Prologix_Health_Button.TabIndex = 32;
+      Prologix_Health_Button.Text = "Prologix Health";
+      Prologix_Health_Button.UseVisualStyleBackColor = true;
+      Prologix_Health_Button.Click += Prologix_Health_Button_Click;
       // 
       // Find_Prologix_Button
       // 
@@ -469,12 +481,12 @@ namespace Multimeter_Controller
       Send_Command_Text_Box.Font = new Font( "Consolas", 10F );
       Send_Command_Text_Box.Location = new Point( 307, 244 );
       Send_Command_Text_Box.Name = "Send_Command_Text_Box";
-      Send_Command_Text_Box.Size = new Size( 200, 23 );
+      Send_Command_Text_Box.Size = new Size( 251, 23 );
       Send_Command_Text_Box.TabIndex = 5;
       // 
       // Execute_Button
       // 
-      Execute_Button.Location = new Point( 513, 243 );
+      Execute_Button.Location = new Point( 564, 243 );
       Execute_Button.Name = "Execute_Button";
       Execute_Button.Size = new Size( 80, 26 );
       Execute_Button.TabIndex = 6;
@@ -545,6 +557,16 @@ namespace Multimeter_Controller
       Instruments_Group.TabIndex = 14;
       Instruments_Group.TabStop = false;
       Instruments_Group.Text = "GPIB Instruments";
+      // 
+      // About_Selections_Button
+      // 
+      About_Selections_Button.Location = new Point( 154, 469 );
+      About_Selections_Button.Name = "About_Selections_Button";
+      About_Selections_Button.Size = new Size( 71, 45 );
+      About_Selections_Button.TabIndex = 60;
+      About_Selections_Button.Text = "About Selections";
+      About_Selections_Button.UseVisualStyleBackColor = true;
+      About_Selections_Button.Click += About_Selections_Button_Click;
       // 
       // label2
       // 
@@ -728,7 +750,7 @@ namespace Multimeter_Controller
       Command_History_List_Box.HorizontalScrollbar = true;
       Command_History_List_Box.Location = new Point( 307, 288 );
       Command_History_List_Box.Name = "Command_History_List_Box";
-      Command_History_List_Box.Size = new Size( 286, 49 );
+      Command_History_List_Box.Size = new Size( 354, 49 );
       Command_History_List_Box.TabIndex = 16;
       Command_History_List_Box.DoubleClick += Command_History_ListBox_DoubleClick;
       // 
@@ -736,11 +758,11 @@ namespace Multimeter_Controller
       // 
       History_Label.AutoSize = true;
       History_Label.Font = new Font( "Segoe UI", 9F, FontStyle.Bold );
-      History_Label.Location = new Point( 251, 288 );
+      History_Label.Location = new Point( 192, 288 );
       History_Label.Name = "History_Label";
-      History_Label.Size = new Size( 50, 15 );
+      History_Label.Size = new Size( 109, 15 );
       History_Label.TabIndex = 17;
-      History_Label.Text = "History:";
+      History_Label.Text = "Command History:";
       // 
       // Meter_Info_Button
       // 
@@ -806,16 +828,6 @@ namespace Multimeter_Controller
       Display_Recording_Button.Text = "View Recorded Data";
       Display_Recording_Button.UseVisualStyleBackColor = true;
       Display_Recording_Button.Click += Display_Recording_Data_Button_Click;
-      // 
-      // About_Selections_Button
-      // 
-      About_Selections_Button.Location = new Point( 154, 469 );
-      About_Selections_Button.Name = "About_Selections_Button";
-      About_Selections_Button.Size = new Size( 71, 45 );
-      About_Selections_Button.TabIndex = 60;
-      About_Selections_Button.Text = "About Selections";
-      About_Selections_Button.UseVisualStyleBackColor = true;
-      About_Selections_Button.Click += About_Selections_Button_Click;
       // 
       // Form1
       // 
@@ -936,6 +948,7 @@ namespace Multimeter_Controller
     private Label label2;
     private ComboBox Master_Instrument_Combobox;
     private Button About_Selections_Button;
+    private Button Prologix_Health_Button;
   }
 
 }

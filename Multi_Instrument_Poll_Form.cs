@@ -964,6 +964,10 @@ namespace Multimeter_Controller
           Delay_Numeric.Enabled = false;  // ← lock it
         } );
 
+
+
+
+
         while ( ! Token.IsCancellationRequested && ( Continuous || _Cycle_Count < Total_Cycles ) )
         {
 
@@ -1567,6 +1571,10 @@ namespace Multimeter_Controller
       View_Mode_Button.Enabled = Has_Data;
       Analyze_Data_Button.Enabled = Has_Data && Idle;
       Legend_Toggle_Button.Enabled = Has_Data && Idle;
+
+      Close_Button.Enabled = !Live && !Rec;
+
+
     }
 
     // ===== Recording / Loading =====
@@ -1930,6 +1938,11 @@ namespace Multimeter_Controller
         return;
       }
 
+      Start_Time_TextBox.Text = string.Empty;
+      Stop_Time_TextBox.Text = string.Empty;
+      Total_Time_TextBox.Text = string.Empty;
+
+
       Load_Recorded_File( Dlg.FileName );
     }
 
@@ -1964,13 +1977,12 @@ namespace Multimeter_Controller
         }
 
         // ── Restore measurement type and unit from preamble ───────────
-        if (Preamble.Flat_Stats.TryGetValue("Measurement", out string? Saved_Measurement))
+        if (Preamble.Flat_Stats.TryGetValue( "Measurement", out string? Saved_Measurement ))
         {
           Capture_Trace.Write( $"Saved_Measurement: [{Saved_Measurement}]" );
           Capture_Trace.Write( $"Combo current text: [{Measurement_Combo.Text}]" );
-          Capture_Trace.Write( $"Items contains: {Measurement_Combo.Items.Contains(Saved_Measurement)}" );
-
-          if ( Measurement_Combo.Items.Contains( Saved_Measurement ) )
+          Capture_Trace.Write( $"Items contains: {Measurement_Combo.Items.Contains( Saved_Measurement )}" );
+          if (Measurement_Combo.Items.Contains( Saved_Measurement ))
           {
             Measurement_Combo.SelectedItem = Saved_Measurement;
             Capture_Trace.Write( $"Combo set to: [{Measurement_Combo.Text}]" );
@@ -1978,7 +1990,29 @@ namespace Multimeter_Controller
           else
           {
             Capture_Trace.Write(
-              $"NO MATCH - combo items: [{string.Join(", ", Measurement_Combo.Items.Cast<string>())}]" );
+              $"NO MATCH - combo items: [{string.Join( ", ", Measurement_Combo.Items.Cast<string>() )}]" );
+          }
+        }
+
+        // ── Restore poll start/stop/run times ─────────────────────────
+        if (Preamble.Flat_Stats.TryGetValue( "Poll_Start", out string? Poll_Start_Str ) &&
+             DateTime.TryParse( Poll_Start_Str, out DateTime Poll_Start ))
+        {
+          _Start_Time = Poll_Start;
+          Start_Time_TextBox.Text = Poll_Start.ToString( "hh:mm:ss tt" );
+        }
+
+        if (Preamble.Flat_Stats.TryGetValue( "Poll_Stop", out string? Poll_Stop_Str ) &&
+             DateTime.TryParse( Poll_Stop_Str, out DateTime Poll_Stop ))
+        {
+          _Stop_Time = Poll_Stop;
+          Stop_Time_TextBox.Text = Poll_Stop.ToString( "hh:mm:ss tt" );
+
+          if (Start_Time_TextBox.Text != string.Empty)
+          {
+            TimeSpan Elapsed = _Stop_Time - _Start_Time;
+            long Rounded_Ticks = (long) Math.Round( Elapsed.TotalSeconds ) * TimeSpan.TicksPerSecond;
+            Total_Time_TextBox.Text = TimeSpan.FromTicks( Rounded_Ticks ).ToString( @"hh\:mm\:ss" );
           }
         }
 
@@ -2078,6 +2112,22 @@ namespace Multimeter_Controller
         // ── Post-load UI updates ──────────────────────────────────────
         int   Total = _Series.Sum( s => s.Points.Count );
         Show_Progress( $"Loaded {_Series.Count} instruments, {Total} points", _Foreground_Color );
+
+
+        // ── Derive start/stop/run from data ──────────────────────────
+        var All_Points = _Series.SelectMany( s => s.Points ).ToList();
+        if (All_Points.Count > 0)
+        {
+          DateTime First = All_Points.Min( p => p.Time );
+          DateTime Last = All_Points.Max( p => p.Time );
+          TimeSpan Elapsed = Last - First;
+          long Rounded_Ticks = (long) Math.Round( Elapsed.TotalSeconds ) * TimeSpan.TicksPerSecond;
+
+          Start_Time_TextBox.Text = First.ToString( "hh:mm:ss tt" );
+          Stop_Time_TextBox.Text = Last.ToString( "hh:mm:ss tt" );
+          Total_Time_TextBox.Text = TimeSpan.FromTicks( Rounded_Ticks ).ToString( @"hh\:mm\:ss" );
+        }
+
 
         // Create_Legend_Panel ( );   // force checkbox rebuild for new series
         // Update_Legend ( );
@@ -3502,7 +3552,8 @@ namespace Multimeter_Controller
       Stop_Time_TextBox.Text = string.Empty;
       Total_Time_TextBox.Text = string.Empty;
 
-      Set_Button_State();
+    
+    Set_Button_State();
     }
 
     private void On_Stop()
@@ -3515,6 +3566,8 @@ namespace Multimeter_Controller
       Stop_Time_TextBox.Text = _Stop_Time.ToString( "hh:mm:ss tt" );   // 12-hour with AM/PM
       long rounded_Ticks = (long) Math.Round( elapsed.TotalSeconds ) * TimeSpan.TicksPerSecond;
       Total_Time_TextBox.Text = TimeSpan.FromTicks( rounded_Ticks ).ToString( @"hh\:mm\:ss" );
+
+    
 
       Set_Button_State();
     }

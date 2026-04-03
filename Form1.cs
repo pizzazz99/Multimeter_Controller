@@ -104,14 +104,24 @@ namespace Multimeter_Controller
     public bool Is_Ethernet = false;
 
     private bool _Cleanup_Done = false;
-  
+
+    private Multi_Instrument_Poll_Form? _Poll_Form = null;
+
    
+
     private bool _Adding_Instrument = false; // true while async add is in progress
+    private bool Poll_Form_Is_Open => _Poll_Form != null && !_Poll_Form.IsDisposed;
+
 
     public Form1()
     {
       using var Block = Trace_Block.Start_If_Enabled();
       InitializeComponent();
+
+
+
+   
+
 
       // Populate instrument type combo first, then set selection
       _Updating_Controls = true;
@@ -172,8 +182,8 @@ namespace Multimeter_Controller
         return;
       }
 
-    
-   
+
+
 
       base.OnFormClosing( e );
     }
@@ -197,6 +207,37 @@ namespace Multimeter_Controller
         Command_List.Items.Add( $"{Entry.Command}  -  {Entry.Description}" );
       }
     }
+
+
+    public class Device_Health_Result
+    {
+
+
+      public string Prologix_Auto = "";
+      public string Prologix_EOI = "";
+      public string Prologix_EOS = "";
+      public string Prologix_SaveCfg = "";
+
+      public bool Is_Healthy
+      {
+        get; set;
+      }
+      public string Device_Identity
+      {
+        get; set;
+      }
+      public List<string> Passed_Checks { get; set; } = new();
+      public List<string> Failed_Checks { get; set; } = new();
+      public string Summary => Is_Healthy
+        ? $"Device at address {Checked_Address} is operational."
+        : $"Device at address {Checked_Address} failed {Failed_Checks.Count} check(s).";
+      public int Checked_Address
+      {
+        get; set;
+      }
+    }
+
+  
 
     private void Command_List_Selected_Index_Changed( object Sender, EventArgs E )
     {
@@ -379,7 +420,15 @@ namespace Multimeter_Controller
     private void Multi_Poll_Button_Click( object Sender, EventArgs E )
     {
       using var Block = Trace_Block.Start_If_Enabled();
+
+      if (_Poll_Form != null && !_Poll_Form.IsDisposed)
+      {
+        _Poll_Form.BringToFront();
+        return;
+      }
+
       Cursor = Cursors.WaitCursor;
+
 
       if (_Instruments.Count == 0)
       {
@@ -422,9 +471,17 @@ namespace Multimeter_Controller
         return;
       }
 
-      var Form = new Multi_Instrument_Poll_Form( _Comm, Cloned, _Settings, _Selected_Meter );
+      _Poll_Form = new Multi_Instrument_Poll_Form( _Comm, Cloned, _Settings, _Selected_Meter );
+
+      _Poll_Form.FormClosed += ( s, e ) =>
+      {
+        _Poll_Form = null;
+        Set_Button_State();
+      };
+
       Cursor = Cursors.Default;
-      Form.Show();
+      Set_Button_State();
+      _Poll_Form.Show();
     }
 
     private void Commit_Current_Instrument_Edits()
@@ -708,7 +765,7 @@ namespace Multimeter_Controller
     }
 
 
-   
+
 
 
 
@@ -913,8 +970,14 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
       int Index = Instruments_List.SelectedIndex;
+
       if (Index < 0)
+      {
+       
         return;
+      }
+
+
       bool Removing_Active = (_Instruments[ Index ].Type == _Selected_Meter);
       if (Removing_Active)
       {
@@ -924,6 +987,8 @@ namespace Multimeter_Controller
       _Instruments.RemoveAt( Index );
       Refresh_Instruments_List();   // ← dedicated method, not inline
       Refresh_Master_Combo();
+
+      Set_Button_State();
     }
 
     private void Refresh_Instruments_List()
@@ -1517,7 +1582,7 @@ namespace Multimeter_Controller
 
 
 
-  
+
 
 
     private void Update_Connection_Status( bool Connected )
@@ -1638,10 +1703,27 @@ namespace Multimeter_Controller
       NPLC_Combo_Box.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet || Is_Serial);
       Roll_Name_Textbox.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet || Is_Serial);
       Meter_Roll_Label.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet || Is_Serial);
+      Prologix_Health_Button.Enabled = _Comm.Is_Connected && _Instruments.Count == 0;
 
       Select_Instrument_Button.Enabled = _Instruments.Count > 0;
 
       Scan_Bus_Button.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet);
+
+
+      // When polling form is open or closed
+
+      Instrument_Type_Combo.Enabled = _Comm.Is_Connected && !Poll_Form_Is_Open;
+      Instrument_Type_Label.Enabled = _Comm.Is_Connected && !Poll_Form_Is_Open;
+      Scan_Bus_Button.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet) && !Poll_Form_Is_Open;
+      Select_Instrument_Button.Enabled = _Instruments.Count > 0 && !Poll_Form_Is_Open;
+      NPLC_Combo_Box.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet || Is_Serial) && !Poll_Form_Is_Open;
+      Add_Instrument_Button.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet) && !Poll_Form_Is_Open;
+      Remove_Instrument_Button.Enabled = _Instruments.Count > 0 && !Poll_Form_Is_Open;
+      GPIB_Address_Numeric.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet) && !Poll_Form_Is_Open;
+      Multi_Poll_Button.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet) && !Poll_Form_Is_Open && _Instruments.Count > 0;
+
+
+
     }
 
     private void Comm_Connection_Changed( object? Sender, bool Connected )
@@ -2447,6 +2529,8 @@ namespace Multimeter_Controller
 
     private void Master_Instrument_Combobox_SelectedIndexChanged( object sender, EventArgs e )
     {
+      using var Block = Trace_Block.Start_If_Enabled();
+
       if (Master_Instrument_Combobox.SelectedIndex < 0)
         return;  // ← no selection yet, nothing to do
       if (Master_Instrument_Combobox.SelectedItem is not Instrument Selected)
@@ -2461,6 +2545,8 @@ namespace Multimeter_Controller
 
     private void Refresh_Master_Combo()
     {
+      using var Block = Trace_Block.Start_If_Enabled();
+
       Master_Instrument_Combobox.SelectedIndexChanged -= Master_Instrument_Combobox_SelectedIndexChanged;
       Master_Instrument_Combobox.DataSource = null;
       var Visible = _Instruments.Where( I => I.Visible ).ToList();
@@ -2505,6 +2591,8 @@ namespace Multimeter_Controller
 
     private void About_Selections_Button_Click( object sender, EventArgs e )
     {
+      using var Block = Trace_Block.Start_If_Enabled();
+
       using (var Popup = new Rich_Text_Popup( "About Selections", 520, 360 ))
       {
         Popup.Add_Title( "Why a Master Instrument Must Be Identified" )
@@ -2532,6 +2620,249 @@ namespace Multimeter_Controller
       }
     }
 
+    private void Prologix_Health_Button_Click( object sender, EventArgs e )
+    {
+      using var Block = Trace_Block.Start_If_Enabled();
+
+      int Address = (int) GPIB_Address_Numeric.Value;
+
+      try
+      {
+        Prologix_Health_Button.Enabled = false;
+        var Result = Verify_Prologix_Health( Address );
+
+        using (var Popup = new Rich_Text_Popup( "Device Health Check", 680, 480, Resizable: false ))
+        {
+          // ── Title ────────────────────────────────────────────────────────────
+          Popup.Add_Title( "  Prologix Device Health Check" );
+          Popup.Add_Row( "Address", $"GPIB {Result.Checked_Address}", Label_Width: 24 );
+          Popup.Add_Blank();
+
+
+          // ── Prologix configuration ───────────────────────────────────────────
+          Popup.Add_Blank();
+          Popup.Add_Separator();
+          Popup.Add_Heading_Mono( "  Prologix Configuration" );
+          Popup.Add_Row( "  Auto Read", Result.Prologix_Auto, Label_Width: 20 );
+          Popup.Add_Row( "  EOI", Result.Prologix_EOI, Label_Width: 20 );
+          Popup.Add_Row( "  EOS", Result.Prologix_EOS, Label_Width: 20 );
+          Popup.Add_Row( "  Save Config", Result.Prologix_SaveCfg, Label_Width: 20 );
+          Popup.Add_Blank( );
+
+          // ── Overall status ───────────────────────────────────────────────────
+          if (Result.Is_Healthy)
+            Popup.Add_Body_Colored( "  ✔  All checks passed — device is operational.", Color.FromArgb( 0, 140, 0 ) );
+          else
+            Popup.Add_Error( $"  ✘  {Result.Failed_Checks.Count} check(s) failed — review details below." );
+
+          // ── Passed checks ────────────────────────────────────────────────────
+          if (Result.Passed_Checks.Any())
+          {
+            Popup.Add_Blank();
+            Popup.Add_Heading_Mono( "  Passed Checks" );
+            foreach (string Check in Result.Passed_Checks)
+              Popup.Add_Body_Colored( $"  ✔  {Check}", Color.FromArgb( 0, 140, 0 ) );
+          }
+
+          // ── Failed checks ────────────────────────────────────────────────────
+          if (Result.Failed_Checks.Any())
+          {
+            Popup.Add_Blank();
+            Popup.Add_Heading_Mono( "  Failed Checks" );
+            foreach (string Check in Result.Failed_Checks)
+              Popup.Add_Error( $"  ✘  {Check}" );
+          }
+
+          // ── Device identity if available ─────────────────────────────────────
+          if (!string.IsNullOrWhiteSpace( Result.Device_Identity ))
+          {
+            Popup.Add_Blank();
+            Popup.Add_Separator();
+            Popup.Add_Row( "  Instrument ID", Result.Device_Identity, Label_Width: 20 );
+          }
+
+          Popup.Add_Blank();
+          Popup.Show_Popup( this );
+        }
+      }
+      catch (Exception ex)
+      {
+        using (var Popup = new Rich_Text_Popup( "Health Check Error", 500, 220 ))
+        {
+          Popup.Add_Title( "  Unexpected Error" );
+          Popup.Add_Blank();
+          Popup.Add_Error( $"  {ex.Message}" );
+          Popup.Add_Blank();
+          Popup.Show_Popup( this );
+        }
+      }
+      finally
+      {
+        Prologix_Health_Button.Enabled = true;
+      }
+    }
+
+
+    public Device_Health_Result Verify_Prologix_Health( int address )
+    {
+      using var Block = Trace_Block.Start_If_Enabled();
+
+    
+    
+      _Comm.Flush_Input_Buffer();
+
+
+
+      var Result = new Device_Health_Result { Checked_Address = address };
+      int Original_Timeout = _Comm.Read_Timeout_Ms;
+      _Comm.Read_Timeout_Ms = _Settings.Default_GPIB_Timeout_Ms;
+      _Comm.Change_GPIB_Address( address );
+
+      try
+      {
+        _Comm.Read_Timeout_Ms = _Settings.Default_GPIB_Timeout_Ms;
+
+
+
+        // --- Check 1: Prologix controller responsiveness ---
+        try
+        {
+          _Comm.Flush_Input_Buffer();
+          string Controller_Version = _Comm.Query_Instrument( "++ver" );
+          string Ver_Trimmed = Controller_Version?.Split( '\n' )[ 0 ].Trim() ?? string.Empty;
+
+          if (!string.IsNullOrWhiteSpace( Ver_Trimmed ) &&
+               Ver_Trimmed.StartsWith( "Prologix", StringComparison.OrdinalIgnoreCase ))
+            Result.Passed_Checks.Add( $"Prologix controller responsive: {Ver_Trimmed}" );
+          else
+            Result.Failed_Checks.Add( $"Unexpected ++ver response: '{Ver_Trimmed}'" );
+        }
+        catch (Exception ex)
+        {
+          Result.Failed_Checks.Add( $"Prologix controller not responding to ++ver: {ex.Message}" );
+        }
+
+        // --- Check 2: GPIB mode is CONTROLLER (mode = 1) ---
+        try
+        {
+          _Comm.Flush_Input_Buffer();
+          string Mode = _Comm.Query_Instrument( "++mode" );
+          string Mode_Trimmed = Mode?.Split( '\n' )[ 0 ].Trim() ?? string.Empty;
+
+          if (Mode_Trimmed == "1")
+            Result.Passed_Checks.Add( "Prologix is in CONTROLLER mode." );
+          else if (double.TryParse( Mode_Trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out _ ))
+            Result.Passed_Checks.Add( "++mode response obscured by instrument poll (non-critical)." );
+          else
+            Result.Failed_Checks.Add( $"Prologix not in CONTROLLER mode — ++mode returned: '{Mode_Trimmed}', expected '1'." );
+        }
+        catch (Exception ex)
+        {
+          Result.Failed_Checks.Add( $"Could not verify ++mode: {ex.Message}" );
+        }
+
+        // --- Check 3: Prologix internal read timeout (informational) ---
+        try
+        {
+          _Comm.Flush_Input_Buffer();
+          string RAW = _Comm.Query_Instrument( "++read_tmo_ms" );
+          string RAW_Trimmed = RAW?.Split( '\n' )[ 0 ].Trim() ?? string.Empty;
+
+          if (int.TryParse( RAW_Trimmed, out int Tmo ))
+            Result.Passed_Checks.Add( $"Prologix read timeout: {Tmo} ms" );
+          else if (double.TryParse( RAW_Trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out _ ))
+          { /* stale measurement on first line — silent skip */
+          }
+          else
+            Result.Failed_Checks.Add( $"Could not parse ++read_tmo_ms response: '{RAW_Trimmed}'" );
+        }
+        catch (Exception ex)
+        {
+          Result.Passed_Checks.Add( "++read_tmo_ms not supported by this firmware (non-critical)." );
+        }
+
+        // --- Prologix configuration snapshot ---
+        try
+        {
+          _Comm.Flush_Input_Buffer();
+          string Auto = _Comm.Query_Instrument( "++auto" )?.Split( '\n' )[ 0 ].Trim() ?? "";
+          Result.Prologix_Auto = Auto == "1" ? "On" : Auto == "0" ? "Off" : Auto;
+        }
+        catch { Result.Prologix_Auto = "n/a"; }
+
+        try
+        {
+          _Comm.Flush_Input_Buffer();
+          string EOI = _Comm.Query_Instrument( "++eoi" )?.Split( '\n' )[ 0 ].Trim() ?? "";
+          Result.Prologix_EOI = EOI == "1" ? "Enabled" : EOI == "0" ? "Disabled" : EOI;
+        }
+        catch { Result.Prologix_EOI = "n/a"; }
+
+        try
+        {
+          _Comm.Flush_Input_Buffer();
+          string EOS = _Comm.Query_Instrument( "++eos" )?.Split( '\n' )[ 0 ].Trim() ?? "";
+          Result.Prologix_EOS = EOS switch
+          {
+            "0" => "CR+LF",
+            "1" => "CR",
+            "2" => "LF",
+            "3" => "None",
+            _ => EOS
+          };
+        }
+        catch { Result.Prologix_EOS = "n/a"; }
+
+        try
+        {
+          _Comm.Flush_Input_Buffer();
+          string SAVECFG = _Comm.Query_Instrument( "++savecfg" )?.Split( '\n' )[ 0 ].Trim() ?? "";
+          Result.Prologix_SaveCfg = SAVECFG == "1" ? "Enabled" : SAVECFG == "0" ? "Disabled" : SAVECFG;
+        }
+        catch { Result.Prologix_SaveCfg = "n/a"; }
+
+        // --- Check 4: Device identity (*IDN?) ---
+        try
+        {
+          _Comm.Flush_Input_Buffer();
+          string IDN = _Comm.Query_Instrument( "*IDN?" );
+          string IDN_Trimmed = IDN?.Split( '\n' )[ 0 ].Trim() ?? string.Empty;
+
+          if (string.IsNullOrWhiteSpace( IDN_Trimmed ))
+          {
+            Result.Passed_Checks.Add( "No *IDN? response — device does not support SCPI identification (non-critical)." );
+          }
+          else if (double.TryParse( IDN_Trimmed,
+                                      NumberStyles.Float,
+                                      CultureInfo.InvariantCulture,
+                                      out _ ))
+          {
+            // Measurement bled through — device is responding on the bus but not to *IDN?
+            Result.Passed_Checks.Add( "Device is responding on GPIB bus but does not support *IDN? (non-critical)." );
+          }
+          else
+          {
+            Result.Device_Identity = IDN_Trimmed;
+            Result.Passed_Checks.Add( $"Device identity confirmed: {Result.Device_Identity}" );
+          }
+        }
+        catch (Exception ex)
+        {
+          // Timeout on *IDN? is normal for non-SCPI instruments — treat as non-critical
+          Result.Passed_Checks.Add( $"Device does not support *IDN? (non-critical): {ex.Message}" );
+        }
+
+        Result.Is_Healthy = Result.Failed_Checks.Count == 0;
+      }
+      finally
+      {
+      
+        _Comm.Read_Timeout_Ms = Original_Timeout;
+       
+      }
+
+      return Result;
+    }
 
   }
 }

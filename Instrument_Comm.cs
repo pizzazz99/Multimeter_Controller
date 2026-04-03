@@ -447,6 +447,14 @@ namespace Multimeter_Controller
       Discard_Output_Buffer ( );
     }
 
+
+    // In Instrument_Comm — wraps whatever serial port you are using
+    public void Flush_Input_Buffer()
+    {
+      if (_Port != null && _Port.IsOpen)
+        _Port.DiscardInBuffer();
+    }
+
     public void Flush_Buffers ( )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
@@ -908,24 +916,6 @@ namespace Multimeter_Controller
     // =========================================================
     // READ
     // =========================================================
-    public string? old_Read_Instrument ( CancellationToken Token = default )
-    {
-      using var Block = Trace_Block.Start_If_Enabled ( );
-
-      try
-      {
-        return Mode == Connection_Mode.Prologix_Ethernet
-            ? Read_Ethernet ( Token )
-            : Read_Serial ( Token );
-      }
-      catch ( OperationCanceledException ) { throw; }
-      catch ( Exception Ex )
-      {
-        Raise_Error ( $"Read failed: {Ex.Message}" );
-        return "";
-      }
-    }
-
 
 
     public string? Read_Instrument ( CancellationToken Token = default )
@@ -984,49 +974,49 @@ namespace Multimeter_Controller
       return Read_Response_Serial ( );
     }
 
-    private string Read_Ethernet ( CancellationToken Token )
+    private string Read_Ethernet( CancellationToken Token )
     {
-      using var Block = Trace_Block.Start_If_Enabled ( );
-
-      if ( _Tcp_Stream == null )
+      using var Block = Trace_Block.Start_If_Enabled();
+      if (_Tcp_Stream == null)
       {
-        Raise_Error ( "Not connected." );
+        Raise_Error( "Not connected." );
         return "";
       }
-
-      var Buffer = new StringBuilder ( );
-      byte [ ] Byte_Buf = new byte [ 1024 ];
+      var Buffer = new StringBuilder();
+      byte[] Byte_Buf = new byte[ 1024 ];
       int Elapsed = 0;
 
-      while ( true )
+      while (true)
       {
-        Token.ThrowIfCancellationRequested ( );
-
-        if ( _Tcp_Stream.DataAvailable )
+        // Match Read_Serial behaviour — return quietly instead of throwing
+        if (Buffer.Length == 0 && Token.IsCancellationRequested)
         {
-          int Count = _Tcp_Stream.Read ( Byte_Buf, 0, Byte_Buf.Length );
-          string Chunk = Encoding.ASCII.GetString ( Byte_Buf, 0, Count );
-          Buffer.Append ( Chunk );
+          Capture_Trace.Write( $"Ethernet read cancelled after {Elapsed}ms" );
+          return "";
+        }
 
-          if ( Chunk.Contains ( '\n' ) || Chunk.Contains ( '\r' ) )
+        if (_Tcp_Stream.DataAvailable)
+        {
+          int Count = _Tcp_Stream.Read( Byte_Buf, 0, Byte_Buf.Length );
+          string Chunk = Encoding.ASCII.GetString( Byte_Buf, 0, Count );
+          Buffer.Append( Chunk );
+          if (Chunk.Contains( '\n' ) || Chunk.Contains( '\r' ))
             break;
         }
         else
         {
-          if ( Buffer.Length > 0 )
-            break;  // got data, no more arriving
+          if (Buffer.Length > 0)
+            break;
 
-          Thread.Sleep ( 10 );
+          Thread.Sleep( 10 );
           Elapsed += 10;
-          if ( Elapsed >= Read_Timeout_Ms )
-          {
-            throw new TimeoutException ( "Timeout waiting for Ethernet response." );
-          }
+          if (Elapsed >= Read_Timeout_Ms)
+            throw new TimeoutException( "Timeout waiting for Ethernet response." );
         }
       }
 
-      string Response = Buffer.ToString ( ).Trim ( );
-      Data_Received?.Invoke ( this, Response );
+      string Response = Buffer.ToString().Trim();
+      Data_Received?.Invoke( this, Response );
       return Response;
     }
 

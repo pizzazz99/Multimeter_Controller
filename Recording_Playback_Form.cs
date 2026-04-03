@@ -561,6 +561,13 @@ namespace Multimeter_Controller
       if ( Dlg.ShowDialog ( ) != DialogResult.OK )
         return;
 
+
+      Start_Time_TextBox.Text = string.Empty;
+      Stop_Time_TextBox.Text = string.Empty;
+      Total_Time_TextBox.Text = string.Empty;
+
+
+
       string Path = Dlg.FileName;
 
       if ( Path.EndsWith ( "_Timing.csv", StringComparison.OrdinalIgnoreCase ) )
@@ -638,14 +645,16 @@ namespace Multimeter_Controller
           return;
 
         // ── Restore measurement type from preamble ────────────────────
-        if ( Preamble.Flat_Stats.TryGetValue ( "Measurement", out string? Saved_Measurement ) )
+        if (Preamble.Flat_Stats.TryGetValue( "Measurement", out string? Saved_Measurement ))
         {
-          Capture_Trace.Write ( $"Saved_Measurement: [{Saved_Measurement}]" );
-          if ( Measurement_Combo.Items.Contains ( Saved_Measurement ) )
+          Capture_Trace.Write( $"Saved_Measurement: [{Saved_Measurement}]" );
+          if (Measurement_Combo.Items.Contains( Saved_Measurement ))
             Measurement_Combo.SelectedItem = Saved_Measurement;
           else
-            Capture_Trace.Write ( $"NO MATCH - combo items: [{string.Join ( ", ", Measurement_Combo.Items.Cast<string> ( ) )}]" );
+            Capture_Trace.Write( $"NO MATCH - combo items: [{string.Join( ", ", Measurement_Combo.Items.Cast<string>() )}]" );
         }
+
+     
 
         string [ ] Lines = Preamble.Lines;
         int Header_Index = Preamble.Header_Index;
@@ -738,7 +747,21 @@ namespace Multimeter_Controller
         int Total = _Series.Sum ( s => s.Points.Count );
         Show_Progress ( $"Loaded {_Series.Count} instruments, {Total} points", _Foreground_Color );
 
-   
+        // ── Derive start/stop/run from data ──────────────────────────
+        var All_Points = _Series.SelectMany( s => s.Points ).ToList();
+        if (All_Points.Count > 0)
+        {
+          DateTime First = All_Points.Min( p => p.Time );
+          DateTime Last = All_Points.Max( p => p.Time );
+          TimeSpan Elapsed = Last - First;
+          long Rounded_Ticks = (long) Math.Round( Elapsed.TotalSeconds ) * TimeSpan.TicksPerSecond;
+
+          Start_Time_TextBox.Text = First.ToString( "hh:mm:ss tt" );
+          Stop_Time_TextBox.Text = Last.ToString( "hh:mm:ss tt" );
+          Total_Time_TextBox.Text = TimeSpan.FromTicks( Rounded_Ticks ).ToString( @"hh\:mm\:ss" );
+        }
+
+
         Update_Performance_Status ( );
         Update_Graph_Style_Availability ( );
 
