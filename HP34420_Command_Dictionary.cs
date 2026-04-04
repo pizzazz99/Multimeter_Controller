@@ -1,5 +1,3 @@
-
-
 // =============================================================================
 // FILE:     HP34420_Command_Dictionary_Class.cs
 // PROJECT:  Multimeter_Controller
@@ -202,23 +200,11 @@
 //
 // =============================================================================
 
-
-
-
-
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-
-
 namespace Multimeter_Controller
 {
   public static class HP34420_Command_Dictionary_Class
   {
-    public static List<Command_Entry> Get_All_Commands ( )
+    public static List<Command_Entry> Get_All_Commands()
     {
       var Commands = new List<Command_Entry>
       {
@@ -911,8 +897,8 @@ namespace Multimeter_Controller
           Example:"CAL:STR \"Cal 2026-02-06\"" ),
       };
 
-      Commands.Sort ( ( A, B ) =>
-        string.Compare ( A.Command, B.Command,
+      Commands.Sort( ( A, B ) =>
+        string.Compare( A.Command, B.Command,
           StringComparison.OrdinalIgnoreCase ) );
 
       return Commands;

@@ -158,33 +158,26 @@
 //
 // =============================================================================
 
-
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
 namespace Multimeter_Controller
 {
   public static class HP3456_Command_Dictionary_Class
   {
-    public static Command_Entry? Get_Command_By_Name ( string Command_Name )
+    public static Command_Entry? Get_Command_By_Name( string Command_Name )
     {
-      if ( string.IsNullOrWhiteSpace ( Command_Name ) )
+      if (string.IsNullOrWhiteSpace( Command_Name ))
         return null;
 
-      Command_Name = Command_Name.Trim ( );
+      Command_Name = Command_Name.Trim();
 
-      return Get_All_Commands ( )
-        .FirstOrDefault ( c =>
-            string.Equals ( c.Command, Command_Name,
+      return Get_All_Commands()
+        .FirstOrDefault( c =>
+            string.Equals( c.Command, Command_Name,
               StringComparison.OrdinalIgnoreCase )
-          || string.Equals ( c.Query_Form, Command_Name,
+          || string.Equals( c.Query_Form, Command_Name,
               StringComparison.OrdinalIgnoreCase ) );
     }
 
-    public static List<Command_Entry> Get_All_Commands ( )
+    public static List<Command_Entry> Get_All_Commands()
     {
       var Commands = new List<Command_Entry>
       {
@@ -919,8 +912,8 @@ namespace Multimeter_Controller
           Example: "X1" ),
       };
 
-      Commands.Sort ( ( A, B ) =>
-          string.Compare ( A.Command, B.Command,
+      Commands.Sort( ( A, B ) =>
+          string.Compare( A.Command, B.Command,
             StringComparison.OrdinalIgnoreCase ) );
 
       return Commands;

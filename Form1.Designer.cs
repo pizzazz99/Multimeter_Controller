@@ -59,6 +59,7 @@ namespace Multimeter_Controller
       Connect_Button = new Button();
       Connection_Status_Label = new Label();
       GPIB_Address_Numeric = new NumericUpDown();
+      Visa_Resource_Textbox = new TextBox();
       Send_Command_Label = new Label();
       Send_Command_Text_Box = new TextBox();
       Execute_Button = new Button();
@@ -543,6 +544,7 @@ namespace Multimeter_Controller
       Instruments_Group.Controls.Add( Instrument_Name_Text );
       Instruments_Group.Controls.Add( GPIB_Address_Label );
       Instruments_Group.Controls.Add( GPIB_Address_Numeric );
+      Instruments_Group.Controls.Add( Visa_Resource_Textbox );
       Instruments_Group.Controls.Add( Instrument_Type_Label );
       Instruments_Group.Controls.Add( Instrument_Type_Combo );
       Instruments_Group.Controls.Add( Add_Instrument_Button );
@@ -656,16 +658,25 @@ namespace Multimeter_Controller
       Instrument_Name_Text.Name = "Instrument_Name_Text";
       Instrument_Name_Text.Size = new Size( 129, 23 );
       Instrument_Name_Text.TabIndex = 1;
-      // 
+      //
       // GPIB_Address_Label
-      // 
+      //
       GPIB_Address_Label.AutoSize = true;
       GPIB_Address_Label.Location = new Point( 15, 105 );
       GPIB_Address_Label.Name = "GPIB_Address_Label";
       GPIB_Address_Label.Size = new Size( 80, 15 );
       GPIB_Address_Label.TabIndex = 2;
       GPIB_Address_Label.Text = "GPIB Address:";
-      // 
+      //
+      // Visa_Resource_Textbox
+      //
+      Visa_Resource_Textbox.Location = new Point( 102, 102 );
+      Visa_Resource_Textbox.Name = "Visa_Resource_Textbox";
+      Visa_Resource_Textbox.Size = new Size( 129, 23 );
+      Visa_Resource_Textbox.TabIndex = 3;
+      Visa_Resource_Textbox.Text = "GPIB0::22::INSTR";
+      Visa_Resource_Textbox.Visible = false;
+      //
       // Instrument_Type_Label
       // 
       Instrument_Type_Label.AutoSize = true;
@@ -912,8 +923,8 @@ namespace Multimeter_Controller
     private System.Windows.Forms.Label Instrument_Name_Label;
     private System.Windows.Forms.TextBox Instrument_Name_Text;
     private System.Windows.Forms.Label GPIB_Address_Label;
-    private System.Windows.Forms.NumericUpDown
-      GPIB_Address_Numeric;
+    private System.Windows.Forms.NumericUpDown GPIB_Address_Numeric;
+    private System.Windows.Forms.TextBox Visa_Resource_Textbox;
     private System.Windows.Forms.Label Instrument_Type_Label;
     private System.Windows.Forms.ComboBox Instrument_Type_Combo;
     private System.Windows.Forms.Button Add_Instrument_Button;
@@ -939,8 +950,10 @@ namespace Multimeter_Controller
     private Button Session_Settings_Button;
     private ComboBox NPLC_Combo_Box;
     private Button Apply_NPLC_To_All_Button;
+#pragma warning disable CS0169 // Designer-generated controls not yet wired to code
     private Label Session_Name_Label;
     private TextBox Session_Name_Textbox;
+#pragma warning restore CS0169
     private Label Meter_Roll_Label;
     private TextBox Roll_Name_Textbox;
     private Button Display_Recording_Button;
