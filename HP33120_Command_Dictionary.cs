@@ -226,7 +226,7 @@ namespace Multimeter_Controller
 {
   public static class HP33120_Command_Dictionary_Class
   {
-    public static List<Command_Entry> Get_All_Commands ( )
+    public static List<Command_Entry> Get_All_Commands()
     {
       var Commands = new List<Command_Entry>
       {
@@ -970,8 +970,8 @@ namespace Multimeter_Controller
           Example: "PHAS:REF" ),
       };
 
-      Commands.Sort ( ( A, B ) =>
-        string.Compare ( A.Command, B.Command,
+      Commands.Sort( ( A, B ) =>
+        string.Compare( A.Command, B.Command,
           StringComparison.OrdinalIgnoreCase ) );
 
       return Commands;

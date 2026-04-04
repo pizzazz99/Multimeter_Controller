@@ -5,12 +5,12 @@ namespace Multimeter_Controller
   internal static class Program
   {
     [STAThread]
-    static void Main ( )
+    static void Main()
     {
-      Application.EnableVisualStyles ( );
-      Application.SetCompatibleTextRenderingDefault ( false );
-      Trace_Execution.Initialize ( true );
-      Application.Run ( new Form1 ( ) );
+      Application.EnableVisualStyles();
+      Application.SetCompatibleTextRenderingDefault( false );
+      Trace_Execution.Initialize( true );
+      Application.Run( new Form1() );
     }
   }
 }

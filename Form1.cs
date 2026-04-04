@@ -59,17 +59,9 @@
 // Framework:    .NET 9.0, Windows Forms
 // ============================================================================
 
-using Multimeter_Controller.Properties;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Diagnostics.Metrics;
 using System.Globalization;
 using System.IO.Ports;
-using System.Windows.Forms;
-using System.Windows.Forms.DataVisualization.Charting;
 using Trace_Execution_Namespace;
-
-using static System.ComponentModel.Design.ObjectSelectorEditor;
 using static Trace_Execution_Namespace.Trace_Execution;
 using Rich_Text_Popup_Namespace;
 
@@ -89,8 +81,6 @@ namespace Multimeter_Controller
 
     private readonly List<Instrument> _Instruments = new List<Instrument>();
 
-    private int _Selected_Address = 0;
-
     private bool _Updating_Controls = false;
 
     private int _Selected_Index = -1;
@@ -98,16 +88,16 @@ namespace Multimeter_Controller
     private Application_Settings _Settings = Application_Settings.Load();
     private Chart_Theme _Theme = Chart_Theme.Dark_Preset();
 
-    private int _Instrument_Count = 0;
     public bool Is_GPIB = false;
     public bool Is_Serial = false;
     public bool Is_Ethernet = false;
+    public bool Is_NI_VISA = false;
 
     private bool _Cleanup_Done = false;
 
     private Multi_Instrument_Poll_Form? _Poll_Form = null;
 
-   
+
 
     private bool _Adding_Instrument = false; // true while async add is in progress
     private bool Poll_Form_Is_Open => _Poll_Form != null && !_Poll_Form.IsDisposed;
@@ -120,7 +110,7 @@ namespace Multimeter_Controller
 
 
 
-   
+
 
 
       // Populate instrument type combo first, then set selection
@@ -237,7 +227,7 @@ namespace Multimeter_Controller
       }
     }
 
-  
+
 
     private void Command_List_Selected_Index_Changed( object Sender, EventArgs E )
     {
@@ -263,45 +253,6 @@ namespace Multimeter_Controller
       Update_Button_State( Selected );
 
       Execute_Button.Refresh();
-    }
-
-    private void Apply_Settings()
-    {
-      using var Block = Trace_Block.Start_If_Enabled();
-
-      // ===== WINDOW TITLE =====
-
-      if (!string.IsNullOrWhiteSpace( _Settings.Default_Window_Title ))
-        this.Text = _Settings.Default_Window_Title;
-      else
-        this.Text = "W&W Co.  Since 1969";
-
-      // ===== SAVE FOLDER =====
-
-      if (!string.IsNullOrEmpty( _Settings.Default_Save_Folder ))
-      {
-        try
-        {
-          Directory.CreateDirectory( _Settings.Default_Save_Folder );
-        }
-        catch
-        {
-        }
-      }
-
-      // ===== GPIB SETTINGS =====
-
-      if (_Comm != null)
-      {
-        _Comm.Read_Timeout_Ms = _Settings.Default_GPIB_Timeout_Ms;
-      }
-
-      Subnet_Textbox.Text = _Settings.Network_Scan_Subnet;
-      IP_Address_Textbox.Text = _Settings.Default_IP_Address;
-
-      Capture_Trace.Write(
-        $"Subnet set to: [{_Settings.Network_Scan_Subnet}] Control name: [{Subnet_Textbox.Name}]" );
-      Capture_Trace.Write( "Settings applied successfully" );
     }
 
     protected override void OnLoad( EventArgs E )
@@ -509,7 +460,17 @@ namespace Multimeter_Controller
       _Updating_Controls = true;
       Capture_Trace.Write( "Adding Instrument" );
 
-      int Address = (int) GPIB_Address_Numeric.Value;
+      int Address;
+      if (Is_NI_VISA)
+      {
+        // Address comes from the spinner; the resource string was already set when
+        // the user selected the instrument from the scan results list.
+        Address = (int) GPIB_Address_Numeric.Value;
+      }
+      else
+      {
+        Address = (int) GPIB_Address_Numeric.Value;
+      }
       Meter_Type Type = Meter_Type_Extensions.From_Combo_Index( Instrument_Type_Combo.SelectedIndex );
 
       Capture_Trace.Write(
@@ -796,7 +757,9 @@ namespace Multimeter_Controller
 
       Select_Instrument_Button.Enabled = State;
       GPIB_Address_Label.Enabled = State;
-      GPIB_Address_Numeric.Enabled = State;
+      // NI-VISA: GPIB address is auto-populated from the resource string — never user-editable
+      GPIB_Address_Numeric.Enabled = State && !Is_NI_VISA;
+      Visa_Resource_Textbox.Visible = false;  // always hidden; resource string is in the Connection section
 
       Remove_Instrument_Button.Enabled = State;
       Scan_Bus_Button.Enabled = State;
@@ -807,8 +770,11 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      _Settings.Default_IP_Address = IP_Address_Textbox.Text.Trim();
-      _Settings.Save();
+      if (!Is_NI_VISA)
+      {
+        _Settings.Default_IP_Address = IP_Address_Textbox.Text.Trim();
+        _Settings.Save();
+      }
     }
 
     private void Subnet_Textbox_TextChanged( object sender, EventArgs e )
@@ -956,7 +922,10 @@ namespace Multimeter_Controller
       Connected_Instrument_Textbox.Text = inst.Name;
     }
 
-    private static bool Is_Legacy_HP( Meter_Type Type ) => Type switch
+    // Extracts the GPIB address integer from a VISA resource string.
+    // e.g. "GPIB0::22::INSTR" or "visa://host/GPIB0::22::INSTR" → 22
+    // Returns 0 if the address cannot be parsed.
+private static bool Is_Legacy_HP( Meter_Type Type ) => Type switch
     {
       Meter_Type.HP34401 => false,
       Meter_Type.HP33120 => false,
@@ -973,7 +942,7 @@ namespace Multimeter_Controller
 
       if (Index < 0)
       {
-       
+
         return;
       }
 
@@ -1028,7 +997,10 @@ namespace Multimeter_Controller
       _Selected_Index = Index;
 
       _Selected_Meter = Instrument.Type;
-      _Selected_Address = Instrument.Address;
+      // For NI-VISA instruments, update the active resource string before switching
+      // address so that Open_Or_Get_VISA_Session opens the correct resource.
+      if (Is_NI_VISA && !string.IsNullOrEmpty( Instrument.Visa_Resource_String ))
+        _Comm.Visa_Resource_String = Instrument.Visa_Resource_String;
       _Comm.Change_GPIB_Address( Instrument.Address );
       _Comm.Connected_Meter = _Selected_Meter;
       _All_Commands = Command_Dictionary_Class.Get_All_Commands( _Selected_Meter );
@@ -1100,14 +1072,23 @@ namespace Multimeter_Controller
         Meter_Type type = result.Detected_Type ?? Meter_Type.HP3458;
         string name = result.ID_String.Length > 40 ? result.ID_String.Substring( 0, 40 ) : result.ID_String;
 
-        var existing = _Instruments.FirstOrDefault( i => i.Address == result.Address );
+        // Prefer matching by full resource string when available (avoids conflating
+        // local GPIB addr N with remote visa://host/GPIB0::N::INSTR at the same address).
+        Instrument? existing = !string.IsNullOrEmpty( result.Resource_String )
+            ? _Instruments.FirstOrDefault( i => i.Visa_Resource_String.Equals(
+                  result.Resource_String, StringComparison.OrdinalIgnoreCase ) )
+            : _Instruments.FirstOrDefault( i => i.Address == result.Address );
+
+        string Location = !string.IsNullOrEmpty( result.Resource_String )
+            ? result.Resource_String
+            : $"GPIB {result.Address}";
 
         if (existing != null)
         {
           existing.Verified = true;
           existing.Visible = true;
           existing.Name = name;
-          Append_Response( $"[Instrument at GPIB {result.Address} refreshed]" );
+          Append_Response( $"[Instrument at {Location} refreshed]" );
         }
         else
         {
@@ -1117,9 +1098,10 @@ namespace Multimeter_Controller
             Address = result.Address,
             Type = type,
             Verified = true,
-            Visible = true
+            Visible = true,
+            Visa_Resource_String = result.Resource_String
           } );
-          Append_Response( $"[Detected new instrument at GPIB {result.Address}]" );
+          Append_Response( $"[Detected new instrument at {Location}]" );
         }
       }
 
@@ -1127,21 +1109,6 @@ namespace Multimeter_Controller
 
       if (Results.Count == 0)
         Append_Response( "No instruments found on the GPIB bus." );
-    }
-
-    private void Update_Command_Mode( Command_Entry Entry )
-    {
-      using var Block = Trace_Block.Start_If_Enabled();
-
-      if (Entry == null)
-      {
-        Execute_Button.Enabled = false;
-        // Query_Button.Enabled = false;
-        return;
-      }
-
-      Execute_Button.Enabled = Entry.Has_Command;
-      // Query_Button.Enabled = Entry.Has_Query;
     }
 
     private void Execute_Button_Click( object Sender, EventArgs E )
@@ -1203,28 +1170,6 @@ namespace Multimeter_Controller
       }
     }
 
-    private void Execute_Query( string Command )
-    {
-      using var Block = Trace_Block.Start_If_Enabled();
-
-      if (!_Comm.Is_Connected)
-        return;
-
-      try
-      {
-        Capture_Trace.Write( "Query -> " + Command );
-
-        Add_Command_To_History( $"{Command}" );
-
-        string Response = _Comm.Query_Instrument( Command );
-        Append_Response( $"< {Response}" );
-      }
-      catch (Exception Ex)
-      {
-        Add_Command_To_History( $"ERROR: {Ex.Message}" );
-      }
-    }
-
     private void Empty_Windows()
     {
       using var Block = Trace_Block.Start_If_Enabled();
@@ -1238,19 +1183,6 @@ namespace Multimeter_Controller
       Response_Text_Box.Clear();
     }
 
-    private void Clear_Command_And_Details()
-    {
-      using var Block = Trace_Block.Start_If_Enabled();
-
-      // Clear selection safely
-      _Ignore_Selection_Changed = true;
-
-      Command_List.ClearSelected();
-      // Detail_Text_Box.Clear ( );
-      Send_Command_Text_Box.Clear();
-
-      _Ignore_Selection_Changed = false;
-    }
     private async void Diag_Button_Click( object Sender, EventArgs E )
     {
       using var Block = Trace_Block.Start_If_Enabled();
@@ -1307,6 +1239,7 @@ namespace Multimeter_Controller
       Connection_Mode_Combo.Items.Add( "Prologix GPIB" );
       Connection_Mode_Combo.Items.Add( "Direct Serial (RS-232)" );
       Connection_Mode_Combo.Items.Add( "Ethernet" );
+      Connection_Mode_Combo.Items.Add( "NI-VISA" );
       Connection_Mode_Combo.SelectedIndex = 1;
 
       Set_GPID_Controls( State: false );
@@ -1371,7 +1304,7 @@ namespace Multimeter_Controller
       IP_Address_Textbox.Text = _Settings.Default_IP_Address;
       // IP_Port_Numeric.Minimum = 1;
       //  IP_Port_Numeric.Maximum = 65535;
-      /// IP_Port_Numeric.Value = _Settings.Default_Prologic_Port;
+      //  IP_Port_Numeric.Value = _Settings.Default_Prologic_Port;
 
       // EOI default to checked, auto-read off to avoid
       // errors on non-query commands
@@ -1429,7 +1362,6 @@ namespace Multimeter_Controller
         Read_Timeout_Combo_Box.SelectedItem = 3000;
 
         Connected_Instrument_Textbox.Text = "";
-        _Selected_Address = 0;
         Set_GPID_Controls( State: false );
       }
       else if (Connection_Mode_Combo.SelectedIndex == 2)
@@ -1439,7 +1371,6 @@ namespace Multimeter_Controller
                                                    //  IP_Port_Numeric.Value = 1234;             // matches
                                                    //  Ethernet_Port default in your class
                                                    // GPIB_Address_Numeric.Value = 22;
-        _Selected_Address = 22;
         Set_GPID_Controls( State: true );
       }
       else
@@ -1455,7 +1386,6 @@ namespace Multimeter_Controller
 
         // GPIB_Address_Numeric.Value = 22;
         GPIB_Address_Numeric.Value = 22;
-        _Selected_Address = (int) GPIB_Address_Numeric.Value;
 
         Set_GPID_Controls( State: true );
       }
@@ -1465,8 +1395,6 @@ namespace Multimeter_Controller
 
     private async Task Release_Instruments_To_Local_Async()
     {
-      int Original_Address = -1;
-
       foreach (var S in _Instruments)
       {
         try
@@ -1512,8 +1440,8 @@ namespace Multimeter_Controller
 
       // --- Setup transport only ---
       Is_Ethernet = Connection_Mode_Combo.SelectedIndex == 2;
-      Capture_Trace.Write(
-        $"Selected connection mode: {(Is_Ethernet ? "Ethernet" : Connection_Mode_Combo.SelectedItem)}" );
+      Is_NI_VISA = Connection_Mode_Combo.SelectedIndex == 3;
+      Capture_Trace.Write( $"Selected connection mode: {Connection_Mode_Combo.SelectedItem}" );
       if (Is_Ethernet)
       {
         _Comm.Mode = Connection_Mode.Prologix_Ethernet;
@@ -1523,6 +1451,15 @@ namespace Multimeter_Controller
         Capture_Trace.Write( $"Comm Mode -> {_Comm.Mode}" );
         Capture_Trace.Write( $"Host      -> {_Comm.Ethernet_Host}" );
         Capture_Trace.Write( $"Port      -> {_Comm.Ethernet_Port}" );
+      }
+      else if (Is_NI_VISA)
+      {
+        _Comm.Mode = Connection_Mode.NI_VISA;
+        _Comm.Read_Timeout_Ms = _Settings.Visa_Timeout_Ms;
+        // No resource string needed — the ResourceManager is initialised on Connect
+        // and instruments are discovered via Scan Bus using Find("GPIB?*INSTR").
+        Capture_Trace.Write( $"Comm Mode       -> {_Comm.Mode}" );
+        Capture_Trace.Write( $"VISA Timeout Ms -> {_Comm.Read_Timeout_Ms}" );
       }
       else
       {
@@ -1635,15 +1572,21 @@ namespace Multimeter_Controller
       Is_GPIB = Connection_Mode_Combo.SelectedIndex == 0;
       Is_Serial = Connection_Mode_Combo.SelectedIndex == 1;
       Is_Ethernet = Connection_Mode_Combo.SelectedIndex == 2;
+      Is_NI_VISA = Connection_Mode_Combo.SelectedIndex == 3;
+
+      // Visa_Resource_Textbox is never shown — the Connection section handles the resource string
+      Visa_Resource_Textbox.Visible = false;
+      // GPIB address spinner is always visible; for NI-VISA it is read-only (auto-populated)
+      GPIB_Address_Numeric.Visible = true;
 
       // Serial controls only relevant for serial/GPIB-USB
-      // COM port needed for both GPIB-USB and Direct Serial
+      // COM port needed for both GPIB-USB and Direct Serial (not NI-VISA — NI driver owns the bus)
       COM_Port_Combo.Enabled = Is_GPIB || Is_Serial;
       COM_Port_Label.Enabled = Is_GPIB || Is_Serial;
-      Scan_Bus_Button.Enabled = Is_GPIB || Is_Ethernet;
+      Scan_Bus_Button.Enabled = Is_GPIB || Is_Ethernet || Is_NI_VISA;
 
       // RS-232 settings only relevant for Direct Serial
-      // (Prologix GPIB-USB uses fixed settings, Ethernet has none)
+      // (Prologix GPIB-USB uses fixed settings, Ethernet and NI-VISA have none)
       Baud_Rate_Combo.Enabled = Is_GPIB || Is_Serial;
       Baud_Rate_Label.Enabled = Is_GPIB || Is_Serial;
       Data_Bits_Combo.Enabled = Is_GPIB || Is_Serial;
@@ -1657,13 +1600,16 @@ namespace Multimeter_Controller
       Read_Timeout_Combo_Box.Enabled = Is_GPIB || Is_Serial;
       Read_Timeout_Label.Enabled = Is_GPIB || Is_Serial;
 
-      // Ethernet controls
-      Find_Prologix_Button.Enabled = Is_Ethernet;
-      IP_Address_Textbox.Enabled = Is_Ethernet;
+      // IP Address row: shown only for Prologix Ethernet; hidden for NI-VISA
+      // (NI-VISA discovers instruments automatically via Scan Bus — no resource string needed)
+      IP_Address_Label.Text = "IP Address";
       IP_Address_Label.Enabled = Is_Ethernet;
+      IP_Address_Textbox.Enabled = Is_Ethernet;
+      Find_Prologix_Button.Enabled = Is_Ethernet;
+      Subnet_Label.Enabled = Is_Ethernet;
       Subnet_Textbox.Enabled = Is_Ethernet;
 
-      Set_GPID_Controls( State: Is_GPIB || Is_Ethernet );
+      Set_GPID_Controls( State: Is_GPIB || Is_Ethernet || Is_NI_VISA );
 
       Set_Button_State();
     }
@@ -1697,30 +1643,31 @@ namespace Multimeter_Controller
       // Elements that are active if connection has been made
       Instrument_Type_Combo.Enabled = _Comm.Is_Connected;
       Instrument_Type_Label.Enabled = _Comm.Is_Connected;
-      GPIB_Address_Numeric.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet);
-      GPIB_Address_Label.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet);
-      Add_Instrument_Button.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet);
-      NPLC_Combo_Box.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet || Is_Serial);
-      Roll_Name_Textbox.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet || Is_Serial);
-      Meter_Roll_Label.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet || Is_Serial);
-      Prologix_Health_Button.Enabled = _Comm.Is_Connected && _Instruments.Count == 0;
+      // NI-VISA: address is auto-populated from the resource string, never user-editable
+      GPIB_Address_Numeric.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet) && !Is_NI_VISA;
+      GPIB_Address_Label.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet || Is_NI_VISA);
+      Add_Instrument_Button.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet || Is_NI_VISA);
+      NPLC_Combo_Box.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet || Is_Serial || Is_NI_VISA);
+      Roll_Name_Textbox.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet || Is_Serial || Is_NI_VISA);
+      Meter_Roll_Label.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet || Is_Serial || Is_NI_VISA);
+      Prologix_Health_Button.Enabled = _Comm.Is_Connected && _Instruments.Count == 0 && !Is_NI_VISA;
 
       Select_Instrument_Button.Enabled = _Instruments.Count > 0;
 
-      Scan_Bus_Button.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet);
+      Scan_Bus_Button.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet || Is_NI_VISA);
 
 
       // When polling form is open or closed
 
       Instrument_Type_Combo.Enabled = _Comm.Is_Connected && !Poll_Form_Is_Open;
       Instrument_Type_Label.Enabled = _Comm.Is_Connected && !Poll_Form_Is_Open;
-      Scan_Bus_Button.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet) && !Poll_Form_Is_Open;
+      Scan_Bus_Button.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet || Is_NI_VISA) && !Poll_Form_Is_Open;
       Select_Instrument_Button.Enabled = _Instruments.Count > 0 && !Poll_Form_Is_Open;
-      NPLC_Combo_Box.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet || Is_Serial) && !Poll_Form_Is_Open;
-      Add_Instrument_Button.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet) && !Poll_Form_Is_Open;
+      NPLC_Combo_Box.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet || Is_Serial || Is_NI_VISA) && !Poll_Form_Is_Open;
+      Add_Instrument_Button.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet || Is_NI_VISA) && !Poll_Form_Is_Open;
       Remove_Instrument_Button.Enabled = _Instruments.Count > 0 && !Poll_Form_Is_Open;
-      GPIB_Address_Numeric.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet) && !Poll_Form_Is_Open;
-      Multi_Poll_Button.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet) && !Poll_Form_Is_Open && _Instruments.Count > 0;
+      GPIB_Address_Numeric.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet) && !Is_NI_VISA && !Poll_Form_Is_Open;
+      Multi_Poll_Button.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet || Is_NI_VISA) && !Poll_Form_Is_Open && _Instruments.Count > 0;
 
 
 
@@ -2527,7 +2474,7 @@ namespace Multimeter_Controller
 
 
 
-    private void Master_Instrument_Combobox_SelectedIndexChanged( object sender, EventArgs e )
+    private void Master_Instrument_Combobox_SelectedIndexChanged( object? sender, EventArgs e )
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
@@ -2647,7 +2594,7 @@ namespace Multimeter_Controller
           Popup.Add_Row( "  EOI", Result.Prologix_EOI, Label_Width: 20 );
           Popup.Add_Row( "  EOS", Result.Prologix_EOS, Label_Width: 20 );
           Popup.Add_Row( "  Save Config", Result.Prologix_SaveCfg, Label_Width: 20 );
-          Popup.Add_Blank( );
+          Popup.Add_Blank();
 
           // ── Overall status ───────────────────────────────────────────────────
           if (Result.Is_Healthy)
@@ -2707,8 +2654,8 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-    
-    
+
+
       _Comm.Flush_Input_Buffer();
 
 
@@ -2776,7 +2723,7 @@ namespace Multimeter_Controller
           else
             Result.Failed_Checks.Add( $"Could not parse ++read_tmo_ms response: '{RAW_Trimmed}'" );
         }
-        catch (Exception ex)
+        catch (Exception)
         {
           Result.Passed_Checks.Add( "++read_tmo_ms not supported by this firmware (non-critical)." );
         }
@@ -2856,9 +2803,9 @@ namespace Multimeter_Controller
       }
       finally
       {
-      
+
         _Comm.Read_Timeout_Ms = Original_Timeout;
-       
+
       }
 
       return Result;
