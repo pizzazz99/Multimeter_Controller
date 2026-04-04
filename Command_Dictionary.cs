@@ -63,7 +63,6 @@
 // Framework:    .NET 9.0, Windows Forms
 // ============================================================================
 
-using System.Data.SqlTypes;
 using System.Diagnostics;
 
 namespace Multimeter_Controller
@@ -113,32 +112,32 @@ namespace Multimeter_Controller
 
 
     public bool Can_Execute =>
-        !string.IsNullOrWhiteSpace ( Command );
+        !string.IsNullOrWhiteSpace( Command );
 
     public bool Can_Query =>
-        !string.IsNullOrWhiteSpace ( Query_Form );
+        !string.IsNullOrWhiteSpace( Query_Form );
 
 
     // Derived properties
 
     public bool Is_Query =>
-        GetBaseToken ( Command ).EndsWith ( "?" );
+        GetBaseToken( Command ).EndsWith( "?" );
 
 
     public bool Has_Command =>
-        !string.IsNullOrWhiteSpace ( Command );
+        !string.IsNullOrWhiteSpace( Command );
 
     public bool Has_Query =>
-        !string.IsNullOrWhiteSpace ( Query_Form );
+        !string.IsNullOrWhiteSpace( Query_Form );
 
 
     public string Query_Command
     {
       get
       {
-        string Base_Token = GetBaseToken ( Command );
+        string Base_Token = GetBaseToken( Command );
 
-        if ( Base_Token.EndsWith ( "?" ) )
+        if (Base_Token.EndsWith( "?" ))
           return Base_Token;
 
         return Base_Token + "?";
@@ -149,10 +148,10 @@ namespace Multimeter_Controller
     {
       get
       {
-        string Base_Token = GetBaseToken ( Command );
+        string Base_Token = GetBaseToken( Command );
 
-        if ( Base_Token.EndsWith ( "?" ) )
-          return Base_Token.TrimEnd ( '?' );
+        if (Base_Token.EndsWith( "?" ))
+          return Base_Token.TrimEnd( '?' );
 
         return Base_Token;
       }
@@ -176,7 +175,7 @@ namespace Multimeter_Controller
     {
       get; set;
     }
-    public string Query_Form
+    public string? Query_Form
     {
       get; set;
     }
@@ -192,13 +191,13 @@ namespace Multimeter_Controller
 
 
 
-    public Command_Entry (
+    public Command_Entry(
      string Command,
      string Syntax,
      string Description,
      Command_Category Category,
      string Parameters = "",
-     string Query_Form = "",
+     string? Query_Form = "",
      string Default_Value = "",
      string Example = ""
  )
@@ -213,15 +212,15 @@ namespace Multimeter_Controller
       // 1. Query_Form is null or empty
       // 2. Command does NOT start with '*'
       // 3. Command does NOT already end with '?'
-      if ( Query_Form == null )
+      if (Query_Form == null)
       {
         // Explicitly NOT queryable
         this.Query_Form = null;
       }
-      else if ( string.IsNullOrWhiteSpace ( Query_Form ) )
+      else if (string.IsNullOrWhiteSpace( Query_Form ))
       {
         // Auto-generate query form
-        this.Query_Form = Command.EndsWith ( "?" )
+        this.Query_Form = Command.EndsWith( "?" )
             ? Command
             : Command + "?";
       }
@@ -235,43 +234,43 @@ namespace Multimeter_Controller
       this.Example = Example;
     }
 
-    public override string ToString ( )
+    public override string ToString()
     {
       return Command ?? Query_Form ?? "<unknown>";
     }
 
-    private string GetBaseToken ( string Input )
+    private string GetBaseToken( string Input )
     {
-      if ( string.IsNullOrWhiteSpace ( Input ) )
+      if (string.IsNullOrWhiteSpace( Input ))
         return string.Empty;
 
-      string Trimmed = Input.Trim ( );
+      string Trimmed = Input.Trim();
 
-      int Space_Index = Trimmed.IndexOf ( ' ' );
+      int Space_Index = Trimmed.IndexOf( ' ' );
       return Space_Index > 0
-          ? Trimmed.Substring ( 0, Space_Index )
+          ? Trimmed.Substring( 0, Space_Index )
           : Trimmed;
     }
 
-    public bool Is_Query_Only ( )
+    public bool Is_Query_Only()
     {
       // No query form defined → not query-only
-      if ( string.IsNullOrWhiteSpace ( Query_Form ) )
+      if (string.IsNullOrWhiteSpace( Query_Form ))
         return false;
 
       // Commands starting with * but not ending with ? are not query-only
-      if ( Command.StartsWith ( "*" ) && !Command.EndsWith ( "?" ) )
+      if (Command.StartsWith( "*" ) && !Command.EndsWith( "?" ))
         return false;
 
       // If Syntax ends with '?' or Query_Form exists, and Example is a query → query-only
-      if ( !string.IsNullOrWhiteSpace ( Query_Form ) )
+      if (!string.IsNullOrWhiteSpace( Query_Form ))
       {
         // If Example is same as Query_Form, assume query-only
-        if ( Example.Trim ( ) == Query_Form.Trim ( ) )
+        if (Example.Trim() == Query_Form.Trim())
           return true;
 
         // If Syntax itself ends with ?, treat as query-only
-        if ( Syntax.Trim ( ).EndsWith ( "?" ) )
+        if (Syntax.Trim().EndsWith( "?" ))
           return true;
       }
 
@@ -279,44 +278,44 @@ namespace Multimeter_Controller
     }
 
 
-    public bool Supports_Set ( )
+    public bool Supports_Set()
     {
       // If command has parameters or Example is a set command → supports set
-      if ( !string.IsNullOrWhiteSpace ( Example ) &&
-          Example.Trim ( ) != Query_Form?.Trim ( ) )
+      if (!string.IsNullOrWhiteSpace( Example ) &&
+          Example.Trim() != Query_Form?.Trim())
         return true;
 
       return false;
     }
 
 
- 
 
 
-    public CommandMode Get_Command_Mode ( )
+
+    public CommandMode Get_Command_Mode()
     {
       // Commands starting with * and ending with ? are query-only
-      if ( Command.StartsWith ( "*" ) && Command.EndsWith ( "?" ) )
+      if (Command.StartsWith( "*" ) && Command.EndsWith( "?" ))
         return CommandMode.Query_Only;
 
       // Commands starting with * but without ? are set-only
-      if ( Command.StartsWith ( "*" ) )
+      if (Command.StartsWith( "*" ))
         return CommandMode.Set_Only;
 
-      bool Has_Query = !string.IsNullOrWhiteSpace ( Query_Form );
+      bool Has_Query = !string.IsNullOrWhiteSpace( Query_Form );
       bool Has_Set = true; // assume normal commands can be set
 
-      if ( Has_Query && Has_Set )
+      if (Has_Query && Has_Set)
       {
         return CommandMode.Both;
       }
 
-      if ( Has_Query )
+      if (Has_Query)
       {
         return CommandMode.Query_Only;
       }
 
-      if ( Has_Set )
+      if (Has_Set)
       {
         return CommandMode.Set_Only;
       }
@@ -329,7 +328,7 @@ namespace Multimeter_Controller
 
   public static class Meter_Type_Extensions
   {
-    public static readonly Meter_Type [ ] Combo_Order = new Meter_Type [ ]
+    public static readonly Meter_Type[] Combo_Order = new Meter_Type[]
  {
     Meter_Type.Generic_GPIB,
     Meter_Type.HP34401,
@@ -340,7 +339,7 @@ namespace Multimeter_Controller
     Meter_Type.HP3458,
  };
 
-    public static string Get_Name ( this Meter_Type type ) => type switch
+    public static string Get_Name( this Meter_Type type ) => type switch
     {
       Meter_Type.HP3458 => "HP 3458A",
       Meter_Type.HP34401 => "HP 34401A",
@@ -349,13 +348,13 @@ namespace Multimeter_Controller
       Meter_Type.HP53132 => "HP 53132A",
       Meter_Type.HP3456 => "HP 3456A",
       Meter_Type.Generic_GPIB => "Generic GPIB",
-      _ => throw new ArgumentOutOfRangeException ( nameof ( type ) )
+      _ => throw new ArgumentOutOfRangeException( nameof( type ) )
     };
 
-    public static bool Is_Legacy_HP ( this Meter_Type type )
+    public static bool Is_Legacy_HP( this Meter_Type type )
         => type == Meter_Type.HP3458;
 
-    public static decimal [ ] Get_NPLC_Values ( this Meter_Type type ) => type switch
+    public static decimal[] Get_NPLC_Values( this Meter_Type type ) => type switch
     {
       Meter_Type.HP3458 => [ 0.001m, 0.01m, 0.1m, 1m, 10m, 100m ],
       Meter_Type.HP34401 => [ 0.02m, 0.2m, 1m, 10m, 100m ],
@@ -364,23 +363,23 @@ namespace Multimeter_Controller
       Meter_Type.HP33120 => [ 1m ],        // function gen, NPLC not applicable
       Meter_Type.HP3456 => [ 1m, 2m, 4m, 8m, 16m, 32m, 64m, 100m ],
       Meter_Type.Generic_GPIB => [ 0.1m, 1m, 10m ],
-      _ => throw new ArgumentOutOfRangeException ( nameof ( type ) )
+      _ => throw new ArgumentOutOfRangeException( nameof( type ) )
     };
 
-    public static int To_Combo_Index ( this Meter_Type type )
-        => Array.IndexOf ( Combo_Order, type );
+    public static int To_Combo_Index( this Meter_Type type )
+        => Array.IndexOf( Combo_Order, type );
 
-    public static Meter_Type From_Combo_Index ( int index )
+    public static Meter_Type From_Combo_Index( int index )
         => index >= 0 && index < Combo_Order.Length
-            ? Combo_Order [ index ]
+            ? Combo_Order[ index ]
             : Meter_Type.Generic_GPIB;
 
 
 
 
-    public static decimal Get_Default_NPLC ( Meter_Type Type )
+    public static decimal Get_Default_NPLC( Meter_Type Type )
     {
-      switch ( Type )
+      switch (Type)
       {
         case Meter_Type.HP3458:
           return 10m;
@@ -401,34 +400,34 @@ namespace Multimeter_Controller
 
   }
 
-    public static class Command_Dictionary_Class
+  public static class Command_Dictionary_Class
+  {
+    public static List<Command_Entry> Get_All_Commands( Meter_Type Meter = Meter_Type.HP3458 )
     {
-      public static List<Command_Entry> Get_All_Commands ( Meter_Type Meter = Meter_Type.HP3458 )
+      switch (Meter)
       {
-        switch ( Meter )
-        {
-          case Meter_Type.HP3458:
-            return HP3458_Command_Dictionary_Class.Get_All_Commands ( );
-          case Meter_Type.HP34401:
-            return HP34401_Command_Dictionary_Class.Get_All_Commands ( );
-          case Meter_Type.HP33120:
-            return HP33120_Command_Dictionary_Class.Get_All_Commands ( );
-          case Meter_Type.HP34420:
-            return HP34420_Command_Dictionary_Class.Get_All_Commands ( );
-          case Meter_Type.HP53132:
-            return HP53132_Command_Dictionary_Class.Get_All_Commands ( );
-          case Meter_Type.HP3456:
-            return HP3456_Command_Dictionary_Class.Get_All_Commands ( );
-          case Meter_Type.Generic_GPIB:
-            return [ ];
+        case Meter_Type.HP3458:
+          return HP3458_Command_Dictionary_Class.Get_All_Commands();
+        case Meter_Type.HP34401:
+          return HP34401_Command_Dictionary_Class.Get_All_Commands();
+        case Meter_Type.HP33120:
+          return HP33120_Command_Dictionary_Class.Get_All_Commands();
+        case Meter_Type.HP34420:
+          return HP34420_Command_Dictionary_Class.Get_All_Commands();
+        case Meter_Type.HP53132:
+          return HP53132_Command_Dictionary_Class.Get_All_Commands();
+        case Meter_Type.HP3456:
+          return HP3456_Command_Dictionary_Class.Get_All_Commands();
+        case Meter_Type.Generic_GPIB:
+          return [];
 
-          default:
-            Debug.WriteLine ( $"[Command_Dictionary] Unsupported meter type: {Meter}" );
-            return [ ];
-        }
+        default:
+          Debug.WriteLine( $"[Command_Dictionary] Unsupported meter type: {Meter}" );
+          return [];
       }
     }
   }
+}
 
 
 

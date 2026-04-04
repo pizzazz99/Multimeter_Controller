@@ -619,7 +619,9 @@ namespace Multimeter_Controller
     private Button Polling_Info_Button;
     private Button Memory_Monitor_Button;
     
+#pragma warning disable CS0169 // Designer-generated control not yet wired to code
     private TextBox Stop_Time_Textbox;
+#pragma warning restore CS0169
     private Label label1;
     private Label label3;
     private Label label4;

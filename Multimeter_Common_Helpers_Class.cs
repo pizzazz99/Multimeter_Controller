@@ -156,20 +156,11 @@
 // ════════════════════════════════════════════════════════════════════════════════
 
 
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
-using System.IO;
-using System.Linq;
-using System.Net;
-using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
-using System.Threading.Tasks;
-using System.Windows.Forms;
-using Trace_Execution_Namespace;
 using static Trace_Execution_Namespace.Trace_Execution;
 
 namespace Multimeter_Controller
@@ -182,7 +173,7 @@ namespace Multimeter_Controller
     // Used by both forms during instrument configuration
     // ========================================================================
 
-    public static string? Build_NPLC_Command ( string Measurement_Label, string NPLC_Value )
+    public static string? Build_NPLC_Command( string Measurement_Label, string NPLC_Value )
     {
       return Measurement_Label switch
       {
@@ -202,15 +193,15 @@ namespace Multimeter_Controller
     // Used in stats panels, CSV headers, chart axis labels
     // ========================================================================
 
-    public static string Format_Time_Span ( TimeSpan Span )
+    public static string Format_Time_Span( TimeSpan Span )
     {
-      if ( Span.TotalSeconds < 1 )
+      if (Span.TotalSeconds < 1)
         return $"{Span.TotalMilliseconds:F0}ms";
-      if ( Span.TotalMinutes < 1 )
+      if (Span.TotalMinutes < 1)
         return $"{Span.TotalSeconds:F1}s";
-      if ( Span.TotalHours < 1 )
+      if (Span.TotalHours < 1)
         return $"{Span.TotalMinutes:F1}m";
-      if ( Span.TotalDays < 1 )
+      if (Span.TotalDays < 1)
         return $"{Span.TotalHours:F1}h";
       return $"{Span.TotalDays:F1}d";
     }
@@ -220,14 +211,14 @@ namespace Multimeter_Controller
     // FILE / FOLDER HELPERS
     // ========================================================================
 
-    public static string Get_Graph_Captures_Folder ( Application_Settings Settings )
+    public static string Get_Graph_Captures_Folder( Application_Settings Settings )
     {
       string Folder = Settings.Default_Save_Folder;
 
       // If user gave an absolute path, use it directly
-      if ( Path.IsPathRooted ( Folder ) )
+      if (Path.IsPathRooted( Folder ))
       {
-        Directory.CreateDirectory ( Folder );
+        Directory.CreateDirectory( Folder );
         return Folder;
       }
 
@@ -235,32 +226,32 @@ namespace Multimeter_Controller
       string Base = AppContext.BaseDirectory;
       string? Dir = Base;
 
-      while ( Dir != null )
+      while (Dir != null)
       {
-        string Candidate = Path.Combine ( Dir, Folder );
-        if ( Directory.Exists ( Candidate ) )
+        string Candidate = Path.Combine( Dir, Folder );
+        if (Directory.Exists( Candidate ))
           return Candidate;
-        Dir = Directory.GetParent ( Dir )?.FullName;
+        Dir = Directory.GetParent( Dir )?.FullName;
       }
 
       // Fallback: create next to executable
-      string Fallback = Path.Combine ( Base, Folder );
-      Directory.CreateDirectory ( Fallback );
+      string Fallback = Path.Combine( Base, Folder );
+      Directory.CreateDirectory( Fallback );
       return Fallback;
     }
 
 
 
-    public static string Get_Filename_From_Pattern (
+    public static string Get_Filename_From_Pattern(
       string Pattern,
       string Function_Name )
     {
       string Filename = Pattern;
-      Filename = Filename.Replace ( "{date}", DateTime.Now.ToString ( "yyyy-MM-dd" ) );
-      Filename = Filename.Replace ( "{time}", DateTime.Now.ToString ( "HH-mm-ss" ) );
-      Filename = Filename.Replace ( "{function}", Function_Name );
+      Filename = Filename.Replace( "{date}", DateTime.Now.ToString( "yyyy-MM-dd" ) );
+      Filename = Filename.Replace( "{time}", DateTime.Now.ToString( "HH-mm-ss" ) );
+      Filename = Filename.Replace( "{function}", Function_Name );
 
-      if ( !Filename.EndsWith ( ".csv", StringComparison.OrdinalIgnoreCase ) )
+      if (!Filename.EndsWith( ".csv", StringComparison.OrdinalIgnoreCase ))
         Filename += ".csv";
 
       return Filename;
@@ -272,61 +263,61 @@ namespace Multimeter_Controller
     // Full-precision formatter used for display in both forms
     // ========================================================================
 
-    public static string Format_Value (
+    public static string Format_Value(
       double Value,
       string Unit,
       Meter_Type Meter = Meter_Type.HP34401,
       int Digits = 6 )
     {
-      double Abs = Math.Abs ( Value );
+      double Abs = Math.Abs( Value );
 
 
 
       bool Is_HP = Meter == Meter_Type.HP3458;
 
-      if ( Unit == "Hz" )
+      if (Unit == "Hz")
       {
-        if ( Abs >= 1e6 )
+        if (Abs >= 1e6)
           return $"{Value / 1e6:F3} MHz";
-        if ( Abs >= 1e3 )
+        if (Abs >= 1e3)
           return $"{Value / 1e3:F3} kHz";
         return $"{Value:F2} Hz";
       }
-      if ( Unit == "s" )
+      if (Unit == "s")
       {
-        if ( Abs < 1e-6 )
+        if (Abs < 1e-6)
           return $"{Value * 1e9:F2} ns";
-        if ( Abs < 1e-3 )
+        if (Abs < 1e-3)
           return $"{Value * 1e6:F2} us";
-        if ( Abs < 1.0 )
+        if (Abs < 1.0)
           return $"{Value * 1e3:F3} ms";
         return $"{Value:F4} s";
       }
-      if ( Unit == "Ohm" )
+      if (Unit == "Ohm")
       {
-        if ( Abs >= 1e6 )
+        if (Abs >= 1e6)
           return $"{Value / 1e6:F3} MOhm";
-        if ( Abs >= 1e3 )
+        if (Abs >= 1e3)
           return $"{Value / 1e3:F3} kOhm";
         return $"{Value:F2} Ohm";
       }
-      if ( Unit == "\u00b0C" )
+      if (Unit == "\u00b0C")
         return $"{Value:F2} \u00b0C";
 
       // V or A — use Digits to drive precision
       int D = Digits;
-      int D2 = Math.Max ( 0, Digits - 2 );  // millirange loses 2 integer digits
-      int D3 = Math.Max ( 0, Digits - 3 );  // microrange loses 3
-      int D4 = Math.Max ( 0, Digits - 4 );  // nanorange loses 4
+      int D2 = Math.Max( 0, Digits - 2 );  // millirange loses 2 integer digits
+      int D3 = Math.Max( 0, Digits - 3 );  // microrange loses 3
+      int D4 = Math.Max( 0, Digits - 4 );  // nanorange loses 4
 
-      if ( Abs >= 1.0 )
-        return $"{Value.ToString ( $"F{D}" )} {Unit}";
-      if ( Abs >= 0.001 )
-        return $"{( Value * 1000 ).ToString ( $"F{D2}" )} m{Unit}";
-      if ( Abs >= 0.000001 )
-        return $"{( Value * 1e6 ).ToString ( $"F{D3}" )} u{Unit}";
-      if ( Abs >= 0.000000001 )
-        return $"{( Value * 1e9 ).ToString ( $"F{D4}" )} n{Unit}";
+      if (Abs >= 1.0)
+        return $"{Value.ToString( $"F{D}" )} {Unit}";
+      if (Abs >= 0.001)
+        return $"{(Value * 1000).ToString( $"F{D2}" )} m{Unit}";
+      if (Abs >= 0.000001)
+        return $"{(Value * 1e6).ToString( $"F{D3}" )} u{Unit}";
+      if (Abs >= 0.000000001)
+        return $"{(Value * 1e9).ToString( $"F{D4}" )} n{Unit}";
 
       return $"{Value:E2} {Unit}";
     }
@@ -337,7 +328,7 @@ namespace Multimeter_Controller
     // Common Apply_Settings logic (the parts that are identical)
     // ========================================================================
 
-    public static void Apply_Common_Settings (
+    public static void Apply_Common_Settings(
       Application_Settings Settings,
       Instrument_Comm Comm,
       System.Windows.Forms.Timer Auto_Save_Timer,
@@ -345,28 +336,28 @@ namespace Multimeter_Controller
       int Current_Point_Count )
     {
       // Save folder
-      if ( !string.IsNullOrEmpty ( Settings.Default_Save_Folder ) )
+      if (!string.IsNullOrEmpty( Settings.Default_Save_Folder ))
       {
         try
         {
-          Directory.CreateDirectory ( Settings.Default_Save_Folder );
+          Directory.CreateDirectory( Settings.Default_Save_Folder );
         }
         catch { }
       }
 
       // GPIB timeout
-      if ( Comm != null )
+      if (Comm != null)
         Comm.Read_Timeout_Ms = Settings.Default_GPIB_Timeout_Ms;
 
       // Auto-save timer
-      if ( Settings.Enable_Auto_Save )
+      if (Settings.Enable_Auto_Save)
       {
         Auto_Save_Timer.Interval = Settings.Auto_Save_Interval_Minutes * 60 * 1000;
-        Auto_Save_Timer.Start ( );
+        Auto_Save_Timer.Start();
       }
       else
       {
-        Auto_Save_Timer.Stop ( );
+        Auto_Save_Timer.Stop();
       }
 
       // Chart refresh rate with throttling
@@ -384,23 +375,23 @@ namespace Multimeter_Controller
     // Same throttle algorithm used by both forms
     // ========================================================================
 
-    public static int Calculate_Refresh_Rate (
+    public static int Calculate_Refresh_Rate(
       Application_Settings Settings,
       int Total_Points )
     {
       int Base_Rate = Settings.Chart_Refresh_Rate_Ms;
 
-      if ( !Settings.Throttle_When_Many_Points
-          || Total_Points <= Settings.Throttle_Point_Threshold )
+      if (!Settings.Throttle_When_Many_Points
+          || Total_Points <= Settings.Throttle_Point_Threshold)
         return Base_Rate;
 
       int Multiplier = 1;
 
-      if ( Total_Points > Settings.Throttle_Point_Threshold * 10 )
+      if (Total_Points > Settings.Throttle_Point_Threshold * 10)
         Multiplier = 4;
-      else if ( Total_Points > Settings.Throttle_Point_Threshold * 5 )
+      else if (Total_Points > Settings.Throttle_Point_Threshold * 5)
         Multiplier = 3;
-      else if ( Total_Points > Settings.Throttle_Point_Threshold * 2 )
+      else if (Total_Points > Settings.Throttle_Point_Threshold * 2)
         Multiplier = 2;
 
       return Base_Rate * Multiplier;
@@ -413,28 +404,28 @@ namespace Multimeter_Controller
     // single-list and multi-series cases
     // ========================================================================
 
-    public static void Check_Memory_Limit (
+    public static void Check_Memory_Limit(
     Application_Settings Settings,
     Func<int> Get_Point_Count,
     Action Stop_Recording,
     Action<int, int> Show_Warning,
     ref bool Warning_Shown )
     {
-      int Current = Get_Point_Count ( );
+      int Current = Get_Point_Count();
       int Max = Settings.Max_Data_Points_In_Memory;
 
-      if ( Current >= Max )
+      if (Current >= Max)
       {
-        Stop_Recording ( );
+        Stop_Recording();
         return;
       }
 
-      if ( Settings.Warn_At_Threshold && !Warning_Shown )
+      if (Settings.Warn_At_Threshold && !Warning_Shown)
       {
-        int Threshold = ( Max * Settings.Warning_Threshold_Percent ) / 100;
-        if ( Current >= Threshold )
+        int Threshold = (Max * Settings.Warning_Threshold_Percent) / 100;
+        if (Current >= Threshold)
         {
-          Show_Warning ( Current, Max );
+          Show_Warning( Current, Max );
           Warning_Shown = true;
         }
       }
@@ -446,7 +437,7 @@ namespace Multimeter_Controller
     // Shared header/stats format for both single and multi save files
     // ========================================================================
 
-    public static void Write_Stats_Block (
+    public static void Write_Stats_Block(
       StreamWriter Writer,
       string Series_Name,
       int Point_Count,
@@ -459,22 +450,22 @@ namespace Multimeter_Controller
       double? Rate,
       double? Avg_Interval_Ms )
     {
-      Writer.WriteLine ( $"# [{Series_Name}]" );
-      Writer.WriteLine ( $"#   Points: {Point_Count}" );
-      Writer.WriteLine ( $"#   Average: {Avg:F7}" );
-      Writer.WriteLine ( $"#   Std Dev: {Std_Dev:F7}" );
-      Writer.WriteLine ( $"#   Min: {Min:F7}" );
-      Writer.WriteLine ( $"#   Max: {Max:F7}" );
-      Writer.WriteLine ( $"#   Range: {Range:F7}" );
+      Writer.WriteLine( $"# [{Series_Name}]" );
+      Writer.WriteLine( $"#   Points: {Point_Count}" );
+      Writer.WriteLine( $"#   Average: {Avg:F7}" );
+      Writer.WriteLine( $"#   Std Dev: {Std_Dev:F7}" );
+      Writer.WriteLine( $"#   Min: {Min:F7}" );
+      Writer.WriteLine( $"#   Max: {Max:F7}" );
+      Writer.WriteLine( $"#   Range: {Range:F7}" );
 
-      if ( Duration.HasValue )
-        Writer.WriteLine ( $"#   Duration: {Format_Time_Span ( Duration.Value )}" );
+      if (Duration.HasValue)
+        Writer.WriteLine( $"#   Duration: {Format_Time_Span( Duration.Value )}" );
 
-      if ( Rate.HasValue )
-        Writer.WriteLine ( $"#   Rate: {Rate.Value:F2} S/s" );
+      if (Rate.HasValue)
+        Writer.WriteLine( $"#   Rate: {Rate.Value:F2} S/s" );
 
-      if ( Avg_Interval_Ms.HasValue )
-        Writer.WriteLine ( $"#   Avg \u0394t: {Avg_Interval_Ms.Value:F1} ms" );
+      if (Avg_Interval_Ms.HasValue)
+        Writer.WriteLine( $"#   Avg \u0394t: {Avg_Interval_Ms.Value:F1} ms" );
     }
 
 
@@ -486,20 +477,20 @@ namespace Multimeter_Controller
 
     public static (double Min, double Max, double Avg, double Std_Dev,
                    double Range, TimeSpan Duration, double Rate, double Avg_Interval_Ms)
-      Calculate_Stats ( List<(DateTime Time, double Value)> Points )
+      Calculate_Stats( List<(DateTime Time, double Value)> Points )
     {
-      if ( Points == null || Points.Count == 0 )
+      if (Points == null || Points.Count == 0)
         return (0, 0, 0, 0, 0, TimeSpan.Zero, 0, 0);
 
       double Min = double.MaxValue;
       double Max = double.MinValue;
       double Sum = 0;
 
-      foreach ( var P in Points )
+      foreach (var P in Points)
       {
-        if ( P.Value < Min )
+        if (P.Value < Min)
           Min = P.Value;
-        if ( P.Value > Max )
+        if (P.Value > Max)
           Max = P.Value;
         Sum += P.Value;
       }
@@ -508,28 +499,28 @@ namespace Multimeter_Controller
       double Range = Max - Min;
 
       double Sum_Sq = 0;
-      foreach ( var P in Points )
+      foreach (var P in Points)
       {
         double D = P.Value - Avg;
         Sum_Sq += D * D;
       }
-      double Std_Dev = Math.Sqrt ( Sum_Sq / Points.Count );
+      double Std_Dev = Math.Sqrt( Sum_Sq / Points.Count );
 
       TimeSpan Duration = Points.Count >= 2
-        ? Points [ Points.Count - 1 ].Time - Points [ 0 ].Time
+        ? Points[ Points.Count - 1 ].Time - Points[ 0 ].Time
         : TimeSpan.Zero;
 
       double Rate = Duration.TotalSeconds > 0
-        ? ( Points.Count - 1 ) / Duration.TotalSeconds
+        ? (Points.Count - 1) / Duration.TotalSeconds
         : 0;
 
       double Avg_Interval_Ms = 0;
-      if ( Points.Count >= 2 )
+      if (Points.Count >= 2)
       {
         double Total_Ms = 0;
-        for ( int I = 1; I < Points.Count; I++ )
-          Total_Ms += ( Points [ I ].Time - Points [ I - 1 ].Time ).TotalMilliseconds;
-        Avg_Interval_Ms = Total_Ms / ( Points.Count - 1 );
+        for (int I = 1; I < Points.Count; I++)
+          Total_Ms += (Points[ I ].Time - Points[ I - 1 ].Time).TotalMilliseconds;
+        Avg_Interval_Ms = Total_Ms / (Points.Count - 1);
       }
 
       return (Min, Max, Avg, Std_Dev, Range, Duration, Rate, Avg_Interval_Ms);
@@ -541,24 +532,24 @@ namespace Multimeter_Controller
     // Call after data changes, after loading, and in Finish_Reading/Polling
     // ========================================================================
 
-    public static void Update_Scrollbar_Range (
+    public static void Update_Scrollbar_Range(
       HScrollBar Pan_Scrollbar,
       int Total_Points,
       int Max_Display_Points,
       bool Auto_Scroll,
       ref int View_Offset )
     {
-      using var Block = Trace_Block.Start_If_Enabled ( );
+      using var Block = Trace_Block.Start_If_Enabled();
 
-      if ( Pan_Scrollbar == null )
+      if (Pan_Scrollbar == null)
         return;
 
-      int Max_Offset = Math.Max ( 0, Total_Points - Max_Display_Points );
-
-     
+      int Max_Offset = Math.Max( 0, Total_Points - Max_Display_Points );
 
 
-      if ( Max_Offset <= 0 || Total_Points <= Max_Display_Points )
+
+
+      if (Max_Offset <= 0 || Total_Points <= Max_Display_Points)
       {
         Pan_Scrollbar.Minimum = 0;
         Pan_Scrollbar.Maximum = 100;
@@ -568,26 +559,26 @@ namespace Multimeter_Controller
         return;
       }
 
-      int Large_Change = Math.Max ( 1, Max_Display_Points / 10 );  // thumb represents viewport size
+      int Large_Change = Math.Max( 1, Max_Display_Points / 10 );  // thumb represents viewport size
       Pan_Scrollbar.Minimum = 0;
       Pan_Scrollbar.Maximum = Max_Offset + Large_Change - 1;
       Pan_Scrollbar.LargeChange = Large_Change;
-      Pan_Scrollbar.SmallChange = Math.Max ( 1, Max_Display_Points / 100 );
+      Pan_Scrollbar.SmallChange = Math.Max( 1, Max_Display_Points / 100 );
       Pan_Scrollbar.Enabled = true;
 
-      Capture_Trace.Write ( $"Scrollbar:" );
-      Capture_Trace.Write ( $"  Total       = {Total_Points}" );
-      Capture_Trace.Write ( $"  Max_Display = {Max_Display_Points}" );
-      Capture_Trace.Write ( $"  Max_Offset  = {Max_Offset}" );
-      Capture_Trace.Write ( $"  Min         = {Pan_Scrollbar.Minimum}" );
-      Capture_Trace.Write ( $"  Max         = {Pan_Scrollbar.Maximum}" );
-      Capture_Trace.Write ( $"  LargeChange = {Pan_Scrollbar.LargeChange}" );
-      Capture_Trace.Write ( $"  Value       = {Pan_Scrollbar.Value}" );
-      Capture_Trace.Write ( $"  Enabled     = {Pan_Scrollbar.Enabled}" );
+      Capture_Trace.Write( $"Scrollbar:" );
+      Capture_Trace.Write( $"  Total       = {Total_Points}" );
+      Capture_Trace.Write( $"  Max_Display = {Max_Display_Points}" );
+      Capture_Trace.Write( $"  Max_Offset  = {Max_Offset}" );
+      Capture_Trace.Write( $"  Min         = {Pan_Scrollbar.Minimum}" );
+      Capture_Trace.Write( $"  Max         = {Pan_Scrollbar.Maximum}" );
+      Capture_Trace.Write( $"  LargeChange = {Pan_Scrollbar.LargeChange}" );
+      Capture_Trace.Write( $"  Value       = {Pan_Scrollbar.Value}" );
+      Capture_Trace.Write( $"  Enabled     = {Pan_Scrollbar.Enabled}" );
 
 
 
-      if ( Auto_Scroll )
+      if (Auto_Scroll)
       {
         View_Offset = 0;
         Pan_Scrollbar.Value = 0;
@@ -595,7 +586,7 @@ namespace Multimeter_Controller
       else
       {
         int Max_Value = Pan_Scrollbar.Maximum - Pan_Scrollbar.LargeChange + 1;
-        Pan_Scrollbar.Value = Math.Max ( 0, Math.Min ( Pan_Scrollbar.Value, Max_Value ) );
+        Pan_Scrollbar.Value = Math.Max( 0, Math.Min( Pan_Scrollbar.Value, Max_Value ) );
       }
     }
 
@@ -607,28 +598,28 @@ namespace Multimeter_Controller
     // Multi form:   pass individual S.Points.Count per series
     // ========================================================================
 
-    public static (int Start_Index, int Visible_Count) Get_Visible_Range (
+    public static (int Start_Index, int Visible_Count) Get_Visible_Range(
       int Total_Count,
       bool Enable_Rolling,
       int Max_Display_Points,
       int View_Offset )
     {
-      if ( Total_Count == 0 )
+      if (Total_Count == 0)
         return (0, 0);
 
-      if ( !Enable_Rolling || Total_Count <= Max_Display_Points )
+      if (!Enable_Rolling || Total_Count <= Max_Display_Points)
         return (0, Total_Count);
 
       int End_Index = Total_Count - View_Offset;
-      End_Index = Math.Max ( Max_Display_Points, Math.Min ( Total_Count, End_Index ) );
+      End_Index = Math.Max( Max_Display_Points, Math.Min( Total_Count, End_Index ) );
 
-      int Start_Index = Math.Max ( 0, End_Index - Max_Display_Points );
+      int Start_Index = Math.Max( 0, End_Index - Max_Display_Points );
       int Visible_Count = End_Index - Start_Index;
 
       return (Start_Index, Visible_Count);
     }
 
-    public static void Update_Performance_Status (
+    public static void Update_Performance_Status(
       ToolStripStatusLabel? Performance_Label,
       ToolStripStatusLabel? Memory_Label,
       double Actual_FPS,
@@ -637,15 +628,15 @@ namespace Multimeter_Controller
       int Max_Points,
       int Warning_Threshold_Percent )
     {
-      if ( Performance_Label != null )
+      if (Performance_Label != null)
       {
         Performance_Label.Text = $"Refresh: {Actual_FPS:F1} FPS | Points: {Total_Points:N0}";
         Performance_Label.ForeColor = Actual_FPS < 5.0 ? Color.Orange : Color.Green;
       }
 
-      if ( Memory_Label != null )
+      if (Memory_Label != null)
       {
-        int Percent = Max_Points > 0 ? ( Current_Points * 100 ) / Max_Points : 0;
+        int Percent = Max_Points > 0 ? (Current_Points * 100) / Max_Points : 0;
         Memory_Label.Text = $"Memory: {Current_Points:N0} / {Max_Points:N0} ({Percent}%)";
         Memory_Label.ForeColor = Percent >= 90
           ? Color.Red
@@ -660,7 +651,7 @@ namespace Multimeter_Controller
     // Sets button UI state, returns false if caller should abort
     // ========================================================================
 
-    public static void Start_Recording_UI (
+    public static void Start_Recording_UI(
       Button Record_Button )
     {
       Record_Button.Text = "Stop Rec";
@@ -668,7 +659,7 @@ namespace Multimeter_Controller
       Record_Button.ForeColor = Color.White;
     }
 
-    public static void Stop_Recording_UI (
+    public static void Stop_Recording_UI(
       Button Record_Button )
     {
       Record_Button.Text = "Record";
@@ -679,18 +670,18 @@ namespace Multimeter_Controller
 
     // In Multimeter_Common:
 
-    public static void Stop_Recording (
+    public static void Stop_Recording(
       ref bool Is_Recording,
       Button Record_Button,
       Func<int> Get_Point_Count,
       Action Save_Recorded_Data )
     {
       Is_Recording = false;
-      Stop_Recording_UI ( Record_Button );
+      Stop_Recording_UI( Record_Button );
 
-      if ( Get_Point_Count ( ) == 0 )
+      if (Get_Point_Count() == 0)
       {
-        MessageBox.Show (
+        MessageBox.Show(
           "No data points were captured.",
           "Nothing to Save",
           MessageBoxButtons.OK,
@@ -698,7 +689,7 @@ namespace Multimeter_Controller
         return;
       }
 
-      Save_Recorded_Data ( );
+      Save_Recorded_Data();
     }
 
 
@@ -707,7 +698,7 @@ namespace Multimeter_Controller
     // Used by Single_Instrument_Poll_Form
     // ========================================================================
 
-    public static void Save_Single_Series_CSV (
+    public static void Save_Single_Series_CSV(
       string File_Path,
       string Record_Function,
       string Record_Unit,
@@ -715,35 +706,35 @@ namespace Multimeter_Controller
       Meter_Type Meter )
     {
       var (Min, Max, Avg, Std_Dev, Range, Duration, Rate, Avg_Interval_Ms)
-        = Calculate_Stats ( Points );
+        = Calculate_Stats( Points );
 
-      using var Writer = new StreamWriter ( File_Path );
+      using var Writer = new StreamWriter( File_Path );
 
-      Writer.WriteLine ( $"# Function: {Record_Function}" );
-      Writer.WriteLine ( $"# Unit: {Record_Unit}" );
-      Writer.WriteLine ( $"# Captured: {DateTime.Now:yyyy-MM-dd HH:mm:ss}" );
-      Writer.WriteLine ( $"# Points: {Points.Count}" );
-      Writer.WriteLine ( "#" );
-      Writer.WriteLine ( "# Statistics:" );
-      Writer.WriteLine ( $"#   Average: {Avg:F7} {Record_Unit}" );
-      Writer.WriteLine ( $"#   Std Dev: {Std_Dev:F7} {Record_Unit}" );
-      Writer.WriteLine ( $"#   Min: {Min:F7} {Record_Unit}" );
-      Writer.WriteLine ( $"#   Max: {Max:F7} {Record_Unit}" );
-      Writer.WriteLine ( $"#   Range: {Range:F7} {Record_Unit}" );
-      Writer.WriteLine ( $"#   Duration: {Format_Time_Span ( Duration )}" );
-      Writer.WriteLine ( $"#   Rate: {Rate:F2} S/s" );
+      Writer.WriteLine( $"# Function: {Record_Function}" );
+      Writer.WriteLine( $"# Unit: {Record_Unit}" );
+      Writer.WriteLine( $"# Captured: {DateTime.Now:yyyy-MM-dd HH:mm:ss}" );
+      Writer.WriteLine( $"# Points: {Points.Count}" );
+      Writer.WriteLine( "#" );
+      Writer.WriteLine( "# Statistics:" );
+      Writer.WriteLine( $"#   Average: {Avg:F7} {Record_Unit}" );
+      Writer.WriteLine( $"#   Std Dev: {Std_Dev:F7} {Record_Unit}" );
+      Writer.WriteLine( $"#   Min: {Min:F7} {Record_Unit}" );
+      Writer.WriteLine( $"#   Max: {Max:F7} {Record_Unit}" );
+      Writer.WriteLine( $"#   Range: {Range:F7} {Record_Unit}" );
+      Writer.WriteLine( $"#   Duration: {Format_Time_Span( Duration )}" );
+      Writer.WriteLine( $"#   Rate: {Rate:F2} S/s" );
 
-      if ( Points.Count >= 2 )
-        Writer.WriteLine ( $"#   Avg \u0394t: {Avg_Interval_Ms:F1} ms" );
+      if (Points.Count >= 2)
+        Writer.WriteLine( $"#   Avg \u0394t: {Avg_Interval_Ms:F1} ms" );
 
-      Writer.WriteLine ( "#" );
-      Writer.WriteLine ( "Timestamp,Value" );
+      Writer.WriteLine( "#" );
+      Writer.WriteLine( "Timestamp,Value" );
 
-      foreach ( var P in Points )
+      foreach (var P in Points)
       {
-        Writer.WriteLine (
+        Writer.WriteLine(
           $"{P.Time:yyyy-MM-dd HH:mm:ss.fff}," +
-          $"{P.Value.ToString ( CultureInfo.InvariantCulture )}" );
+          $"{P.Value.ToString( CultureInfo.InvariantCulture )}" );
       }
     }
 
@@ -753,75 +744,75 @@ namespace Multimeter_Controller
     // Used by Multi_Instrument_Poll_Form
     // ========================================================================
 
-    public static void Save_Multi_Series_CSV (
+    public static void Save_Multi_Series_CSV(
       string File_Path,
       List<(string Name,
             List<(DateTime Time, double Value)> Points)> Series )
     {
-      using var Writer = new StreamWriter ( File_Path );
+      using var Writer = new StreamWriter( File_Path );
 
-      int Total_Points = Series.Sum ( s => s.Points.Count );
+      int Total_Points = Series.Sum( s => s.Points.Count );
 
-      Writer.WriteLine ( $"# Captured: {DateTime.Now:yyyy-MM-dd HH:mm:ss}" );
-      Writer.WriteLine ( $"# Instruments: {Series.Count}" );
-      Writer.WriteLine ( $"# Total Points: {Total_Points}" );
-      Writer.WriteLine ( "#" );
-      Writer.WriteLine ( "# Statistics:" );
+      Writer.WriteLine( $"# Captured: {DateTime.Now:yyyy-MM-dd HH:mm:ss}" );
+      Writer.WriteLine( $"# Instruments: {Series.Count}" );
+      Writer.WriteLine( $"# Total Points: {Total_Points}" );
+      Writer.WriteLine( "#" );
+      Writer.WriteLine( "# Statistics:" );
 
-      foreach ( var (Name, Points) in Series )
+      foreach (var (Name, Points) in Series)
       {
-        if ( Points.Count == 0 )
+        if (Points.Count == 0)
           continue;
 
         var (Min, Max, Avg, Std_Dev, Range, Duration, Rate, Avg_Interval_Ms)
-          = Calculate_Stats ( Points );
+          = Calculate_Stats( Points );
 
-        Writer.WriteLine ( $"# [{Name}]" );
-        Writer.WriteLine ( $"#   Points: {Points.Count}" );
+        Writer.WriteLine( $"# [{Name}]" );
+        Writer.WriteLine( $"#   Points: {Points.Count}" );
 
-        if ( Points.Count >= 2 )
+        if (Points.Count >= 2)
         {
-          Writer.WriteLine ( $"#   Average: {Avg:F7}" );
-          Writer.WriteLine ( $"#   Std Dev: {Std_Dev:F7}" );
-          Writer.WriteLine ( $"#   Min: {Min:F7}" );
-          Writer.WriteLine ( $"#   Max: {Max:F7}" );
-          Writer.WriteLine ( $"#   Range: {Range:F7}" );
-          Writer.WriteLine ( $"#   Duration: {Format_Time_Span ( Duration )}" );
-          Writer.WriteLine ( $"#   Rate: {Rate:F2} S/s" );
-          Writer.WriteLine ( $"#   Avg \u0394t: {Avg_Interval_Ms:F1} ms" );
+          Writer.WriteLine( $"#   Average: {Avg:F7}" );
+          Writer.WriteLine( $"#   Std Dev: {Std_Dev:F7}" );
+          Writer.WriteLine( $"#   Min: {Min:F7}" );
+          Writer.WriteLine( $"#   Max: {Max:F7}" );
+          Writer.WriteLine( $"#   Range: {Range:F7}" );
+          Writer.WriteLine( $"#   Duration: {Format_Time_Span( Duration )}" );
+          Writer.WriteLine( $"#   Rate: {Rate:F2} S/s" );
+          Writer.WriteLine( $"#   Avg \u0394t: {Avg_Interval_Ms:F1} ms" );
         }
         else
         {
-          Writer.WriteLine ( $"#   Value: {Points [ 0 ].Value:F7}" );
+          Writer.WriteLine( $"#   Value: {Points[ 0 ].Value:F7}" );
         }
       }
 
-      Writer.WriteLine ( "#" );
+      Writer.WriteLine( "#" );
 
       // Column headers
-      Writer.Write ( "Timestamp" );
-      foreach ( var (Name, _) in Series )
-        Writer.Write ( $",{Name}" );
-      Writer.WriteLine ( );
+      Writer.Write( "Timestamp" );
+      foreach (var (Name, _) in Series)
+        Writer.Write( $",{Name}" );
+      Writer.WriteLine();
 
       // Merged timestamp rows
-      var All_Timestamps = new SortedSet<DateTime> ( );
-      foreach ( var (_, Points) in Series )
-        foreach ( var P in Points )
-          All_Timestamps.Add ( P.Time );
+      var All_Timestamps = new SortedSet<DateTime>();
+      foreach (var (_, Points) in Series)
+        foreach (var P in Points)
+          All_Timestamps.Add( P.Time );
 
-      foreach ( var Time in All_Timestamps )
+      foreach (var Time in All_Timestamps)
       {
-        Writer.Write ( $"{Time:yyyy-MM-dd HH:mm:ss.fff}" );
+        Writer.Write( $"{Time:yyyy-MM-dd HH:mm:ss.fff}" );
 
-        foreach ( var (_, Points) in Series )
+        foreach (var (_, Points) in Series)
         {
-          var Point = Points.FirstOrDefault ( p => p.Time == Time );
-          Writer.Write ( Point != default
-            ? $",{Point.Value.ToString ( CultureInfo.InvariantCulture )}"
+          var Point = Points.FirstOrDefault( p => p.Time == Time );
+          Writer.Write( Point != default
+            ? $",{Point.Value.ToString( CultureInfo.InvariantCulture )}"
             : "," );
         }
-        Writer.WriteLine ( );
+        Writer.WriteLine();
       }
     }
 
@@ -834,7 +825,7 @@ namespace Multimeter_Controller
 
     public class CSV_Preamble_Result
     {
-      public string [ ] Lines
+      public string[] Lines
       {
         get; init;
       }
@@ -855,69 +846,69 @@ namespace Multimeter_Controller
 
 
 
-    public static async Task<CSV_Preamble_Result?> Load_CSV_Preamble ( string File_Path )
+    public static async Task<CSV_Preamble_Result?> Load_CSV_Preamble( string File_Path )
     {
-      if ( !File.Exists ( File_Path ) )
+      if (!File.Exists( File_Path ))
       {
-        MessageBox.Show ( "File not found.", "Load Error",
+        MessageBox.Show( "File not found.", "Load Error",
           MessageBoxButtons.OK, MessageBoxIcon.Warning );
         return null;
       }
 
-      string [ ] Lines = await File.ReadAllLinesAsync ( File_Path );
+      string[] Lines = await File.ReadAllLinesAsync( File_Path );
 
       int Header_Index = -1;
-      var Flat_Stats = new Dictionary<string, string> ( );
-      var Sectioned_Stats = new Dictionary<string, Dictionary<string, string>> ( );
+      var Flat_Stats = new Dictionary<string, string>();
+      var Sectioned_Stats = new Dictionary<string, Dictionary<string, string>>();
       string? Current_Section = null;
 
-      foreach ( string Line in Lines )
+      foreach (string Line in Lines)
       {
-        if ( Line.StartsWith ( "# [" ) && Line.EndsWith ( "]" ) )
+        if (Line.StartsWith( "# [" ) && Line.EndsWith( "]" ))
         {
-          Current_Section = Line.Substring ( 3, Line.Length - 4 );
-          Sectioned_Stats [ Current_Section ] = new Dictionary<string, string> ( );
+          Current_Section = Line.Substring( 3, Line.Length - 4 );
+          Sectioned_Stats[ Current_Section ] = new Dictionary<string, string>();
         }
-        else if ( Line.StartsWith ( "# Unit" ) )
+        else if (Line.StartsWith( "# Unit" ))
         {
-          int Colon = Line.IndexOf ( ':' );
-          if ( Colon > 0 )
-            Flat_Stats [ "Unit" ] = Line.Substring ( Colon + 1 ).Trim ( );
+          int Colon = Line.IndexOf( ':' );
+          if (Colon > 0)
+            Flat_Stats[ "Unit" ] = Line.Substring( Colon + 1 ).Trim();
         }
-        else if ( Line.StartsWith ( "# Measurement" ) )
+        else if (Line.StartsWith( "# Measurement" ))
         {
-          int Colon = Line.IndexOf ( ':' );
-          if ( Colon > 0 )
-            Flat_Stats [ "Measurement" ] = Line.Substring ( Colon + 1 ).Trim ( );
+          int Colon = Line.IndexOf( ':' );
+          if (Colon > 0)
+            Flat_Stats[ "Measurement" ] = Line.Substring( Colon + 1 ).Trim();
         }
-        else if ( Line.StartsWith ( "#   " ) )
+        else if (Line.StartsWith( "#   " ))
         {
-          string Stat = Line.Substring ( 4 ).Trim ( );
-          int Colon_Idx = Stat.IndexOf ( ':' );
-          if ( Colon_Idx > 0 )
+          string Stat = Line.Substring( 4 ).Trim();
+          int Colon_Idx = Stat.IndexOf( ':' );
+          if (Colon_Idx > 0)
           {
-            string Key = Stat.Substring ( 0, Colon_Idx ).Trim ( );
-            string Value = Stat.Substring ( Colon_Idx + 1 ).Trim ( );
-            if ( Current_Section != null )
-              Sectioned_Stats [ Current_Section ] [ Key ] = Value;
+            string Key = Stat.Substring( 0, Colon_Idx ).Trim();
+            string Value = Stat.Substring( Colon_Idx + 1 ).Trim();
+            if (Current_Section != null)
+              Sectioned_Stats[ Current_Section ][ Key ] = Value;
             else
-              Flat_Stats [ Key ] = Value;
+              Flat_Stats[ Key ] = Value;
           }
         }
       }
 
-      for ( int I = 0; I < Lines.Length; I++ )
+      for (int I = 0; I < Lines.Length; I++)
       {
-        if ( !Lines [ I ].StartsWith ( "#" ) && !string.IsNullOrWhiteSpace ( Lines [ I ] ) )
+        if (!Lines[ I ].StartsWith( "#" ) && !string.IsNullOrWhiteSpace( Lines[ I ] ))
         {
           Header_Index = I;
           break;
         }
       }
 
-      if ( Header_Index < 0 )
+      if (Header_Index < 0)
       {
-        MessageBox.Show ( "No valid data found in file.", "Load Error",
+        MessageBox.Show( "No valid data found in file.", "Load Error",
           MessageBoxButtons.OK, MessageBoxIcon.Warning );
         return null;
       }
@@ -932,7 +923,7 @@ namespace Multimeter_Controller
     }
 
 
-  
+
 
     // ========================================================================
     // CSV DATA ROW PARSING - SINGLE COLUMN
@@ -940,29 +931,29 @@ namespace Multimeter_Controller
     // ========================================================================
 
     public static (List<double> Values, List<DateTime> Timestamps)
-      Parse_Single_Column_Data ( string [ ] Lines, int Header_Index )
+      Parse_Single_Column_Data( string[] Lines, int Header_Index )
     {
-      var Values = new List<double> ( );
-      var Timestamps = new List<DateTime> ( );
+      var Values = new List<double>();
+      var Timestamps = new List<DateTime>();
 
-      for ( int I = Header_Index + 1; I < Lines.Length; I++ )
+      for (int I = Header_Index + 1; I < Lines.Length; I++)
       {
-        string Line = Lines [ I ].Trim ( );
-        if ( string.IsNullOrEmpty ( Line ) || Line.StartsWith ( "#" ) )
+        string Line = Lines[ I ].Trim();
+        if (string.IsNullOrEmpty( Line ) || Line.StartsWith( "#" ))
           continue;
 
-        string [ ] Parts = Line.Split ( ',' );
-        if ( Parts.Length < 2 )
+        string[] Parts = Line.Split( ',' );
+        if (Parts.Length < 2)
           continue;
 
-        if ( DateTime.TryParse ( Parts [ 0 ], out DateTime Timestamp ) )
-          Timestamps.Add ( Timestamp );
+        if (DateTime.TryParse( Parts[ 0 ], out DateTime Timestamp ))
+          Timestamps.Add( Timestamp );
 
-        if ( double.TryParse ( Parts [ 1 ],
+        if (double.TryParse( Parts[ 1 ],
             NumberStyles.Float,
             CultureInfo.InvariantCulture,
-            out double Value ) )
-          Values.Add ( Value );
+            out double Value ))
+          Values.Add( Value );
       }
 
       return (Values, Timestamps);
@@ -973,7 +964,7 @@ namespace Multimeter_Controller
     // Add one instance per form - fields live in the form, logic in helper
     // ========================================================================
 
-    public static void Track_FPS (
+    public static void Track_FPS(
       ref int Paint_Count,
       ref double Actual_FPS,
       Stopwatch FPS_Stopwatch,
@@ -981,12 +972,12 @@ namespace Multimeter_Controller
     {
       Paint_Count++;
 
-      if ( FPS_Stopwatch.Elapsed.TotalSeconds >= 1.0 )
+      if (FPS_Stopwatch.Elapsed.TotalSeconds >= 1.0)
       {
         Actual_FPS = Paint_Count / FPS_Stopwatch.Elapsed.TotalSeconds;
         Paint_Count = 0;
-        FPS_Stopwatch.Restart ( );
-        Update_Status ( );
+        FPS_Stopwatch.Restart();
+        Update_Status();
       }
     }
 
@@ -996,15 +987,15 @@ namespace Multimeter_Controller
 
     public static (ToolStripStatusLabel Memory_Label,
                    ToolStripStatusLabel Performance_Label)
-      Initialize_Status_Strip (
+      Initialize_Status_Strip(
         Form Owner,
         Application_Settings Settings,
         int Instrument_Count = 0 )
     {
       // Remove existing strip if present
-      var Existing = Owner.Controls.OfType<StatusStrip> ( ).FirstOrDefault ( );
-      if ( Existing != null )
-        Owner.Controls.Remove ( Existing );
+      var Existing = Owner.Controls.OfType<StatusStrip>().FirstOrDefault();
+      if (Existing != null)
+        Owner.Controls.Remove( Existing );
 
       var Status_Strip = new StatusStrip { Name = "Status_Strip" };
 
@@ -1015,7 +1006,7 @@ namespace Multimeter_Controller
         BorderSides = ToolStripStatusLabelBorderSides.Right,
         AutoSize = true
       };
-      Status_Strip.Items.Add ( Memory_Label );
+      Status_Strip.Items.Add( Memory_Label );
 
       var Performance_Label = new ToolStripStatusLabel
       {
@@ -1024,10 +1015,10 @@ namespace Multimeter_Controller
         BorderSides = ToolStripStatusLabelBorderSides.Right,
         AutoSize = true
       };
-      Status_Strip.Items.Add ( Performance_Label );
+      Status_Strip.Items.Add( Performance_Label );
 
       // Only shown in multi form when Instrument_Count > 0
-      if ( Instrument_Count > 0 )
+      if (Instrument_Count > 0)
       {
         var Instrument_Label = new ToolStripStatusLabel
         {
@@ -1035,12 +1026,12 @@ namespace Multimeter_Controller
           BorderSides = ToolStripStatusLabelBorderSides.Right,
           AutoSize = true
         };
-        Status_Strip.Items.Add ( Instrument_Label );
+        Status_Strip.Items.Add( Instrument_Label );
       }
 
-      Status_Strip.Items.Add ( new ToolStripStatusLabel { Spring = true } );
+      Status_Strip.Items.Add( new ToolStripStatusLabel { Spring = true } );
 
-      Owner.Controls.Add ( Status_Strip );
+      Owner.Controls.Add( Status_Strip );
 
       return (Memory_Label, Performance_Label);
     }
@@ -1048,125 +1039,125 @@ namespace Multimeter_Controller
 
 
 
-    public static Chart_Theme Get_Next_Theme ( Chart_Theme Current )
+    public static Chart_Theme Get_Next_Theme( Chart_Theme Current )
     {
-      var Themes = new [ ]
+      var Themes = new[]
       {
     Chart_Theme.Dark_Preset  ( ),
     Chart_Theme.Light_Preset ( )
   };
 
-      for ( int I = 0; I < Themes.Length; I++ )
+      for (int I = 0; I < Themes.Length; I++)
       {
-        if ( Themes [ I ].Name == Current.Name )
-          return Themes [ ( I + 1 ) % Themes.Length ];
+        if (Themes[ I ].Name == Current.Name)
+          return Themes[ (I + 1) % Themes.Length ];
       }
 
-      return Themes [ 0 ];
+      return Themes[ 0 ];
     }
 
 
-    public static async Task<List<string>> Scan_For_Prologix (
+    public static async Task<List<string>> Scan_For_Prologix(
     string Subnet,
     int Timeout_Ms = 500,
     IProgress<(int Current, int Total)>? Progress = null,
     Action<string>? Trace = null )
     {
-      using var Block = Trace_Block.Start_If_Enabled ( );
-      Trace?.Invoke ( $"Scanning subnet {Subnet}.1-254 timeout={Timeout_Ms}ms" );
+      using var Block = Trace_Block.Start_If_Enabled();
+      Trace?.Invoke( $"Scanning subnet {Subnet}.1-254 timeout={Timeout_Ms}ms" );
 
-      var Results = new ConcurrentBag<string> ( );
+      var Results = new ConcurrentBag<string>();
       int Total = 254;
       int Completed = 0;
-      var Semaphore = new SemaphoreSlim ( 50 );
+      var Semaphore = new SemaphoreSlim( 50 );
 
-      var Tasks = Enumerable.Range ( 1, 254 ).Select ( async I =>
+      var Tasks = Enumerable.Range( 1, 254 ).Select( async I =>
       {
-        await Semaphore.WaitAsync ( );
+        await Semaphore.WaitAsync();
         try
         {
           string IP = $"{Subnet}.{I}";
-          Trace?.Invoke ( $"  Trying {IP}" );
+          Trace?.Invoke( $"  Trying {IP}" );
 
           // Skip ping - Prologix may not respond to ICMP
           // Go straight to TCP connect on port 1234
-          if ( await Is_Prologix ( IP, 1234, Timeout_Ms, Trace ) )
+          if (await Is_Prologix( IP, 1234, Timeout_Ms, Trace ))
           {
-            Trace?.Invoke ( $"  ✓ Confirmed Prologix at {IP}" );
-            Results.Add ( IP );
+            Trace?.Invoke( $"  ✓ Confirmed Prologix at {IP}" );
+            Results.Add( IP );
           }
         }
         catch { }
         finally
         {
-          Semaphore.Release ( );
-          Progress?.Report ( (Interlocked.Increment ( ref Completed ), Total) );
+          Semaphore.Release();
+          Progress?.Report( (Interlocked.Increment( ref Completed ), Total) );
         }
       } );
 
-      await Task.WhenAll ( Tasks );
+      await Task.WhenAll( Tasks );
 
       var Found = Results
-        .OrderBy ( IP => int.Parse ( IP.Split ( '.' ).Last ( ) ) )
-        .ToList ( );
+        .OrderBy( IP => int.Parse( IP.Split( '.' ).Last() ) )
+        .ToList();
 
-      Trace?.Invoke ( $"Scan complete. Found {Found.Count} device(s): {string.Join ( ", ", Found )}" );
+      Trace?.Invoke( $"Scan complete. Found {Found.Count} device(s): {string.Join( ", ", Found )}" );
       return Found;
     }
 
-    private static async Task<bool> Is_Prologix (
+    private static async Task<bool> Is_Prologix(
         string IP, int Port, int Timeout_Ms,
         Action<string>? Trace = null )
     {
       try
       {
 
-        using var TCP = new TcpClient ( );
-        using var CTS = new CancellationTokenSource ( Timeout_Ms );
+        using var TCP = new TcpClient();
+        using var CTS = new CancellationTokenSource( Timeout_Ms );
 
         try
         {
-          await TCP.ConnectAsync ( IP, Port, CTS.Token );
+          await TCP.ConnectAsync( IP, Port, CTS.Token );
         }
-        
-        catch ( Exception Ex )
+
+        catch (Exception)
         {
           return false;
         }
 
-        if ( !TCP.Connected )
+        if (!TCP.Connected)
           return false;
 
-        using var Stream = TCP.GetStream ( );
+        using var Stream = TCP.GetStream();
         Stream.ReadTimeout = Timeout_Ms;
         Stream.WriteTimeout = Timeout_Ms;
 
         // Flush anything pending
-        byte [ ] Flush_Buf = new byte [ 256 ];
-        while ( Stream.DataAvailable )
-          await Stream.ReadAsync ( Flush_Buf, 0, Flush_Buf.Length );
+        byte[] Flush_Buf = new byte[ 256 ];
+        while (Stream.DataAvailable)
+          _ = await Stream.ReadAsync( Flush_Buf, 0, Flush_Buf.Length );
 
         // Send ++ver
-        byte [ ] Cmd = Encoding.ASCII.GetBytes ( "++ver\n" );
-        await Stream.WriteAsync ( Cmd, 0, Cmd.Length );
+        byte[] Cmd = Encoding.ASCII.GetBytes( "++ver\n" );
+        await Stream.WriteAsync( Cmd, 0, Cmd.Length );
 
         // Read response safely
-        byte [ ] Buf = new byte [ 256 ];
-        var Read_Task = Stream.ReadAsync ( Buf, 0, Buf.Length );
-        if ( await Task.WhenAny ( Read_Task, Task.Delay ( Timeout_Ms ) ) != Read_Task )
+        byte[] Buf = new byte[ 256 ];
+        var Read_Task = Stream.ReadAsync( Buf, 0, Buf.Length );
+        if (await Task.WhenAny( Read_Task, Task.Delay( Timeout_Ms ) ) != Read_Task)
           return false;
 
         int Bytes = Read_Task.Result;
-        string Response = Encoding.ASCII.GetString ( Buf, 0, Bytes ).Trim ( );
-        Trace?.Invoke ( $"  {IP} ver response: '{Response}'" );
+        string Response = Encoding.ASCII.GetString( Buf, 0, Bytes ).Trim();
+        Trace?.Invoke( $"  {IP} ver response: '{Response}'" );
 
-        if ( await Task.WhenAny ( Read_Task, Task.Delay ( Timeout_Ms ) ) != Read_Task )
+        if (await Task.WhenAny( Read_Task, Task.Delay( Timeout_Ms ) ) != Read_Task)
         {
-          Trace?.Invoke ( $"  {IP} read timed out" );
+          Trace?.Invoke( $"  {IP} read timed out" );
           return false;
         }
 
-        return Response.Contains ( "Prologix", StringComparison.OrdinalIgnoreCase );
+        return Response.Contains( "Prologix", StringComparison.OrdinalIgnoreCase );
       }
       catch
       {
@@ -1177,29 +1168,29 @@ namespace Multimeter_Controller
 
 
 
-    public static Meter_Type Get_Meter_Type ( string Name )
+    public static Meter_Type Get_Meter_Type( string Name )
     {
-      if ( Name.Contains ( "34401" ) )
+      if (Name.Contains( "34401" ))
         return Meter_Type.HP34401;
-      if ( Name.Contains ( "33120" ) )
+      if (Name.Contains( "33120" ))
         return Meter_Type.HP33120;
-      if ( Name.Contains ( "34420" ) )
+      if (Name.Contains( "34420" ))
         return Meter_Type.HP34420;
-      if ( Name.Contains ( "53132" ) )
+      if (Name.Contains( "53132" ))
         return Meter_Type.HP53132;
-      if ( Name.Contains ( "3458" ) )
+      if (Name.Contains( "3458" ))
         return Meter_Type.HP3458;
       return Meter_Type.Generic_GPIB;
     }
 
-    public static int Calculate_Settle_Ms ( string NPLC_Value, double Safety_Factor = 2.0 )
+    public static int Calculate_Settle_Ms( string NPLC_Value, double Safety_Factor = 2.0 )
     {
-      if ( !double.TryParse ( NPLC_Value, out double NPLC ) || NPLC <= 0 )
+      if (!double.TryParse( NPLC_Value, out double NPLC ) || NPLC <= 0)
         NPLC = 1.0;
 
       // One power line cycle = 16.67ms at 60Hz
-      double Measurement_Ms = NPLC * ( 1000.0 / 60.0 );
-      return Math.Max ( 50, (int) ( Measurement_Ms * Safety_Factor ) );
+      double Measurement_Ms = NPLC * (1000.0 / 60.0);
+      return Math.Max( 50, (int) (Measurement_Ms * Safety_Factor) );
     }
 
   }

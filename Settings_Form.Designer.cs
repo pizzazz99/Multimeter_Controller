@@ -23,6 +23,7 @@ namespace Multimeter_Controller
       Main_Tab_Control = new TabControl ( );
       HP3458_Tab = new TabPage ( );
       Prologix_Tab = new TabPage ( );
+      NI_VISA_Tab = new TabPage ( );
       Display_Tab = new TabPage ( );
       Polling_Tab = new TabPage ( );
       Files_Tab = new TabPage ( );
@@ -41,6 +42,7 @@ namespace Multimeter_Controller
       // 
       Main_Tab_Control.Controls.Add ( HP3458_Tab );
       Main_Tab_Control.Controls.Add ( Prologix_Tab );
+      Main_Tab_Control.Controls.Add ( NI_VISA_Tab );
       Main_Tab_Control.Controls.Add ( Display_Tab );
       Main_Tab_Control.Controls.Add ( Polling_Tab );
       Main_Tab_Control.Controls.Add ( Files_Tab );
@@ -71,9 +73,18 @@ namespace Multimeter_Controller
       Prologix_Tab.Size = new Size ( 552, 459 );
       Prologix_Tab.TabIndex = 7;
       Prologix_Tab.Text = "Prologix";
-      // 
+      //
+      // NI_VISA_Tab
+      //
+      NI_VISA_Tab.BackColor = SystemColors.Control;
+      NI_VISA_Tab.Location = new Point ( 4, 24 );
+      NI_VISA_Tab.Name = "NI_VISA_Tab";
+      NI_VISA_Tab.Size = new Size ( 552, 459 );
+      NI_VISA_Tab.TabIndex = 9;
+      NI_VISA_Tab.Text = "NI-VISA";
+      //
       // Analysis_Tab
-      // 
+      //
       Analysis_Tab.BackColor = SystemColors.Control;
       Analysis_Tab.Location = new Point ( 4, 24 );
       Analysis_Tab.Name = "Analysis_Tab";
@@ -214,6 +225,7 @@ namespace Multimeter_Controller
     private Button Reset_Button;
    
     private TabPage Prologix_Tab;
+    private TabPage NI_VISA_Tab;
 
     // Analysis tab controls
     private CheckBox _Auto_Analyze_Check;
