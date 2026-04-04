@@ -171,6 +171,14 @@ namespace Multimeter_Controller
     Direct_Serial,
     Prologix_GPIB,
     Prologix_Ethernet,
+    /// <summary>
+    /// NI-VISA transport using the NI-VISA runtime and NationalInstruments.Visa managed wrapper.
+    /// No Prologix adapter is required; instrument sessions are opened directly by the
+    /// <see cref="ResourceManager"/> using VISA resource strings discovered via
+    /// <see cref="Instrument_Comm.Scan_GPIB_BusAsync"/>.
+    /// Unlike Prologix modes, no <c>++addr</c> or <c>++read eoi</c> commands are sent;
+    /// addressing and EOI detection are handled natively by the VISA driver.
+    /// </summary>
     NI_VISA
   }
 
@@ -193,6 +201,9 @@ namespace Multimeter_Controller
     {
       get; set;
     }
+    /// <summary>Full VISA resource string for this result (e.g. "GPIB0::22::INSTR"
+    /// or "visa://hostname/GPIB0::22::INSTR").  Empty for non-NI-VISA scan paths.</summary>
+    public string Resource_String { get; set; } = "";
   }
 
   public class Instrument_Comm : IDisposable
@@ -292,8 +303,22 @@ namespace Multimeter_Controller
     private SerialPort? _Port;
     private TcpClient? _Tcp_Client;
     private NetworkStream? _Tcp_Stream;
+    /// <summary>The active NI-VISA session for the currently selected instrument address.
+    /// Set by <see cref="Change_GPIB_Address"/> and cleared on disconnect.</summary>
     private IMessageBasedSession? _Visa_Session;
+
+    /// <summary>Per-address NI-VISA session cache.  Keyed by GPIB address integer.
+    /// Avoids re-opening a session on every address switch; sessions are opened lazily
+    /// by <see cref="Open_Or_Get_VISA_Session"/> and disposed in
+    /// <see cref="Cleanup_Connections"/>.</summary>
     private readonly Dictionary<int, IMessageBasedSession> _Visa_Session_Pool = new();
+
+    /// <summary>Shared <see cref="ResourceManager"/> instance for the lifetime of the
+    /// NI-VISA connection.  Stored as a field so that open sessions remain valid; a
+    /// local ResourceManager would be garbage-collected and invalidate all sessions.
+    /// Initialised in <see cref="Connect_NI_VISA"/> and disposed in
+    /// <see cref="Cleanup_Connections"/>.</summary>
+    private ResourceManager? _Resource_Manager;
     private bool _Disposed;
     private bool _Is_First_Connect = true;
 
@@ -319,6 +344,15 @@ namespace Multimeter_Controller
     public int Ethernet_Port { get; set; } = 1234;  // Prologix default
 
     // NI-VISA-specific
+    /// <summary>
+    /// The VISA resource string associated with the currently active instrument session
+    /// (e.g. <c>"GPIB0::22::INSTR"</c> for a local controller or
+    /// <c>"visa://hostname/GPIB0::22::INSTR"</c> for a remote VISA server).
+    /// Updated by <c>Instruments_List_SelectedIndexChanged</c> in Form1 when
+    /// the user selects an instrument that was discovered by <see cref="Scan_GPIB_BusAsync"/>.
+    /// Used by <see cref="Visa_Resource_For"/> to construct per-address resource strings
+    /// and by <see cref="Open_Or_Get_VISA_Session"/> to open new sessions.
+    /// </summary>
     public string Visa_Resource_String { get; set; } = "GPIB0::22::INSTR";
 
     // GPIB settings
@@ -328,13 +362,23 @@ namespace Multimeter_Controller
     public Prologix_Eos_Mode EOS_Mode { get; set; } = Prologix_Eos_Mode.LF;
 
     // Timeouts
-    public int Read_Timeout_Ms { get; set; } = 3000;
+    private int _Read_Timeout_Ms = 3000;
+    public int Read_Timeout_Ms
+    {
+      get => _Read_Timeout_Ms;
+      set
+      {
+        _Read_Timeout_Ms = value;
+        foreach (var Session in _Visa_Session_Pool.Values)
+          Session.TimeoutMilliseconds = value;
+      }
+    }
     public int Write_Timeout_Ms { get; set; } = 5000;
     public int Prologix_Read_Timeout_Ms { get; set; } = 3000;
 
     public bool Is_Connected =>
         Mode == Connection_Mode.Prologix_Ethernet ? _Tcp_Client?.Connected == true
-      : Mode == Connection_Mode.NI_VISA           ? _Visa_Session != null
+      : Mode == Connection_Mode.NI_VISA           ? _Resource_Manager != null
                                                   : _Port?.IsOpen == true;
 
     // =========================================================
@@ -393,6 +437,13 @@ namespace Multimeter_Controller
     public void Connect()
     {
       using var Block = Trace_Block.Start_If_Enabled();
+
+      // Reset the disposed flag so that Disconnect_Async() works correctly after
+      // this connect cycle.  _Disposed is set to true during Disconnect_Async() to
+      // prevent Emergency_Shutdown from re-entering; clearing it here allows a clean
+      // disconnect/reconnect sequence without leaving sessions or the ResourceManager
+      // leaked on the second disconnect.
+      _Disposed = false;
 
       if (Is_Connected)
         _ = Disconnect_Async();
@@ -536,17 +587,25 @@ namespace Multimeter_Controller
 
 
 
+    /// <summary>
+    /// Initialises the NI-VISA connection by creating the shared <see cref="ResourceManager"/>.
+    /// No specific instrument resource string is required — instruments are discovered
+    /// automatically by <see cref="Scan_GPIB_BusAsync"/> using
+    /// <c>ResourceManager.Find("GPIB?*INSTR")</c>, which enumerates both local GPIB
+    /// controllers and remote VISA servers configured in NI-MAX.
+    /// Individual instrument sessions are opened lazily by <see cref="Open_Or_Get_VISA_Session"/>
+    /// when the user selects an instrument.
+    /// </summary>
     private void Connect_NI_VISA()
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      Capture_Trace.Write( $"Connecting via NI-VISA to {Visa_Resource_String}" );
+      // Just initialise the ResourceManager — no specific instrument resource is
+      // required at connect time.  Sessions are opened lazily when the user selects
+      // an instrument (via Change_GPIB_Address) or after a bus scan.
+      _Resource_Manager ??= new ResourceManager();
 
-      int Address = Parse_GPIB_Address_From_Resource( Visa_Resource_String );
-      _Visa_Session = Open_Or_Get_VISA_Session( Address );
-      GPIB_Address = Address;
-
-      Capture_Trace.Write( $"NI-VISA session opened: {Visa_Resource_String}" );
+      Capture_Trace.Write( "NI-VISA: ResourceManager initialised (ready to scan or open sessions)" );
     }
 
     public async Task Disconnect_Async()
@@ -673,11 +732,19 @@ namespace Multimeter_Controller
       }
       catch { }
 
+      try
+      {
+        Capture_Trace.Write( "Disposing NI-VISA ResourceManager." );
+        _Resource_Manager?.Dispose();
+      }
+      catch { }
+
       Capture_Trace.Write( "Setting Port, TCP Stream, TCP Client, and VISA session to null." );
       _Port = null;
       _Tcp_Stream = null;
       _Tcp_Client = null;
       _Visa_Session = null;
+      _Resource_Manager = null;
     }
 
 
@@ -1003,6 +1070,20 @@ namespace Multimeter_Controller
       }
     }
 
+    /// <summary>
+    /// Reads a response from the instrument using the active NI-VISA session via raw I/O.
+    /// EOI detection is handled natively by the NI-VISA driver — no <c>++read eoi</c>
+    /// command is required, unlike the Prologix transport paths.
+    /// </summary>
+    /// <param name="Token">Cancellation token to abort the read operation.</param>
+    /// <returns>
+    /// The trimmed ASCII response string, or an empty string if the session is null,
+    /// the operation is cancelled, or a non-timeout VISA error occurs.
+    /// </returns>
+    /// <exception cref="TimeoutException">
+    /// Thrown when the VISA driver returns <c>VI_ERROR_TMO</c> (0xBFFF0015), allowing
+    /// the caller (<c>GPIB_Manager_Class</c>) to apply retry-with-backoff logic.
+    /// </exception>
     private string Read_VISA( CancellationToken Token )
     {
       using var Block = Trace_Block.Start_If_Enabled();
@@ -1024,6 +1105,10 @@ namespace Multimeter_Controller
       catch (Ivi.Visa.NativeVisaException Ex)
       {
         Capture_Trace.Write( $"VISA read exception ({Ex.ErrorCode}): {Ex.Message}" );
+        const int VI_ERROR_TMO = unchecked((int) 0xBFFF0015);
+        if (Ex.ErrorCode == VI_ERROR_TMO)
+          throw new TimeoutException( $"VISA timeout after {Read_Timeout_Ms} ms", Ex );
+        Raise_Error( $"VISA read failed ({Ex.ErrorCode}): {Ex.Message}" );
         return "";
       }
       catch (Exception Ex)
@@ -1194,6 +1279,13 @@ namespace Multimeter_Controller
       }
     }
 
+    /// <summary>
+    /// Extracts the GPIB address integer from a VISA resource string
+    /// (e.g. returns <c>22</c> from <c>"GPIB0::22::INSTR"</c> or
+    /// <c>"visa://hostname/GPIB0::22::INSTR"</c>).
+    /// </summary>
+    /// <param name="Resource">VISA resource string to parse.</param>
+    /// <returns>The parsed address (0–30), or <c>0</c> if the string cannot be parsed.</returns>
     private static int Parse_GPIB_Address_From_Resource( string Resource )
     {
       int Gpib_Pos = Resource.IndexOf( "GPIB", StringComparison.OrdinalIgnoreCase );
@@ -1207,7 +1299,15 @@ namespace Multimeter_Controller
     }
 
     // Returns the resource string for a given GPIB address, derived from the
-    // current Visa_Resource_String by replacing the address component.
+    /// <summary>
+    /// Builds a VISA resource string for <paramref name="Address"/> by replacing only the
+    /// address token in <see cref="Visa_Resource_String"/>, preserving the host prefix
+    /// (e.g. <c>visa://hostname/GPIB0::</c>) so that the result targets the same bus.
+    /// Returns the unmodified <see cref="Visa_Resource_String"/> if it does not contain
+    /// a parseable <c>GPIB::address::</c> pattern.
+    /// </summary>
+    /// <param name="Address">Replacement GPIB address (0–30).</param>
+    /// <returns>A VISA resource string with <paramref name="Address"/> substituted in.</returns>
     private string Visa_Resource_For( int Address )
     {
       int Gpib_Pos = Visa_Resource_String.IndexOf( "GPIB", StringComparison.OrdinalIgnoreCase );
@@ -1223,7 +1323,16 @@ namespace Multimeter_Controller
       return Visa_Resource_String[ ..Addr_Start ] + Address + Visa_Resource_String[ Second_Sep.. ];
     }
 
-    // Gets a session from the pool for the given address, opening one if needed.
+    /// <summary>
+    /// Returns a pooled NI-VISA session for <paramref name="Address"/>, opening a new one
+    /// if none exists.  The resource string is built by <see cref="Visa_Resource_For"/>
+    /// using the current <see cref="Visa_Resource_String"/> as the template, so the caller
+    /// must set <see cref="Visa_Resource_String"/> to the correct host/bus prefix before
+    /// switching address (Form1 does this in <c>Instruments_List_SelectedIndexChanged</c>).
+    /// The new session's timeout is initialised from <see cref="Read_Timeout_Ms"/>.
+    /// </summary>
+    /// <param name="Address">GPIB address (0–30) of the target instrument.</param>
+    /// <returns>An open <see cref="IMessageBasedSession"/> ready for I/O.</returns>
     private IMessageBasedSession Open_Or_Get_VISA_Session( int Address )
     {
       if (_Visa_Session_Pool.TryGetValue( Address, out var Existing ))
@@ -1231,8 +1340,8 @@ namespace Multimeter_Controller
 
       string Resource = Visa_Resource_For( Address );
       Capture_Trace.Write( $"NI-VISA: opening session for {Resource}" );
-      var Rm = new ResourceManager();
-      var Session = (IMessageBasedSession) Rm.Open( Resource );
+      _Resource_Manager ??= new ResourceManager();
+      var Session = (IMessageBasedSession) _Resource_Manager.Open( Resource );
       Session.TimeoutMilliseconds = Read_Timeout_Ms;
       _Visa_Session_Pool[ Address ] = Session;
       return Session;
@@ -1298,8 +1407,16 @@ namespace Multimeter_Controller
 
 
 
-    // Sends a single command to a VISA session and reads the response.
-    // Never throws — returns "" on any error including timeout.
+    /// <summary>
+    /// Sends a single command to a VISA session and reads the response.
+    /// Used during bus scanning to probe individual addresses without affecting the
+    /// active <see cref="_Visa_Session"/>.  Never throws — all exceptions are swallowed
+    /// and an empty string is returned, allowing the scan loop to continue to the next address.
+    /// </summary>
+    /// <param name="Session">The <see cref="IMessageBasedSession"/> to query.</param>
+    /// <param name="Command">The command string to send (e.g. <c>"*IDN?"</c> or <c>"ID?"</c>).</param>
+    /// <param name="Timeout_Ms">Per-query read timeout in milliseconds.  Defaults to 500 ms.</param>
+    /// <returns>The trimmed response string, or an empty string on any error or timeout.</returns>
     private static string Probe_VISA_Instrument( IMessageBasedSession Session, string Command, int Timeout_Ms = 500 )
     {
       try
@@ -1324,90 +1441,110 @@ namespace Multimeter_Controller
       using var Block = Trace_Block.Start_If_Enabled();
       var Results = new List<Scan_Result>();
 
+      // Do NOT mutate _Visa_Session during the scan — the caller's active session
+      // must be left intact so that polling or manual commands still work after the
+      // scan completes or is cancelled.
+
+      _Resource_Manager ??= new ResourceManager();
+
+      // Ask NI-VISA for every GPIB instrument it knows about — this includes both
+      // local GPIB controllers and any remote VISA servers configured in NI-MAX,
+      // so no manual resource string entry is required before scanning.
+      IEnumerable<string> All_Resources;
       try
       {
-        Progress?.Report( "NI-VISA: searching for GPIB instruments..." );
-        Capture_Trace.Write( "NI-VISA bus scan starting" );
-
-        var Rm = new ResourceManager();
-        string[] Resources = Rm.Find( "GPIB?*INSTR" ).ToArray();
-
-        Capture_Trace.Write( $"NI-VISA: found {Resources.Length} resource(s)" );
-
-        foreach (string Resource in Resources)
-        {
-          Token.ThrowIfCancellationRequested();
-
-          int Addr = Parse_GPIB_Address_From_Resource( Resource );
-          Progress?.Report( $"NI-VISA: probing {Resource} (address {Addr})..." );
-          Capture_Trace.Write( $"NI-VISA: probing {Resource}" );
-
-          try
-          {
-            // Switch to this address — opens a pooled session if needed
-            Change_GPIB_Address( Addr );
-            await Task.Delay( 100, Token );
-
-            var Session = _Visa_Session!;
-
-            // Pass 1: SCPI *IDN?
-            string Response = Probe_VISA_Instrument( Session, "*IDN?" );
-            if (!string.IsNullOrEmpty( Response ) &&
-                double.TryParse( Response.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out _ ))
-            {
-              Capture_Trace.Write( $"NI-VISA Pass 1: numeric response at {Addr} — sending TRIG HOLD" );
-              Probe_VISA_Instrument( Session, "TRIG HOLD" );
-              await Task.Delay( 200, Token );
-              Response = "";
-            }
-
-            // Pass 2: Legacy ID?
-            if (string.IsNullOrEmpty( Response ))
-            {
-              Capture_Trace.Write( $"NI-VISA Pass 2: trying ID? at {Addr}" );
-              Probe_VISA_Instrument( Session, "TRIG HOLD" );
-              await Task.Delay( 200, Token );
-              Response = Probe_VISA_Instrument( Session, "ID?" );
-              if (!string.IsNullOrEmpty( Response ) &&
-                  double.TryParse( Response.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out _ ))
-                Response = "";
-            }
-
-            if (!string.IsNullOrEmpty( Response ))
-            {
-              var Result = new Scan_Result
-              {
-                Address = Addr,
-                ID_String = Response,
-                Detected_Type = Multimeter_Common_Helpers_Class.Get_Meter_Type( Response )
-              };
-              Results.Add( Result );
-              _Verified_Cache[ Addr ] = Result;
-              _Verified_Addresses.Add( Addr );
-              Capture_Trace.Write( $"NI-VISA: found {Response} at address {Addr}" );
-              Progress?.Report( $"  Found at {Addr}: {Response}" );
-            }
-            else
-            {
-              Capture_Trace.Write( $"NI-VISA: no ID response at address {Addr}" );
-            }
-          }
-          catch (Exception Ex)
-          {
-            Capture_Trace.Write( $"NI-VISA: error probing {Resource}: {Ex.Message}" );
-          }
-
-          await Task.Yield();
-        }
-      }
-      catch (OperationCanceledException)
-      {
-        Capture_Trace.Write( "NI-VISA scan cancelled." );
-        Progress?.Report( "Scan cancelled." );
+        Progress?.Report( "NI-VISA: enumerating all known GPIB instruments..." );
+        Capture_Trace.Write( "NI-VISA scan: calling Find(\"GPIB?*INSTR\")" );
+        All_Resources = _Resource_Manager.Find( "GPIB?*INSTR" );
       }
       catch (Exception Ex)
       {
-        Raise_Error( $"NI-VISA scan error: {Ex.Message}" );
+        Capture_Trace.Write( $"NI-VISA scan: Find() failed — {Ex.Message}" );
+        Raise_Error( $"NI-VISA scan failed: {Ex.Message}" );
+        return Results;
+      }
+
+      foreach (string Resource in All_Resources)
+      {
+        Token.ThrowIfCancellationRequested();
+
+        Progress?.Report( $"NI-VISA: probing {Resource}..." );
+        Capture_Trace.Write( $"NI-VISA scan: probing {Resource}" );
+
+        int Addr = Parse_GPIB_Address_From_Resource( Resource );
+        IMessageBasedSession? Probe = null;
+        bool Opened_New = false;
+
+        try
+        {
+          Probe = (IMessageBasedSession) _Resource_Manager.Open( Resource );
+          Probe.TimeoutMilliseconds = 1000;
+          Opened_New = true;
+
+          // Pass 1: SCPI *IDN?
+          string Response = Probe_VISA_Instrument( Probe, "*IDN?", 1000 );
+
+          // A numeric response means the instrument is auto-triggering and sent a
+          // measurement instead of its identity — stop it and fall through to Pass 2.
+          if (!string.IsNullOrEmpty( Response ) &&
+              double.TryParse( Response.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out _ ))
+          {
+            Capture_Trace.Write( $"Scan {Resource}: numeric *IDN? — sending TRIG HOLD" );
+            Probe_VISA_Instrument( Probe, "TRIG HOLD", 500 );
+            await Task.Delay( 200, Token );
+            Response = "";
+          }
+
+          // Pass 2: legacy ID? (HP 3458A and other pre-SCPI HP instruments)
+          if (string.IsNullOrEmpty( Response ))
+          {
+            try { Probe.Clear(); } catch { }   // reset any pending GPIB state from Pass 1
+            Probe_VISA_Instrument( Probe, "TRIG HOLD", 500 );
+            await Task.Delay( 200, Token );
+            Response = Probe_VISA_Instrument( Probe, "ID?", 1000 );
+            if (!string.IsNullOrEmpty( Response ) &&
+                double.TryParse( Response.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out _ ))
+              Response = "";
+          }
+
+          if (!string.IsNullOrEmpty( Response ))
+          {
+            var Result = new Scan_Result
+            {
+              Address = Addr >= 0 ? Addr : 0,
+              ID_String = Response,
+              Detected_Type = Multimeter_Common_Helpers_Class.Get_Meter_Type( Response ),
+              Resource_String = Resource
+            };
+            Results.Add( Result );
+
+            // Cache in the verified maps using the resource string as the lookup key
+            // so local and remote instruments at the same address number don't collide.
+            if (Addr >= 0)
+            {
+              _Verified_Cache[ Addr ] = Result;
+              _Verified_Addresses.Add( Addr );
+            }
+
+            Capture_Trace.Write( $"NI-VISA scan: found [{Response}] at {Resource}" );
+            Progress?.Report( $"  Found {Resource}: {Response}" );
+          }
+          else
+          {
+            // No instrument responded — dispose the temporary probe session.
+            try { Probe.Dispose(); } catch { }
+            Opened_New = false;
+            Capture_Trace.Write( $"NI-VISA scan: no response at {Resource}" );
+          }
+        }
+        catch (Exception Ex)
+        {
+          Capture_Trace.Write( $"NI-VISA scan: error probing {Resource}: {Ex.Message}" );
+          if (Opened_New && Probe != null)
+            try { Probe.Dispose(); } catch { }
+        }
+
+        await Task.Yield();
       }
 
       Capture_Trace.Write( $"NI-VISA scan complete. Found {Results.Count} instrument(s)." );
@@ -1778,39 +1915,54 @@ namespace Multimeter_Controller
       {
         Capture_Trace.Write( $"NI-VISA: querying {Visa_Resource_String}" );
 
-        // Pass 1: SCPI *IDN? — reject numeric responses (stale measurements)
-        string Visa_Response = Try_Query_Short( "*IDN?" );
-        if (!string.IsNullOrEmpty( Visa_Response ) &&
-            double.TryParse( Visa_Response.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out _ ))
+        // Use a short timeout for ID probes so a non-responding instrument
+        // doesn't block for the full measurement timeout.
+        int Original_Timeout = Read_Timeout_Ms;
+        Read_Timeout_Ms = 1500;
+        try
         {
-          Capture_Trace.Write( $"NI-VISA Pass 1: numeric response '{Visa_Response}' — not an IDN" );
-          Visa_Response = "";
-        }
-
-        // Pass 2: Legacy ID? — stop measurements first then ask for identity
-        if (string.IsNullOrEmpty( Visa_Response ))
-        {
-          Capture_Trace.Write( "NI-VISA Pass 2: sending TRIG HOLD then ID?" );
-          Raw_Write( "TRIG HOLD" );
-          Thread.Sleep( 200 );
-          Visa_Response = Try_Query_Short( "ID?" );
+          // Pass 1: SCPI *IDN? — reject numeric responses (stale measurements)
+          string Visa_Response = Try_Query_Short( "*IDN?" );
           if (!string.IsNullOrEmpty( Visa_Response ) &&
               double.TryParse( Visa_Response.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out _ ))
           {
-            Capture_Trace.Write( $"NI-VISA Pass 2: numeric response '{Visa_Response}' — not an IDN" );
+            Capture_Trace.Write( $"NI-VISA Pass 1: numeric response '{Visa_Response}' — not an IDN" );
             Visa_Response = "";
           }
-        }
 
-        if (!string.IsNullOrEmpty( Visa_Response ))
-          _Verified_Cache[ Address ] = new Scan_Result
+          // Pass 2: Legacy ID? — clear bus state first, stop measurements, then ask
+          if (string.IsNullOrEmpty( Visa_Response ))
           {
-            Address = Address,
-            ID_String = Visa_Response,
-            Detected_Type = Multimeter_Common_Helpers_Class.Get_Meter_Type( Visa_Response )
-          };
+            // Clear any pending GPIB state left over from a timed-out Pass 1
+            try { _Visa_Session?.Clear(); } catch { }
+            Thread.Sleep( 100 );
 
-        return Visa_Response;
+            Capture_Trace.Write( "NI-VISA Pass 2: sending TRIG HOLD then ID?" );
+            Raw_Write( "TRIG HOLD" );
+            Thread.Sleep( 200 );
+            Visa_Response = Try_Query_Short( "ID?" );
+            if (!string.IsNullOrEmpty( Visa_Response ) &&
+                double.TryParse( Visa_Response.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out _ ))
+            {
+              Capture_Trace.Write( $"NI-VISA Pass 2: numeric response '{Visa_Response}' — not an IDN" );
+              Visa_Response = "";
+            }
+          }
+
+          if (!string.IsNullOrEmpty( Visa_Response ))
+            _Verified_Cache[ Address ] = new Scan_Result
+            {
+              Address = Address,
+              ID_String = Visa_Response,
+              Detected_Type = Multimeter_Common_Helpers_Class.Get_Meter_Type( Visa_Response )
+            };
+
+          return Visa_Response;
+        }
+        finally
+        {
+          Read_Timeout_Ms = Original_Timeout;
+        }
       }
 
       int Original_Address = GPIB_Address;

@@ -217,6 +217,12 @@ namespace Multimeter_Controller
     [JsonPropertyName( "default_ip_address" )]
     public string Default_IP_Address { get; set; } = "";
 
+    // ===== NI-VISA SETTINGS =====
+
+    /// <summary>Session-level read timeout passed to NI-VISA sessions (ms).</summary>
+    [JsonPropertyName( "visa_timeout_ms" )]
+    public int Visa_Timeout_Ms { get; set; } = 3000;
+
     // ===== CHART/DISPLAY SETTINGS =====
 
 
@@ -616,6 +622,9 @@ namespace Multimeter_Controller
         Prologic_MAC_Address = "00-21-69";
 
       Default_GPIB_Instrument_Address = Math.Max( 0, Math.Min( 30, Default_GPIB_Instrument_Address ) );
+
+      // NI-VISA timeout: 1s to 60s
+      Visa_Timeout_Ms = Math.Max( 1000, Math.Min( 60000, Visa_Timeout_Ms ) );
 
 
       if (string.IsNullOrWhiteSpace( Default_NPLC ) || Default_NPLC == "10")

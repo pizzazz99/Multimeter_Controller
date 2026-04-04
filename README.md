@@ -1,154 +1,208 @@
-# Form1.cs — Keysight 3458A Multimeter Controller
+# Multimeter Controller
 
 ## Overview
 
-`Form1.cs` is the main application window for controlling a **Keysight (HP) 3458A 8.5-digit digital multimeter** via a **Prologix GPIB-USB adapter**. It provides the primary user interface and orchestrates all instrument communication, configuration, and command interaction.
+A Windows Forms application for controlling multiple GPIB instruments simultaneously. Supports HP/Keysight bench meters across four transport modes: Prologix GPIB-USB, Prologix Ethernet, Direct RS-232, and NI-VISA (including remote VISA servers). Instruments can be polled in parallel, with real-time charting, CSV recording, and statistical analysis.
 
 ---
 
-## Hardware Context
+## Supported Instruments
 
-| Item | Detail |
-|---|---|
-| Instrument | Keysight / HP / Agilent 3458A Digital Multimeter |
-| Interface | Prologix GPIB-USB-HS Controller (USB-to-GPIB bridge) |
-| Protocol | Prologix `++` commands configure the adapter; instrument commands are sent as plain-text GPIB strings |
+| Model | Type | Notes |
+|---|---|---|
+| HP / Keysight 3458A | 8.5-digit DMM | Legacy HP command set; `ID?` identification |
+| HP / Keysight 34401A | 6.5-digit DMM | SCPI |
+| HP / Keysight 34420A | 7.5-digit Nano-voltmeter | SCPI |
+| HP 3456A | 6.5-digit DMM | Pre-SCPI numeric probe |
+| HP 53132A | Universal Counter | SCPI |
+| HP 33120A | Function Generator | SCPI |
+| Generic GPIB | Any SCPI instrument | Sends `MEAS:…` commands |
 
 ---
 
-## Functional Areas
+## Connection Modes
 
-### 1. Command Reference List (Left Panel)
+### 1. Prologix GPIB-USB
 
-Displays all supported 3458A GPIB commands in a scrollable `ListBox`. Selecting a command populates a read-only detail TextBox showing:
-
-- Command syntax
-- Parameters
-- Query form
-- Default value
-- Example usage
-
-An **Open Dictionary** button launches the full searchable command dictionary in a separate modal dialog (`Dictionary_Form`).
-
-### 2. Connection Settings (Right Panel)
-
-Configures the serial port connection to the Prologix GPIB-USB-HS adapter.
-
-**Serial Port Settings**
+USB-to-GPIB adapter via a COM port. Prologix `++` commands configure the adapter; instrument commands are plain-text GPIB strings.
 
 | Setting | Options | Default |
 |---|---|---|
 | COM Port | Auto-scanned (refreshable) | First available |
-| Baud Rate | Standard rates | 115200 |
+| Baud Rate | Standard rates | 9600 |
 | Data Bits | 7, 8 | 8 |
 | Parity | None, Odd, Even, Mark, Space | None |
 | Stop Bits | One, OnePointFive, Two | One |
-| Flow Control | None, XOnXOff, RtsCts, RtsCtsXOnXOff | None |
-
-**Prologix / GPIB Settings**
-
-| Setting | Options | Default |
-|---|---|---|
-| GPIB Address | 0–30 | 22 (3458A default) |
+| Flow Control | None, XOnXOff, RtsCts | None |
+| GPIB Address | 0–30 | 22 |
 | EOS Mode | CR+LF, CR, LF, None | LF |
-| Auto Read (`++auto`) | Checkbox | Checked |
-| EOI Enabled (`++eoi`) | Checkbox | Checked |
 
-A **Defaults** button restores all settings to their recommended values. While connected, all serial settings are disabled to prevent mid-session changes.
+### 2. Direct Serial (RS-232)
 
-### 3. Instrument Management
+RS-232 direct serial connection to an instrument's built-in serial port. Same serial settings as Prologix GPIB-USB.
 
-Instruments are maintained in an internal list (`_Instruments`) and displayed in a bound `ListBox`. Supported operations:
+### 3. Prologix Ethernet
 
-- **Add Instrument** — Verifies GPIB address if connected, detects meter type, prompts on mismatch, initializes the instrument to remote mode.
-- **Remove Instrument** — Removes the selected instrument from the list.
-- **Select Instrument** — Sets the active instrument for command targeting, restores its NPLC value.
-- **Scan Bus** — Scans the GPIB bus for all responding instruments (cancellable), auto-adds or refreshes discovered devices.
+Prologix GPIB-ETHERNET adapter over TCP/IP. The IP address field accepts a manually entered address or is auto-filled by the **Find Prologix** subnet scan button.
 
-### 4. NPLC Control
+### 4. NI-VISA
 
-Each instrument carries an individual **NPLC (Number of Power Line Cycles)** value that controls integration time and measurement accuracy. The NPLC combo is populated based on the selected meter type's supported values. An **Apply NPLC to All** button propagates the current NPLC to all compatible instruments in the list.
+Uses the NI-VISA runtime (must be installed separately) to communicate with instruments. Supports both local GPIB controllers and **remote VISA servers** (instruments on another machine accessed over the network).
 
-### 5. Connection Modes
+**Prerequisites**
 
-Three transport modes are supported:
+- NI-VISA runtime must be installed on the host machine (available via NI Package Manager).
+- The `NationalInstruments.Visa` NuGet package (v25.5.0.13) provides the managed .NET wrapper.
+- Compatible hardware includes GPIB-USB-HS, GPIB-USB-B, and PCI/PCIe GPIB controller cards.
 
-| Mode | Description |
-|---|---|
-| Prologix GPIB | GPIB-USB-HS adapter via COM port |
-| Direct Serial (RS-232) | RS-232 direct serial connection |
-| Ethernet | Prologix Ethernet adapter (TCP/IP) |
+**Workflow — no resource string required**
 
-A **Find Prologix** button scans the local subnet and auto-fills the IP address field when an Ethernet adapter is detected.
+No VISA resource string needs to be entered. The full workflow is:
 
-### 6. Command Execution
+1. Select **NI-VISA** in the Connection Mode drop-down.
+2. Click **Connect** — the NI-VISA `ResourceManager` is initialised.
+3. Click **Scan Bus** — the application calls `ResourceManager.Find("GPIB?*INSTR")` to enumerate every GPIB instrument NI-VISA knows about, then probes each one.
 
-- The **Send Command** text box accepts any GPIB command, including Prologix `++` commands.
-- Commands ending in `?` are treated as queries and their response is displayed.
-- All executed commands are logged to a **Command History** list (max 50 entries). Double-clicking a history entry re-loads it into the send box.
-- A **Diag** button sends the current command via a raw diagnostic path for low-level troubleshooting.
+**How discovery works**
 
-### 7. Multi-Instrument Poll
+`Find("GPIB?*INSTR")` returns instruments from all sources NI-VISA is aware of:
 
-The **Multi Poll** button opens `Multi_Instrument_Poll_Form`, passing a cloned snapshot of the current instrument list. Any pending NPLC edits are committed before cloning.
+- GPIB controllers installed locally on this machine.
+- Remote VISA servers configured in **NI-MAX** (Measurement & Automation Explorer) or discovered via mDNS/Bonjour advertisement.
 
-### 8. Execution Trace
+Each scan result carries the full VISA resource string (e.g. `GPIB0::22::INSTR` for local, or `visa://hostname/GPIB0::22::INSTR` for remote), so instruments at the same GPIB address number on different buses are kept separate.
 
-A toggleable **Trace** button activates `Trace_Execution`, which logs internal method entry/exit for diagnostics. The button background turns yellow while tracing is active.
+**Session management**
 
----
+Sessions are opened lazily — a session is created for an instrument address only when the user selects that instrument. Sessions are pooled for the connection lifetime and disposed on disconnect. The `ResourceManager` is held as a long-lived field; disposing it while sessions are open would invalidate them.
 
-## Communication Event Handling
+**Differences from Prologix**
 
-The form subscribes to three events from `Instrument_Comm`:
-
-| Event | Behavior |
-|---|---|
-| `Connection_Changed` | Updates the status label (`Connected` / `Disconnected`) and toggles UI enable/disable state. Thread-safe via `Invoke`. |
-| `Error_Occurred` | Displays errors in a `MessageBox`. Thread-safe. |
-| `Data_Received` | Placeholder for future data display or logging. |
-
----
-
-## Key Private Fields
-
-| Field | Type | Purpose |
+| Feature | Prologix | NI-VISA |
 |---|---|---|
-| `_All_Commands` | `List<Command_Entry>` | Commands for the currently selected meter type |
-| `_Comm` | `Instrument_Comm` | Serial/GPIB communication layer |
-| `_Selected_Meter` | `Meter_Type` | Currently active meter type |
-| `_Instruments` | `List<Instrument>` | All instruments in the session |
-| `_Selected_Index` | `int` | Index of the currently selected instrument |
-| `_Settings` | `Application_Settings` | Persisted application settings |
-| `_Scan_Cts` | `CancellationTokenSource?` | Cancellation token for active bus scans |
-| `_Is_Scanning` | `bool` | Guards against concurrent bus scans |
+| Address switching | `++addr N` command | Session looked up from pool by address |
+| Read trigger | `++read eoi` command | Not needed — EOI detected natively by driver |
+| EOS mode | `++eos N` command | Not needed — handled by VISA driver |
+| Bus scan | Address 0–30 loop with read/write | `ResourceManager.Find()` + per-address probe |
+
+**Remote VISA server requirements**
+
+- The remote machine must run NI-VISA Server (Windows) or an equivalent VISA-LAN compatible server.
+- TCP port 4000 must be accessible between the local and remote machines.
+- The remote server must be added in NI-MAX on the local machine so that NI-VISA knows its hostname.
+
+---
+
+## Instrument Management
+
+### Adding an Instrument
+
+1. Select the connection mode.
+2. For NI-VISA: click **Connect** (no resource string needed). For Prologix Ethernet: enter the IP address. For serial modes: select the COM port.
+3. Click **Connect**.
+4. Select the instrument **Type** and optionally set NPLC and role.
+5. Click **Add Instrument**.
+
+When adding, the application verifies the GPIB address by querying `*IDN?` (SCPI) and `ID?` (legacy HP). If the detected type differs from the selected type, a mismatch dialog offers to correct it.
+
+### NPLC
+
+Each instrument carries an individual NPLC (Number of Power Line Cycles) value controlling integration time and measurement resolution. **Apply NPLC to All** propagates the current value to all compatible instruments.
+
+### Operations
+
+| Button | Action |
+|---|---|
+| Add Instrument | Verifies address, detects type, adds to list |
+| Remove Instrument | Removes selected instrument |
+| Select Instrument | Sets active instrument for command targeting |
+| Scan Bus | Scans GPIB bus 0–30 for responding instruments |
+
+---
+
+## Multi-Instrument Poll
+
+**Multi Poll** opens the polling form with a snapshot of the current instrument list. Each instrument is configured independently (measurement function, NPLC) before the polling loop starts. Phase 1 configures all instruments; Phase 2 reads them in round-robin.
+
+### HP 3458A polling (NI-VISA / Prologix)
+
+- NPLC ≥ 10: `TRIG SGL` is sent each cycle; the code waits for integration before reading.
+- NPLC < 10: `TRIG AUTO` is sent at setup; each polling cycle issues a read without a trigger command.
+
+### Other instruments
+
+`Query_Instrument` sends the appropriate `MEAS:…` or `READ?` SCPI command and reads the response in one round-trip.
+
+---
+
+## Command Execution
+
+The **Send Command** text box accepts any GPIB command, including Prologix `++` commands.
+
+- Commands ending in `?` are treated as queries; the response is displayed.
+- All executed commands are logged to a **Command History** list (max 50 entries).
+- Double-clicking a history entry reloads it into the send box.
+- The **Diag** button sends the command via the raw diagnostic path.
+
+---
+
+## Settings
+
+Persisted as JSON in `%AppData%\Multimeter_Controller\multi_poll_settings.json`.
+
+| Category | Key Settings |
+|---|---|
+| Polling | Default poll delay, GPIB timeout, max retry attempts, instrument settle time |
+| Data | Max display points, auto-save interval, CSV filename pattern |
+| Memory | Max points in memory, auto-trim, warning threshold |
+| Display | Chart refresh rate, line thickness, data-dot size, zoom level |
+| Analysis | Per-stat toggles for mean, std-dev, min/max, RMS, trend |
+| Connection | Default GPIB address, Prologix MAC, scan timeout |
+
+---
+
+## Communication Architecture
+
+### `Instrument_Comm`
+
+Low-level hardware abstraction. Handles all four transport modes behind a single API:
+
+- `Connect()` / `Disconnect_Async()` / `Dispose()`
+- `Query_Instrument()` — write command + read response
+- `Change_GPIB_Address()` — switch active GPIB address (NI-VISA: switches pooled session)
+- `Verify_GPIB_Address()` — three-pass identification (`*IDN?`, `ID?`, numeric probe)
+- `Scan_GPIB_BusAsync()` — full bus scan (31 addresses)
+
+**NI-VISA session management**
+
+The `ResourceManager` is stored as a field (`_Resource_Manager`) to ensure sessions remain valid for the lifetime of the connection. Sessions are pooled per GPIB address in `_Visa_Session_Pool`. The `Read_Timeout_Ms` property setter propagates timeout changes to all open sessions immediately.
+
+**Verification timeout**
+
+During `Verify_GPIB_Address`, the NI-VISA session timeout is temporarily reduced to 1.5 s per probe query. If Pass 1 (`*IDN?`) returns nothing, `Session.Clear()` is called to reset any pending GPIB bus state before Pass 2 (`ID?`).
+
+### `GPIB_Manager`
+
+Orchestration layer between polling and `Instrument_Comm`. Applies retry-with-exponential-backoff (up to `Max_Retry_Attempts`) and saves/restores the read timeout around every measurement read.
 
 ---
 
 ## Instrument Initialization Sequences
 
-On adding or connecting an instrument, `Initialize_Remote_For_Instrument` runs a type-specific initialization:
-
-**HP34401 / HP33120 / HP34420 / HP53132:**
-1. Set Prologix address
+### HP34401 / HP33120 / HP34420 / HP53132
+1. Set Prologix address (non-VISA modes)
 2. Disable auto-read
 3. Suppress beeper
-4. Send `*CLS`
-5. Send `SYSTEM:REMOTE`
+4. `*CLS`
+5. `SYSTEM:REMOTE`
 6. Re-enable beeper
 
-**HP3458A:**
+### HP 3458A
 1. Optionally send `RESET` (3-second settle delay)
 2. Optionally send `END ALWAYS`
-3. Send `TRIG AUTO`
-4. Send `GPIB <address>`
-5. Send `NPLC <value>`
-
----
-
-## Thread Safety
-
-`Safe_UI_Update` provides a general-purpose thread-safe UI dispatcher. All event handlers from `Instrument_Comm` use `InvokeRequired` checks before touching UI elements, preventing cross-thread exceptions during async operations.
+3. `TRIG AUTO`
+4. `GPIB <address>`
+5. `NPLC <value>`
 
 ---
 
@@ -156,17 +210,11 @@ On adding or connecting an instrument, `Initialize_Remote_For_Instrument` runs a
 
 | Dependency | Purpose |
 |---|---|
-| `System.IO.Ports` | SerialPort for USB-serial communication |
-| `Command_Dictionary_Class.cs` | Static command reference data |
-| `Instrument_Comm.cs` | Serial/GPIB communication layer |
-| `Dictionary_Form.cs` | Full searchable command dictionary dialog |
-| `Multi_Instrument_Poll_Form.cs` | Multi-instrument simultaneous polling |
-| `Session_Settings_Form.cs` | Runtime session configuration |
-| `Settings_Form.cs` | Persisted application settings editor |
-| `Recording_Playback_Form.cs` | Playback of recorded measurement data |
-| `NPLC_Info_Form.cs` | NPLC reference information |
-| `Trace_Execution_Namespace` | Execution tracing / diagnostics |
-| `Form1.Designer.cs` | WinForms designer-generated layout |
+| `NationalInstruments.Visa` (NuGet) | .NET wrapper for NI-VISA runtime |
+| `IVI Foundation VISA` (NuGet) | Common VISA interface (`IMessageBasedSession`) |
+| `System.IO.Ports` | SerialPort for USB/serial transports |
+| `System.Windows.Forms.DataVisualization` | Chart rendering |
+| NI-VISA runtime | Must be installed on the host machine separately |
 
 ---
 
@@ -174,6 +222,6 @@ On adding or connecting an instrument, `Initialize_Remote_For_Instrument` runs a
 
 | Item | Detail |
 |---|---|
-| Author | Mike |
 | Framework | .NET 9.0, Windows Forms |
+| Target | win-x64 (self-contained) |
 | Namespace | `Multimeter_Controller` |

@@ -112,6 +112,9 @@ namespace Multimeter_Controller
     public bool Is_Master { get; set; } = false;
 
     public string Name { get; set; } = "";
+    /// <summary>Full VISA resource string for this instrument, if it was discovered
+    /// or added via NI-VISA.  Empty for Prologix/serial instruments.</summary>
+    public string Visa_Resource_String { get; set; } = "";
     public string Meter_Roll { get; set; } = string.Empty;
     public int Address
     {

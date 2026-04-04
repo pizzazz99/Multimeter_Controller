@@ -142,6 +142,9 @@ namespace Multimeter_Controller
     private NumericUpDown _Max_Display_Points_Numeric;
     private CheckBox _Stop_At_Max_Check;
 
+    // NI-VISA tab controls
+    private NumericUpDown _Visa_Timeout_Numeric;
+
     // ===== In Build_Prologix_Tab ( ) =====
 
     private TextBox _Prologix_IP_Textbox;
@@ -235,6 +238,7 @@ namespace Multimeter_Controller
       Initialize_Zoom_Tab();
       Initialize_HP_Tab();
       Build_Prologix_Tab();
+      Build_NI_VISA_Tab();
       Initialize_Analysis_Tab();
       Load_Settings();
     }
@@ -431,6 +435,50 @@ namespace Multimeter_Controller
       Y += Row_H;
     }
 
+
+    private void Build_NI_VISA_Tab()
+    {
+      int Left_Col = 15;
+      int Right_Col = 180;
+      int Y = 15;
+      int Row_H = 30;
+
+      NI_VISA_Tab.Controls.Add( new Label
+      {
+        Text = "NI-VISA instruments are discovered automatically via Scan Bus — no resource\r\n"
+             + "string needs to be entered.  Remote servers must be configured in NI-MAX.",
+        Location = new Point( Left_Col, Y ),
+        Size = new Size( 510, 40 ),
+        ForeColor = SystemColors.GrayText
+      } );
+      Y += 50;
+
+      // Session timeout
+      NI_VISA_Tab.Controls.Add( new Label
+      {
+        Text = "Session Timeout (ms):",
+        Location = new Point( Left_Col, Y ),
+        AutoSize = true
+      } );
+      _Visa_Timeout_Numeric = new NumericUpDown
+      {
+        Location = new Point( Right_Col, Y - 2 ),
+        Size = new Size( 100, 23 ),
+        Minimum = 1000,
+        Maximum = 60000,
+        Increment = 500,
+        Value = _Settings.Visa_Timeout_Ms
+      };
+      NI_VISA_Tab.Controls.Add( _Visa_Timeout_Numeric );
+      NI_VISA_Tab.Controls.Add( new Label
+      {
+        Text = "(1 000 – 60 000 ms; applies to all NI-VISA read operations)",
+        Location = new Point( Right_Col + 110, Y ),
+        AutoSize = true,
+        ForeColor = SystemColors.GrayText
+      } );
+      Y += Row_H;
+    }
 
     private void Initialize_Display_Tab()
     {
@@ -1722,6 +1770,10 @@ namespace Multimeter_Controller
 
 
 
+      // NI-VISA tab
+      _Visa_Timeout_Numeric.Value = Math.Max( _Visa_Timeout_Numeric.Minimum,
+          Math.Min( _Visa_Timeout_Numeric.Maximum, _Settings.Visa_Timeout_Ms ) );
+
       _Prologix_IP_Textbox.Text = _Settings.Default_IP_Address;
       _Prologix_Port_Numeric.Value = _Settings.Default_Prologic_Port;
       _Prologix_MAC_Textbox.Text = _Settings.Prologic_MAC_Address;
@@ -1832,6 +1884,9 @@ namespace Multimeter_Controller
 
 
 
+
+      // NI-VISA tab
+      _Settings.Visa_Timeout_Ms = (int) _Visa_Timeout_Numeric.Value;
 
       // Prologic Tab
 
