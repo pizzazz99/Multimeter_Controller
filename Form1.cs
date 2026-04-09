@@ -60,18 +60,18 @@
 // ============================================================================
 
 using Multimeter_Controller.Properties;
+using Rich_Text_Popup_Namespace;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics.Metrics;
 using System.Globalization;
 using System.IO.Ports;
+using System.Management;
 using System.Windows.Forms;
 using System.Windows.Forms.DataVisualization.Charting;
 using Trace_Execution_Namespace;
-
 using static System.ComponentModel.Design.ObjectSelectorEditor;
 using static Trace_Execution_Namespace.Trace_Execution;
-using Rich_Text_Popup_Namespace;
 
 namespace Multimeter_Controller
 {
@@ -1931,6 +1931,8 @@ namespace Multimeter_Controller
       GPIB_Address_Numeric.Enabled = _Comm.Is_Connected && ( Is_GPIB || Is_Ethernet ) && ! Poll_Form_Is_Open;
       Multi_Poll_Button.Enabled =
         _Comm.Is_Connected && ( Is_GPIB || Is_Ethernet ) && ! Poll_Form_Is_Open && _Instruments.Count > 0;
+
+      GPU_Info_Button.Enabled = _Settings.GPU_Rendering_Available;
     }
 
     private void Comm_Connection_Changed( object? Sender, bool Connected )
@@ -2587,6 +2589,31 @@ namespace Multimeter_Controller
                   Settings.Auto_Trim_Old_Data ? $"Keep last {Settings.Keep_Last_N_Points:N0}" : "Disabled" )
         .Add_Blank();
 
+      // ── Performance ───────────────────────────────────────────────
+      Popup.Add_Blank()
+        .Add_Heading_Mono( "Performance" )
+        .Add_Row( "Rendering Engine",
+                  Settings.Use_GPU_Rendering && Settings.GPU_Rendering_Available ? "GPU (SkiaSharp/OpenGL)"
+                  : Settings.Use_GPU_Rendering && ! Settings.GPU_Rendering_Available ? "CPU (GPU requested " +
+                                                                                       "but unavailable)"
+                                                                                     : "CPU (GDI+)" )
+        .Add_Row( "Max Data In Memory", $"{Settings.Max_Data_Points_In_Memory:N0} points" )
+        .Add_Row( "Warning Threshold", $"{Settings.Warning_Threshold_Percent}%" )
+        .Add_Row( "Warn At Threshold", Settings.Warn_At_Threshold ? "Yes" : "No" )
+        .Add_Row( "Throttle Refresh",
+                  Settings.Throttle_When_Many_Points
+                    ? $"Yes — above {Settings.Throttle_Point_Threshold:N0} points"
+                    : "No" )
+        .Add_Row( "Reduce Refresh Rate", Settings.Reduce_Refresh_Rate_When_Large ? "Yes" : "No" )
+        .Add_Row( "Auto Trim",
+                  Settings.Auto_Trim_Old_Data ? $"Yes — keep last {Settings.Keep_Last_N_Points:N0}" : "No" )
+        .Add_Row( "Chart Decimation", Settings.Enable_Decimation ? "Enabled" : "Disabled" )
+        .Add_Row( "Decimate Above",
+                  Settings.Enable_Decimation ? $"{Settings.Decimation_Threshold:N0} points" : "N/A" )
+        .Add_Row( "Sample Every N Points",
+                  Settings.Enable_Decimation ? $"{Settings.Decimation_Step} points" : "N/A" )
+        .Add_Blank();
+
       // ── Analysis ─────────────────────────────────────────────────
       Popup.Add_Blank()
         .Add_Heading_Mono( "Analysis" )
@@ -3173,8 +3200,12 @@ namespace Multimeter_Controller
           else if ( double.TryParse( IDN_Trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out _ ) )
           {
             // Measurement bled through — device is responding on the bus but not to *IDN?
-            Result.Passed_Checks.Add( "Device is responding on GPIB bus but does not support *IDN? " +
-                                      "(non-critical)." );
+            Result.Passed_Checks.Add( "Device is responding on GPIB bus but does not support *IDN? " + "(no" +
+                                                                                                       "n-" +
+                                                                                                       "cri" +
+                                                                                                       "tic" +
+                                                                                                       "al)" +
+                                                                                                       "." );
           }
           else
           {
@@ -3197,6 +3228,256 @@ namespace Multimeter_Controller
       }
 
       return Result;
+    }
+
+    private void GPU_Info_Button_Click( object sender, EventArgs e )
+    {
+      if ( _Settings.Use_GPU_Rendering )
+      {
+        Show_GPU_Info_Popup();
+      }
+    }
+
+    // ── Popup builder — adapt to match your RichTextBox class API ───────────────
+    public void Show_GPU_Info_Popup()
+    {
+      Cursor = Cursors.WaitCursor;
+
+      // Collect all raw data on a background thread
+      Task.Run( () =>
+                {
+                  var Data = GPU_Data_Collector.Collect();
+
+                  // Marshal back to UI thread to build and show the popup
+                  this.Invoke( () =>
+                               {
+                                 Cursor          = Cursors.Default;
+                                 using var Popup = new Rich_Text_Popup( "GPU Information", 560, 640 );
+                                 Populate_GPU_Popup( Popup, Data );
+                                 Popup.Show_Popup( this );
+                               } );
+                } );
+    }
+
+    private void Populate_GPU_Popup( Rich_Text_Popup Popup, GPU_Data_Collector.GPU_Data Data )
+    {
+      // ── WMI ─────────────────────────────────────────────────────────────────
+      Popup.Add_Heading_Mono( "Windows Management (WMI)" );
+
+      if ( Data.WMI_Error != null )
+      {
+        Popup.Add_Error( $"  WMI query failed: {Data.WMI_Error}" );
+      }
+      else if ( Data.WMI_Controllers.Count == 0 )
+      {
+        Popup.Add_Warning( "  No discrete GPU found via WMI." );
+      }
+      else
+      {
+        int GPU_Index = 0;
+        foreach ( var C in Data.WMI_Controllers )
+        {
+          if ( GPU_Index > 0 )
+            Popup.Add_Blank();
+          Popup.Add_Instrument_Header( C.Name );
+          Popup.Add_Row( "Driver Version", C.DriverVersion );
+          Popup.Add_Row( "Driver Date", C.DriverDate );
+          Popup.Add_Row( "Status", C.Status );
+          Popup.Add_Row( "VRAM", C.VRAM );
+          Popup.Add_Row( "Resolution", C.Resolution );
+          Popup.Add_Row( "Refresh Rate", C.RefreshRate );
+          Popup.Add_Row( "Color Depth", C.ColorDepth );
+          Popup.Add_Row( "Video Mode", C.VideoMode );
+          GPU_Index++;
+        }
+      }
+
+      // ── DXGI ────────────────────────────────────────────────────────────────
+      Popup.Add_Blank();
+      Popup.Add_Heading_Mono( "DXGI Adapter Enumeration" );
+
+      if ( Data.DXGI_Error != null )
+      {
+        Popup.Add_Error( $"  DXGI enumeration failed: {Data.DXGI_Error}" );
+      }
+      else if ( Data.DXGI_Adapters.Count == 0 )
+      {
+        Popup.Add_Warning( "  No DXGI adapters found." );
+      }
+      else
+      {
+        foreach ( var A in Data.DXGI_Adapters )
+        {
+          Popup.Add_Instrument_Header( A.Description );
+          Popup.Add_Row( "Vendor", A.VendorName );
+          Popup.Add_Row( "Dedicated VRAM", GPU_Helper.Format_Bytes_Long( A.DedicatedVideoMemory ) );
+          Popup.Add_Row( "Shared Memory", GPU_Helper.Format_Bytes_Long( A.SharedSystemMemory ) );
+        }
+      }
+
+      // ── LHM ─────────────────────────────────────────────────────────────────
+      Popup.Add_Blank();
+      Popup.Add_Heading_Mono( "Live Sensor Data (LHM)" );
+
+      if ( Data.LHM_Error != null )
+      {
+        Popup.Add_Warning( $"  {Data.LHM_Error}" );
+      }
+      else if ( Data.LHM_Sensors.Count == 0 )
+      {
+        Popup.Add_Warning( "  No sensor data — try running as administrator." );
+      }
+      else
+      {
+        foreach ( var S in Data.LHM_Sensors )
+        {
+          if ( S.Is_Header )
+          {
+            Popup.Add_Instrument_Header( S.Name );
+          }
+          else
+          {
+            Popup.Add_Row( $"  {S.Name}", S.Value, S.Color );
+          }
+        }
+      }
+    }
+
+    private Rich_Text_Popup Build_GPU_Popup()
+    {
+      var Popup = new Rich_Text_Popup( "GPU Information", 560, 640 );
+
+      // ── WMI ─────────────────────────────────────────────────────────────────
+      Popup.Add_Heading_Mono( "Windows Management (WMI)" );
+      try
+      {
+        using var Searcher = new System.Management.ManagementObjectSearcher( "SELECT * FROM " +
+                                                                             "Win32_VideoController" );
+
+        int       GPU_Index = 0;
+        foreach ( ManagementObject Obj in Searcher.Get() )
+        {
+          var  Name   = Obj[ "Name" ]?.ToString() ?? "Unknown";
+          var  Compat = Obj[ "AdapterCompatibility" ]?.ToString() ?? "";
+
+          bool Is_Software = Name.IndexOf( "Microsoft Basic", StringComparison.OrdinalIgnoreCase ) >= 0 ||
+                             Name.IndexOf( "Remote Desktop", StringComparison.OrdinalIgnoreCase ) >= 0 ||
+                             Name.IndexOf( "VirtualBox", StringComparison.OrdinalIgnoreCase ) >= 0 ||
+                             Name.IndexOf( "VMware", StringComparison.OrdinalIgnoreCase ) >= 0 ||
+                             Compat.IndexOf( "Microsoft", StringComparison.OrdinalIgnoreCase ) >= 0;
+
+          if ( Is_Software )
+            continue;
+          if ( GPU_Index > 0 )
+            Popup.Add_Blank();
+
+          Popup.Add_Instrument_Header( Name );
+          Popup.Add_Row( "Driver Version", Obj[ "DriverVersion" ]?.ToString() ?? "N/A" );
+          Popup.Add_Row( "Driver Date", GPU_Helper.Format_WMI_Date( Obj[ "DriverDate" ]?.ToString() ) );
+          Popup.Add_Row( "Status", Obj[ "Status" ]?.ToString() ?? "N/A" );
+          Popup.Add_Row( "VRAM", GPU_Helper.Format_Bytes( Obj[ "AdapterRAM" ] ) );
+          Popup.Add_Row( "Resolution",
+                         $"{Obj[ "CurrentHorizontalResolution" ]} x {Obj[ "CurrentVerticalResolution" ]}" );
+          Popup.Add_Row( "Refresh Rate", $"{Obj[ "CurrentRefreshRate" ]} Hz" );
+          Popup.Add_Row( "Color Depth", $"{Obj[ "CurrentBitsPerPixel" ]} bpp" );
+          Popup.Add_Row( "Video Mode", Obj[ "VideoModeDescription" ]?.ToString() ?? "N/A" );
+          GPU_Index++;
+        }
+
+        if ( GPU_Index == 0 )
+          Popup.Add_Warning( "  No discrete GPU found via WMI." );
+      }
+      catch ( Exception Ex )
+      {
+        Popup.Add_Error( $"  WMI query failed: {Ex.Message}" );
+      }
+
+      // ── DXGI ────────────────────────────────────────────────────────────────
+      Popup.Add_Blank();
+      Popup.Add_Heading_Mono( "DXGI Adapter Enumeration" );
+      try
+      {
+        var Adapters = GPU_Helper.Get_Adapter_Info();
+        if ( Adapters.Count == 0 )
+        {
+          Popup.Add_Warning( "  No DXGI adapters found." );
+        }
+        else
+        {
+          foreach ( var A in Adapters )
+          {
+            Popup.Add_Instrument_Header( A.Description );
+            Popup.Add_Row( "Vendor", A.VendorName );
+            Popup.Add_Row( "Dedicated VRAM", GPU_Helper.Format_Bytes_Long( A.DedicatedVideoMemory ) );
+            Popup.Add_Row( "Shared Memory", GPU_Helper.Format_Bytes_Long( A.SharedSystemMemory ) );
+          }
+        }
+      }
+      catch ( Exception Ex )
+      {
+        Popup.Add_Error( $"  DXGI enumeration failed: {Ex.Message}" );
+      }
+
+      // ── LHM ─────────────────────────────────────────────────────────────────
+      Popup.Add_Blank();
+      Popup.Add_Heading_Mono( "Live Sensor Data (LHM)" );
+      try
+      {
+        var Computer = new LibreHardwareMonitor.Hardware.Computer { IsGpuEnabled = true };
+        Computer.Open();
+        bool Any_Sensors = false;
+
+        foreach ( var HW in Computer.Hardware )
+        {
+          bool Is_GPU = HW.HardwareType == LibreHardwareMonitor.Hardware.HardwareType.GpuNvidia ||
+                        HW.HardwareType == LibreHardwareMonitor.Hardware.HardwareType.GpuAmd ||
+                        HW.HardwareType == LibreHardwareMonitor.Hardware.HardwareType.GpuIntel;
+
+          if ( ! Is_GPU )
+            continue;
+          HW.Update();
+          Popup.Add_Instrument_Header( HW.Name );
+
+          foreach ( var Sensor in HW.Sensors )
+          {
+            if ( Sensor.Value == null )
+              continue;
+
+            var ( Label, Unit, Value_Color ) =
+              Sensor.SensorType switch { LibreHardwareMonitor.Hardware.SensorType.Temperature =>
+                                           ( "Temperature",
+                                             "°C",
+                                             Sensor.Value > 80 ? Color.FromArgb( 180, 60, 0 )
+                                                               : Color.FromArgb( 0, 140, 0 ) ),
+                                         LibreHardwareMonitor.Hardware.SensorType.Load =>
+                                           ( "Load", "%", Color.FromArgb( 160, 120, 0 ) ),
+                                         LibreHardwareMonitor.Hardware.SensorType.Fan =>
+                                           ( "Fan Speed", " RPM", Color.FromArgb( 0, 120, 160 ) ),
+                                         LibreHardwareMonitor.Hardware.SensorType.Clock =>
+                                           ( "Clock", " MHz", Color.FromArgb( 40, 40, 40 ) ),
+                                         LibreHardwareMonitor.Hardware.SensorType.Power =>
+                                           ( "Power", " W", Color.FromArgb( 120, 0, 160 ) ),
+                                         LibreHardwareMonitor.Hardware.SensorType.SmallData =>
+                                           ( "Memory", " MB", Color.FromArgb( 40, 40, 40 ) ),
+                                         _ => ( null, null, Color.Transparent ) };
+
+            if ( Label == null )
+              continue;
+            Popup.Add_Row( $"  {Sensor.Name}", $"{Sensor.Value:F1}{Unit}", Value_Color );
+            Any_Sensors = true;
+          }
+        }
+
+        Computer.Close();
+        if ( ! Any_Sensors )
+          Popup.Add_Warning( "  No sensor data — try running as administrator." );
+      }
+      catch
+      {
+        Popup.Add_Warning( "  Sensor access unavailable — try running as administrator." );
+      }
+
+      return Popup;
     }
   }
 }

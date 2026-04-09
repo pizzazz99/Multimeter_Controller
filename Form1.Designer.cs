@@ -94,6 +94,7 @@ namespace Multimeter_Controller
       Button_Show_Execution_Trace = new Button();
       Session_Settings_Button = new Button();
       Display_Recording_Button = new Button();
+      GPU_Info_Button = new Button();
       Connection_Group.SuspendLayout();
       ((System.ComponentModel.ISupportInitialize) GPIB_Address_Numeric).BeginInit();
       Instruments_Group.SuspendLayout();
@@ -273,7 +274,7 @@ namespace Multimeter_Controller
       label1.AutoSize = true;
       label1.Location = new Point( 10, 325 );
       label1.Name = "label1";
-      label1.Size = new Size( 84, 15 );
+      label1.Size = new Size( 83, 15 );
       label1.TabIndex = 25;
       label1.Text = "Connected To:";
       // 
@@ -415,7 +416,7 @@ namespace Multimeter_Controller
       Read_Timeout_Label.AutoSize = true;
       Read_Timeout_Label.Location = new Point( 12, 227 );
       Read_Timeout_Label.Name = "Read_Timeout_Label";
-      Read_Timeout_Label.Size = new Size( 81, 15 );
+      Read_Timeout_Label.Size = new Size( 80, 15 );
       Read_Timeout_Label.TabIndex = 13;
       Read_Timeout_Label.Text = "Read Timeout";
       // 
@@ -671,7 +672,7 @@ namespace Multimeter_Controller
       Instrument_Type_Label.AutoSize = true;
       Instrument_Type_Label.Location = new Point( 15, 48 );
       Instrument_Type_Label.Name = "Instrument_Type_Label";
-      Instrument_Type_Label.Size = new Size( 35, 15 );
+      Instrument_Type_Label.Size = new Size( 34, 15 );
       Instrument_Type_Label.TabIndex = 4;
       Instrument_Type_Label.Text = "Type:";
       // 
@@ -767,9 +768,9 @@ namespace Multimeter_Controller
       // Meter_Info_Button
       // 
       Meter_Info_Button.Anchor =  AnchorStyles.Bottom | AnchorStyles.Left;
-      Meter_Info_Button.Location = new Point( 25, 439 );
+      Meter_Info_Button.Location = new Point( 25, 457 );
       Meter_Info_Button.Name = "Meter_Info_Button";
-      Meter_Info_Button.Size = new Size( 72, 56 );
+      Meter_Info_Button.Size = new Size( 72, 39 );
       Meter_Info_Button.TabIndex = 18;
       Meter_Info_Button.Text = "Meter Info";
       Meter_Info_Button.UseVisualStyleBackColor = true;
@@ -789,7 +790,7 @@ namespace Multimeter_Controller
       // Reset_Defaults_Button
       // 
       Reset_Defaults_Button.Anchor =  AnchorStyles.Bottom | AnchorStyles.Left;
-      Reset_Defaults_Button.Location = new Point( 103, 501 );
+      Reset_Defaults_Button.Location = new Point( 106, 457 );
       Reset_Defaults_Button.Name = "Reset_Defaults_Button";
       Reset_Defaults_Button.Size = new Size( 72, 38 );
       Reset_Defaults_Button.TabIndex = 20;
@@ -799,7 +800,7 @@ namespace Multimeter_Controller
       // Button_Show_Execution_Trace
       // 
       Button_Show_Execution_Trace.Anchor =  AnchorStyles.Bottom | AnchorStyles.Left;
-      Button_Show_Execution_Trace.Location = new Point( 103, 545 );
+      Button_Show_Execution_Trace.Location = new Point( 106, 545 );
       Button_Show_Execution_Trace.Name = "Button_Show_Execution_Trace";
       Button_Show_Execution_Trace.Size = new Size( 72, 38 );
       Button_Show_Execution_Trace.TabIndex = 21;
@@ -810,7 +811,7 @@ namespace Multimeter_Controller
       // Session_Settings_Button
       // 
       Session_Settings_Button.Anchor =  AnchorStyles.Bottom | AnchorStyles.Left;
-      Session_Settings_Button.Location = new Point( 25, 545 );
+      Session_Settings_Button.Location = new Point( 106, 501 );
       Session_Settings_Button.Name = "Session_Settings_Button";
       Session_Settings_Button.Size = new Size( 72, 38 );
       Session_Settings_Button.TabIndex = 22;
@@ -821,7 +822,7 @@ namespace Multimeter_Controller
       // Display_Recording_Button
       // 
       Display_Recording_Button.Anchor =  AnchorStyles.Bottom | AnchorStyles.Left;
-      Display_Recording_Button.Location = new Point( 103, 439 );
+      Display_Recording_Button.Location = new Point( 106, 392 );
       Display_Recording_Button.Name = "Display_Recording_Button";
       Display_Recording_Button.Size = new Size( 72, 56 );
       Display_Recording_Button.TabIndex = 23;
@@ -829,11 +830,22 @@ namespace Multimeter_Controller
       Display_Recording_Button.UseVisualStyleBackColor = true;
       Display_Recording_Button.Click += Display_Recording_Data_Button_Click;
       // 
+      // GPU_Info_Button
+      // 
+      GPU_Info_Button.Location = new Point( 25, 392 );
+      GPU_Info_Button.Name = "GPU_Info_Button";
+      GPU_Info_Button.Size = new Size( 75, 56 );
+      GPU_Info_Button.TabIndex = 72;
+      GPU_Info_Button.Text = "GPU Info";
+      GPU_Info_Button.UseVisualStyleBackColor = true;
+      GPU_Info_Button.Click += GPU_Info_Button_Click;
+      // 
       // Form1
       // 
       AutoScaleDimensions = new SizeF( 7F, 15F );
       AutoScaleMode = AutoScaleMode.Font;
       ClientSize = new Size( 1340, 603 );
+      Controls.Add( GPU_Info_Button );
       Controls.Add( Display_Recording_Button );
       Controls.Add( Session_Settings_Button );
       Controls.Add( Button_Show_Execution_Trace );
@@ -949,6 +961,7 @@ namespace Multimeter_Controller
     private ComboBox Master_Instrument_Combobox;
     private Button About_Selections_Button;
     private Button Prologix_Health_Button;
+    private Button GPU_Info_Button;
   }
 
 }

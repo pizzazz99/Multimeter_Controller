@@ -306,6 +306,23 @@ namespace Multimeter_Controller
     public double Stale_Data_Threshold_Seconds { get; set; } = 3.0;
 
 
+    // ── Rendering ─────────────────────────────────────────────────────────────
+    // Controls whether the chart panel uses GPU-accelerated SkiaSharp (SKGLControl)
+    // or falls back to CPU-based GDI+. GPU mode requires OpenGL 3.0 or later.
+    // If GPU mode is selected but OpenGL is not available, the app automatically
+    // falls back to CPU rendering and updates this setting accordingly.
+    [JsonPropertyName( "use_gpu_rendering" )]
+    public bool Use_GPU_Rendering { get; set; } = false;
+
+    [JsonPropertyName( "gpu_rendering_available" )]
+    public bool GPU_Rendering_Available { get; set; } = false;  // detected at runtime
+
+    [JsonIgnore]
+    public string Rendering_Mode_Display =>
+        Use_GPU_Rendering && GPU_Rendering_Available ? "GPU (SkiaSharp/OpenGL)"
+        : Use_GPU_Rendering && !GPU_Rendering_Available ? "CPU (GPU requested but unavailable)"
+        : "CPU (GDI+)";
+
 
     // ===== FILE/DATA MANAGEMENT =====
 
@@ -586,7 +603,7 @@ namespace Multimeter_Controller
       Chart_Refresh_Rate_Ms = Math.Max ( 16, Math.Min ( 1000, Chart_Refresh_Rate_Ms ) );
       Data_Dot_Size = Math.Max ( 1, Math.Min ( 10, Data_Dot_Size ) );
       Line_Thickness = Math.Max ( 1, Math.Min ( 10, Line_Thickness ) );
-   //   Default_Max_Display_Points = Math.Max ( 10, Math.Min ( 100000, Default_Max_Display_Points ) );
+   
 
       // Default subnet to empty so Get_Local_Subnet auto-detects
       if ( Network_Scan_Subnet == null )
@@ -607,7 +624,7 @@ namespace Multimeter_Controller
         Stale_Data_Threshold_Seconds = Skew_Warning_Threshold_Seconds + 1.0;
 
     
-      Max_Display_Points = Math.Clamp ( Max_Display_Points, 10, 1_000_000 );
+      Max_Display_Points = Math.Clamp ( Max_Display_Points, 10, 50_000_000 );
 
       // Poll delay: 50ms to 60000ms (0.05s to 60s)
       Default_Poll_Delay_Ms = Math.Max ( 50, Math.Min ( 60000, Default_Poll_Delay_Ms ) );

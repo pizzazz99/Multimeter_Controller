@@ -222,12 +222,16 @@ namespace Multimeter_Controller
 
     public static string Get_Graph_Captures_Folder ( Application_Settings Settings )
     {
+
+      using var Block = Trace_Block.Start_If_Enabled();
+
       string Folder = Settings.Default_Save_Folder;
 
       // If user gave an absolute path, use it directly
-      if ( Path.IsPathRooted ( Folder ) )
+      if (Path.IsPathRooted( Folder ))
       {
-        Directory.CreateDirectory ( Folder );
+        Directory.CreateDirectory( Folder );
+        Capture_Trace.Write( $"  → Using rooted path: [{Folder}]" );
         return Folder;
       }
 
@@ -607,27 +611,36 @@ namespace Multimeter_Controller
     // Multi form:   pass individual S.Points.Count per series
     // ========================================================================
 
-    public static (int Start_Index, int Visible_Count) Get_Visible_Range (
-      int Total_Count,
-      bool Enable_Rolling,
-      int Max_Display_Points,
-      int View_Offset )
+    public static (int Start_Index, int Visible_Count) Get_Visible_Range(
+    int Total_Count,
+    bool Enable_Rolling,
+    int Max_Display_Points,
+    int View_Offset )
     {
-      if ( Total_Count == 0 )
+      if (Total_Count == 0)
         return (0, 0);
 
-      if ( !Enable_Rolling || Total_Count <= Max_Display_Points )
+      // Always respect Max_Display_Points — show all only if within limit
+      if (Total_Count <= Max_Display_Points)
         return (0, Total_Count);
 
-      int End_Index = Total_Count - View_Offset;
-      End_Index = Math.Max ( Max_Display_Points, Math.Min ( Total_Count, End_Index ) );
+      // Rolling off — show the last Max_Display_Points with no offset
+      if (!Enable_Rolling)
+      {
+        int Start = Math.Max( 0, Total_Count - Max_Display_Points );
+        return (Start, Math.Min( Max_Display_Points, Total_Count - Start ));
+      }
 
-      int Start_Index = Math.Max ( 0, End_Index - Max_Display_Points );
+      // Rolling on — respect View_Offset for panning
+      int End_Index = Total_Count - View_Offset;
+      End_Index = Math.Max( Max_Display_Points,
+                     Math.Min( Total_Count, End_Index ) );
+
+      int Start_Index = Math.Max( 0, End_Index - Max_Display_Points );
       int Visible_Count = End_Index - Start_Index;
 
       return (Start_Index, Visible_Count);
     }
-
     public static void Update_Performance_Status (
       ToolStripStatusLabel? Performance_Label,
       ToolStripStatusLabel? Memory_Label,

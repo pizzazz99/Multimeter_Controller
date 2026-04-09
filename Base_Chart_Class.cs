@@ -203,7 +203,8 @@ namespace Multimeter_Controller
 
     // Timing ring buffer
     protected const int _Timing_Buffer_Size = 100_000;
-    protected readonly Poll_Cycle_Sample [ ] _Cycle_Timing = new Poll_Cycle_Sample [ 10_000 ];
+    protected readonly Poll_Cycle_Sample[] _Cycle_Timing = new Poll_Cycle_Sample[ 100_000 ];
+   
     protected int _Timing_Head = 0;
     protected int _Timing_Count = 0;
     protected readonly List<Disconnect_Event> _Disconnect_Events = new ( );
@@ -247,12 +248,24 @@ namespace Multimeter_Controller
     // Readings snapshot used by histogram/pie
     protected List<double> _Readings = new ( );
 
+
+    // ── Skia pre-allocated paint objects ─────────────────────────────────────
+    protected SkiaSharp.SKPaint? _Skia_Grid_Paint;
+    protected SkiaSharp.SKPaint? _Skia_Label_Paint;
+    protected SkiaSharp.SKPaint? _Skia_Name_Paint;
+    protected SkiaSharp.SKPaint? _Skia_Sep_Paint;
+    protected SkiaSharp.SKPaint[]? _Skia_Series_Paints;
+    protected SkiaSharp.SKTypeface? _Skia_Mono_Typeface;
+    protected SkiaSharp.SKTypeface? _Skia_UI_Typeface;
+
+
+
     // ── Abstract members each subclass must supply ────────────────────────
 
     protected virtual string Current_Unit => "";
 
     // ── Control references — assigned by each subclass after InitializeComponent ──
-    protected Panel Chart_Panel_Control;
+    protected Control Chart_Panel_Control;
     protected HScrollBar Pan_Scrollbar_Control;
     protected CheckBox Auto_Scroll_Check_Control;
     protected CheckBox Rolling_Check_Control;
@@ -299,10 +312,13 @@ namespace Multimeter_Controller
       _Series_Pens = _Theme.Line_Colors
                            .Select( C => new Pen( C, 2f ) )
                            .ToArray();
-
       _Series_Brushes = _Theme.Line_Colors
                               .Select( C => (Brush) new SolidBrush( C ) )
                               .ToArray();
+
+      // ── Rebuild Skia resources if GPU path is active ──────────────────
+      if (_Settings != null && _Settings.Use_GPU_Rendering)
+        Initialize_Skia_Resources();
     }
 
     protected void Initialize_Chart_Refresh_Timer ( )
@@ -332,7 +348,92 @@ namespace Multimeter_Controller
     }
 
 
+    protected void Initialize_Skia_Resources()
+    {
+      using var Block = Trace_Block.Start_If_Enabled();
 
+      _Skia_Mono_Typeface = SkiaSharp.SKTypeface.FromFamilyName( "Consolas" );
+      _Skia_UI_Typeface = SkiaSharp.SKTypeface.FromFamilyName( "Segoe UI" );
+
+      _Skia_Grid_Paint = new SkiaSharp.SKPaint
+      {
+        Color = _Theme.Grid.To_SK_Color(),
+        StrokeWidth = 1f,
+        IsAntialias = false,   // grid lines look sharper without AA
+        Style = SkiaSharp.SKPaintStyle.Stroke,
+      };
+
+      _Skia_Label_Paint = new SkiaSharp.SKPaint
+      {
+        Color = _Theme.Labels.To_SK_Color(),
+        TextSize = 11f,
+        Typeface = _Skia_Mono_Typeface,
+        IsAntialias = true,
+        Style = SkiaSharp.SKPaintStyle.Fill,
+      };
+
+      _Skia_Name_Paint = new SkiaSharp.SKPaint
+      {
+        Color = _Theme.Labels.To_SK_Color(),
+        TextSize = 12f,
+        Typeface = _Skia_UI_Typeface,
+        IsAntialias = true,
+        FakeBoldText = true,
+        Style = SkiaSharp.SKPaintStyle.Fill,
+      };
+
+      _Skia_Sep_Paint = new SkiaSharp.SKPaint
+      {
+        Color = _Theme.Separator.To_SK_Color(),
+        StrokeWidth = 1f,
+        IsAntialias = false,
+        Style = SkiaSharp.SKPaintStyle.Stroke,
+        PathEffect = SkiaSharp.SKPathEffect.CreateDash(
+                            new float[] { 6f, 3f }, 0f ),
+      };
+
+      // One paint per theme colour — mirrors _Series_Pens / _Series_Brushes
+      _Skia_Series_Paints = _Theme.Line_Colors
+          .Select( C => new SkiaSharp.SKPaint
+          {
+            Color = C.To_SK_Color(),
+            StrokeWidth = 2f,
+            IsAntialias = true,
+            Style = SkiaSharp.SKPaintStyle.Stroke,
+            StrokeCap = SkiaSharp.SKStrokeCap.Round,
+            StrokeJoin = SkiaSharp.SKStrokeJoin.Round,
+          } )
+          .ToArray();
+
+      Capture_Trace.Write( "Skia resources initialised" );
+    }
+
+    protected void Dispose_Skia_Resources()
+    {
+      using var Block = Trace_Block.Start_If_Enabled();
+
+      _Skia_Grid_Paint?.Dispose();
+      _Skia_Grid_Paint = null;
+      _Skia_Label_Paint?.Dispose();
+      _Skia_Label_Paint = null;
+      _Skia_Name_Paint?.Dispose();
+      _Skia_Name_Paint = null;
+      _Skia_Sep_Paint?.Dispose();
+      _Skia_Sep_Paint = null;
+      _Skia_Mono_Typeface?.Dispose();
+      _Skia_Mono_Typeface = null;
+      _Skia_UI_Typeface?.Dispose();
+      _Skia_UI_Typeface = null;
+
+      if (_Skia_Series_Paints != null)
+      {
+        foreach (var P in _Skia_Series_Paints)
+          P?.Dispose();
+        _Skia_Series_Paints = null;
+      }
+
+      Capture_Trace.Write( "Skia resources disposed" );
+    }
     protected void Update_Chart_Refresh_Rate ( )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
@@ -368,6 +469,7 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
+      // ── GDI+ resources ────────────────────────────────────────────────
       _Chart_Label_Font?.Dispose();
       _Chart_Label_Font = null;
       _Chart_Name_Font?.Dispose();
@@ -387,15 +489,16 @@ namespace Multimeter_Controller
           P?.Dispose();
         _Series_Pens = null;
       }
-
       if (_Series_Brushes != null)
       {
         foreach (var B in _Series_Brushes)
           B?.Dispose();
         _Series_Brushes = null;
       }
-    }
 
+      // ── Skia resources ────────────────────────────────────────────────
+      Dispose_Skia_Resources();
+    }
 
     // ════════════════════════════════════════════════════════════════════
     // STATIC HELPERS
@@ -764,6 +867,7 @@ namespace Multimeter_Controller
     // ROLLING / MAX POINTS
     // ════════════════════════════════════════════════════════════════════
 
+    /*
     protected void Rolling_Check_CheckedChanged ( object? sender, EventArgs e )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
@@ -780,7 +884,7 @@ namespace Multimeter_Controller
       Chart_Panel_Control.Invalidate ( );
     }
 
-
+    */
 
     protected void Max_Points_Numeric_ValueChanged ( object? sender, EventArgs e )
     {
@@ -3305,6 +3409,1996 @@ namespace Multimeter_Controller
         Rtb.AppendText ( "\n" );
       }
     }
+
+    protected void Skia_Draw_Y_Axis_Subplot(
+      SkiaSharp.SKCanvas Canvas,
+      double Min, double Range,
+      int W, int Sub_Bottom, int Plot_H,
+      int Display_Digits = 6 )
+    {
+      using var Block = Trace_Block.Start_If_Enabled();
+
+      if (_Skia_Grid_Paint == null ||
+           _Skia_Label_Paint == null)
+        return;
+
+      // ── Calculate distinct decimal places needed ───────────────────────
+      int Extra_Decimals = 0;
+      if (Range > 0)
+      {
+        double Step = Range / 4.0;
+        int Magnitude = (int) Math.Floor( Math.Log10( Step ) );
+        if (Magnitude < 0)
+          Extra_Decimals = Math.Min( 4, -Magnitude + 1 );  // ← cap at 4 extra
+      }
+
+      // ── Cap total digits to Display_Digits ────────────────────────────
+      int Effective_Digits = Math.Min( Display_Digits,
+                             Display_Digits + Extra_Decimals );
+
+      for (int I = 0; I <= 4; I++)
+      {
+        double Fraction = (double) I / 4;
+        double Value = Min + Range * Fraction;
+        int Y = Sub_Bottom - (int) (Fraction * Plot_H);
+
+        Canvas.DrawLine(
+            _Chart_Margin_Left, Y,
+            W - _Chart_Margin_Right, Y,
+            _Skia_Grid_Paint );
+
+        // ── Format using sig figs capped at Display_Digits ────────────
+        string Lbl = Format_Sig_Figs( Value, Effective_Digits );
+
+        float Text_W = _Skia_Label_Paint.MeasureText( Lbl );
+        float Text_X = _Chart_Margin_Left - Text_W - 4;
+        float Text_Y = Y + (_Skia_Label_Paint.TextSize / 2f) - 2f;
+
+        Canvas.DrawText( Lbl, Text_X, Text_Y, _Skia_Label_Paint );
+      }
+    }
+    protected void Skia_Draw_Line_And_Fill(
+   SkiaSharp.SKCanvas Canvas,
+   SkiaSharp.SKPoint[] Points,
+   SkiaSharp.SKColor Line_Color,
+   int Sub_Bottom,
+   int Label_Top )
+    {
+      using var Block = Trace_Block.Start_If_Enabled();
+
+      int Count = Points.Length;
+      if (Count < 2)
+        return;
+
+      // ── Gradient fill ─────────────────────────────────────────────────
+      using var Fill_Shader = SkiaSharp.SKShader.CreateLinearGradient(
+          new SkiaSharp.SKPoint( 0, Label_Top ),
+          new SkiaSharp.SKPoint( 0, Sub_Bottom ),
+          new SkiaSharp.SKColor[]
+          {
+        Line_Color.WithAlpha( 60 ),
+        Line_Color.WithAlpha( 5  ),
+          },
+          null,
+          SkiaSharp.SKShaderTileMode.Clamp );
+
+      using var Fill_Paint = new SkiaSharp.SKPaint
+      {
+        IsAntialias = true,
+        Style = SkiaSharp.SKPaintStyle.Fill,
+        Shader = Fill_Shader,
+      };
+
+      using var Fill_Path = new SkiaSharp.SKPath();
+      Fill_Path.MoveTo( Points[ 0 ] );
+      for (int I = 1; I < Count; I++)
+        Fill_Path.LineTo( Points[ I ] );
+      Fill_Path.LineTo( Points[ Count - 1 ].X, Sub_Bottom );
+      Fill_Path.LineTo( Points[ 0 ].X, Sub_Bottom );
+      Fill_Path.Close();
+
+      Canvas.DrawPath( Fill_Path, Fill_Paint );
+
+      // ── Line ──────────────────────────────────────────────────────────
+      using var Line_Paint = new SkiaSharp.SKPaint
+      {
+        Color = Line_Color,
+        StrokeWidth = 2f,
+        IsAntialias = true,
+        Style = SkiaSharp.SKPaintStyle.Stroke,
+        StrokeCap = SkiaSharp.SKStrokeCap.Round,
+        StrokeJoin = SkiaSharp.SKStrokeJoin.Round,
+      };
+
+      using var Line_Path = new SkiaSharp.SKPath();
+      Line_Path.MoveTo( Points[ 0 ] );
+      for (int I = 1; I < Count; I++)
+        Line_Path.LineTo( Points[ I ] );
+
+      Canvas.DrawPath( Line_Path, Line_Paint );
+
+      // ── Data dots ─────────────────────────────────────────────────────
+      if (Count <= 150)
+      {
+        using var Dot_Paint = new SkiaSharp.SKPaint
+        {
+          Color = Line_Color.WithAlpha( 200 ),
+          IsAntialias = true,
+          Style = SkiaSharp.SKPaintStyle.Fill,
+        };
+        float Dot_R = Count > 100 ? 2f : Count > 50 ? 2.5f : 3f;
+        foreach (var P in Points)
+          Canvas.DrawCircle( P.X, P.Y, Dot_R, Dot_Paint );
+      }
+    }
+
+    protected SkiaSharp.SKPoint[] Skia_Build_Point_Array(
+    List<(DateTime Time, double Value)> Points,
+    DateTime Time_Min, double Time_Range_Sec,
+    double Padded_Min, double Padded_Range,
+    int Chart_W, int Sub_Bottom, int Plot_H )
+    {
+      using var Block = Trace_Block.Start_If_Enabled();
+
+      // ── Inline visible range — bypasses helper to ensure correct behaviour ──
+      int Start_Index, Visible_Count;
+      if (Points.Count <= _Max_Display_Points)
+      {
+        Start_Index = 0;
+        Visible_Count = Points.Count;
+      }
+      else if (!_Enable_Rolling)
+      {
+        Start_Index = Math.Max( 0, Points.Count - _Max_Display_Points );
+        Visible_Count = _Max_Display_Points;
+      }
+      else
+      {
+        int End_Index = Points.Count - _View_Offset;
+        End_Index = Math.Max( _Max_Display_Points,
+                       Math.Min( Points.Count, End_Index ) );
+        Start_Index = Math.Max( 0, End_Index - _Max_Display_Points );
+        Visible_Count = End_Index - Start_Index;
+      }
+
+      Capture_Trace.Write( $" Start Index   = {Start_Index}" );
+      Capture_Trace.Write( $" Visible Count = {Visible_Count}" );
+      Capture_Trace.Write( $" _Max_Display  = {_Max_Display_Points}" );
+      Capture_Trace.Write( $" _Enable_Roll  = {_Enable_Rolling}" );
+      Capture_Trace.Write( $" Points.Count  = {Points.Count}" );
+
+      Capture_Trace.Write( $" Start Index   = {Start_Index}" );
+      Capture_Trace.Write( $" Visible Count = {Visible_Count}" );
+
+
+      if (Visible_Count == 0)
+        return Array.Empty<SkiaSharp.SKPoint>();
+
+      // ── Decimation ────────────────────────────────────────────────────
+      int Draw_Count = Visible_Count;
+      int Step = 1;
+
+      if (_Settings.Enable_Decimation &&
+           Visible_Count > _Settings.Decimation_Threshold)
+      {
+        Step = _Settings.Decimation_Step;
+        Draw_Count = Visible_Count / Step;
+      }
+      // ─────────────────────────────────────────────────────────────────
+
+      var Result = new SkiaSharp.SKPoint[ Draw_Count ];
+
+      DateTime Visible_Time_Min = Points[ Start_Index ].Time;
+      DateTime Visible_Time_Max = Points[ Start_Index + Visible_Count - 1 ].Time;
+      double Visible_Time_Range_Sec =
+          Math.Max( (Visible_Time_Max - Visible_Time_Min).TotalSeconds, 0.001 );
+
+      for (int I = 0; I < Draw_Count; I++)
+      {
+        int Data_Index = Start_Index + (I * Step);
+        double Time_Sec = (Points[ Data_Index ].Time - Visible_Time_Min).TotalSeconds;
+        double Time_Frac = Time_Sec / Visible_Time_Range_Sec;
+        double V_Frac = (Points[ Data_Index ].Value - Padded_Min) / Padded_Range;
+        float X = _Chart_Margin_Left + (float) (Time_Frac * Chart_W);
+        float Y = Sub_Bottom - (float) (V_Frac * Plot_H);
+        Result[ I ] = new SkiaSharp.SKPoint( X, Y );
+      }
+      return Result;
+    }
+
+
+
+    protected void Skia_Draw_Subplot(
+      SkiaSharp.SKCanvas Canvas,
+      Instrument_Series S,
+      int Subplot_Index,
+      int Sub_Top, int Sub_Bottom,
+      int W,
+      DateTime Time_Min, double Time_Range_Sec,
+      int Chart_W )
+    {
+      using var Block = Trace_Block.Start_If_Enabled();
+
+      if (_Skia_Name_Paint == null ||
+           _Skia_Label_Paint == null ||
+           _Skia_Sep_Paint == null)
+        return;
+
+      // ── Instrument name ───────────────────────────────────────────────
+      using var Name_Paint = new SkiaSharp.SKPaint
+      {
+        Color = S.Line_Color.To_SK_Color(),
+        TextSize = 12f,
+        Typeface = _Skia_UI_Typeface,
+        IsAntialias = true,
+        FakeBoldText = true,
+        Style = SkiaSharp.SKPaintStyle.Fill,
+      };
+      Canvas.DrawText(
+          $"{S.Name} GPIB {S.Address}  NPLC {S.NPLC}",
+          _Chart_Margin_Left + 4,
+          Sub_Top + 14,
+          Name_Paint );
+
+      // ── Separator line between subplots ───────────────────────────────
+      if (Subplot_Index > 0)
+      {
+        int Sep_Y = Sub_Top - 4;
+        Canvas.DrawLine(
+            _Chart_Margin_Left, Sep_Y,
+            W - _Chart_Margin_Right, Sep_Y,
+            _Skia_Sep_Paint );
+      }
+
+      if (S.Points.Count == 0)
+      {
+        Canvas.DrawText( "No data",
+            _Chart_Margin_Left + 4, Sub_Top + 32,
+            _Skia_Label_Paint );
+        return;
+      }
+
+      // ── Y range from VISIBLE points only ─────────────────────────────
+      var (Si, Vc) = Multimeter_Common_Helpers_Class.Get_Visible_Range(
+          S.Points.Count, _Enable_Rolling, _Max_Display_Points, _View_Offset );
+
+      if (Vc == 0)
+        return;
+
+      double Min_V = double.MaxValue, Max_V = double.MinValue;
+      for (int I = Si; I < Si + Vc; I++)
+      {
+        if (S.Points[ I ].Value < Min_V)
+          Min_V = S.Points[ I ].Value;
+        if (S.Points[ I ].Value > Max_V)
+          Max_V = S.Points[ I ].Value;
+      }
+      if (Min_V == double.MaxValue)
+        return;
+
+      double Range = Max_V - Min_V;
+      if (Range < 1e-12)
+      {
+        Range = Math.Abs( Max_V ) * 0.001;
+        if (Range < 1e-12)
+          Range = 1.0;
+      }
+
+      double Padded_Min = Min_V - Range * 0.5;
+      double Padded_Max = Max_V + Range * 0.5;
+      double Padded_Range = Padded_Max - Padded_Min;
+      double Display_Min = Padded_Min;
+      double Display_Range = Padded_Range;
+
+      // ... rest unchanged
+
+      if (_Zoom_Factor > 0 && _Zoom_Factor != 1.0)
+      {
+        double Center = (Padded_Max + Padded_Min) / 2.0;
+        double Zoomed_Range = Padded_Range / _Zoom_Factor;
+        Display_Min = Center - Zoomed_Range / 2.0;
+        Display_Range = Zoomed_Range;
+      }
+
+      int Label_Top = Sub_Top + 18;
+      int Plot_H = Sub_Bottom - Label_Top;
+
+      // ── Y axis ────────────────────────────────────────────────────────
+      Skia_Draw_Y_Axis_Subplot( Canvas, Display_Min, Display_Range,
+                                W, Sub_Bottom, Plot_H, S.Display_Digits );
+
+      // ── Build points ──────────────────────────────────────────────────
+      var Points = Skia_Build_Point_Array(
+          S.Points, Time_Min, Time_Range_Sec,
+          Display_Min, Display_Range,
+          Chart_W, Sub_Bottom, Plot_H );
+
+      if (Points.Length == 0)
+        return;
+
+      // ── Draw line — respect graph style ──────────────────────────────
+      switch (_Current_Graph_Style)
+      {
+        case "Scatter":
+          {
+            if (Points.Length > 0)
+            {
+              using var Scatter_Dot_Paint = new SkiaSharp.SKPaint  // ← renamed
+              {
+                Color = S.Line_Color.To_SK_Color(),
+                IsAntialias = true,
+                Style = SkiaSharp.SKPaintStyle.Fill,
+              };
+              using var Ring_Paint = new SkiaSharp.SKPaint
+              {
+                Color = S.Line_Color.To_SK_Color(),
+                IsAntialias = true,
+                Style = SkiaSharp.SKPaintStyle.Stroke,
+                StrokeWidth = 1.5f,
+              };
+              float Dot_R = Points.Length > 100 ? 2f
+                          : Points.Length > 50 ? 2.5f : 3f;
+              foreach (var P in Points)
+              {
+                Canvas.DrawCircle( P.X, P.Y, Dot_R, Scatter_Dot_Paint );
+                Canvas.DrawCircle( P.X, P.Y, Dot_R + 1, Ring_Paint );
+              }
+            }
+            break;
+          }
+      
+
+        case "Step":
+          {
+            if (Points.Length >= 2)
+            {
+              using var Step_Paint = new SkiaSharp.SKPaint
+              {
+                Color = S.Line_Color.To_SK_Color(),
+                StrokeWidth = 2f,
+                IsAntialias = true,
+                Style = SkiaSharp.SKPaintStyle.Stroke,
+                StrokeCap = SkiaSharp.SKStrokeCap.Square,
+                StrokeJoin = SkiaSharp.SKStrokeJoin.Miter,
+              };
+              using var Step_Path = new SkiaSharp.SKPath();
+              Step_Path.MoveTo( Points[ 0 ] );
+              for (int I = 1; I < Points.Length; I++)
+              {
+                Step_Path.LineTo( Points[ I ].X, Points[ I - 1 ].Y );
+                Step_Path.LineTo( Points[ I ].X, Points[ I ].Y );
+              }
+              Canvas.DrawPath( Step_Path, Step_Paint );
+
+              using var Fill_Path = new SkiaSharp.SKPath();
+              Fill_Path.MoveTo( Points[ 0 ] );
+              for (int I = 1; I < Points.Length; I++)
+              {
+                Fill_Path.LineTo( Points[ I ].X, Points[ I - 1 ].Y );
+                Fill_Path.LineTo( Points[ I ].X, Points[ I ].Y );
+              }
+              Fill_Path.LineTo( Points[ Points.Length - 1 ].X, Sub_Bottom );
+              Fill_Path.LineTo( Points[ 0 ].X, Sub_Bottom );
+              Fill_Path.Close();
+
+              using var Fill_Shader = SkiaSharp.SKShader.CreateLinearGradient(
+      new SkiaSharp.SKPoint( 0, Label_Top ),
+      new SkiaSharp.SKPoint( 0, Sub_Bottom ),
+      new SkiaSharp.SKColor[]
+      {
+      S.Line_Color.To_SK_Color().WithAlpha( 60 ),
+      S.Line_Color.To_SK_Color().WithAlpha( 5  ),
+      },
+      null,
+      SkiaSharp.SKShaderTileMode.Clamp );
+
+              using var Fill_Paint = new SkiaSharp.SKPaint
+              {
+                IsAntialias = true,
+                Style = SkiaSharp.SKPaintStyle.Fill,
+                Shader = Fill_Shader,
+              };
+              Canvas.DrawPath( Fill_Path, Fill_Paint );
+            }
+            break;
+          }
+
+
+        case "Bar":
+          {
+            if (Points.Length > 0)
+            {
+              float Bar_W = Points.Length > 1
+                            ? Math.Min( (Points[ 1 ].X - Points[ 0 ].X) * 0.7f, 20f )
+                            : 10f;
+
+              using var Bar_Shader = SkiaSharp.SKShader.CreateLinearGradient(
+                  new SkiaSharp.SKPoint( 0, Label_Top ),
+                  new SkiaSharp.SKPoint( 0, Sub_Bottom ),
+                  new SkiaSharp.SKColor[]
+                  {
+            S.Line_Color.To_SK_Color().WithAlpha( 180 ),
+            S.Line_Color.To_SK_Color().WithAlpha( 60  ),
+                  },
+                  null,
+                  SkiaSharp.SKShaderTileMode.Clamp );
+
+              using var Bar_Fill = new SkiaSharp.SKPaint
+              {
+                IsAntialias = true,
+                Style = SkiaSharp.SKPaintStyle.Fill,
+                Shader = Bar_Shader,
+              };
+
+              using var Bar_Border = new SkiaSharp.SKPaint
+              {
+                Color = S.Line_Color.To_SK_Color(),
+                StrokeWidth = 1f,
+                IsAntialias = true,
+                Style = SkiaSharp.SKPaintStyle.Stroke,
+              };
+
+              foreach (var P in Points)
+              {
+                float Bar_H = Sub_Bottom - P.Y;
+                if (Bar_H < 1f)
+                  continue;
+
+                var Rect = new SkiaSharp.SKRect(
+                    P.X - Bar_W / 2f, P.Y,
+                    P.X + Bar_W / 2f, Sub_Bottom );
+
+                Canvas.DrawRect( Rect, Bar_Fill );
+                Canvas.DrawRect( Rect, Bar_Border );
+              }
+            }
+            break;
+          }
+
+
+
+        default:
+          {
+            Skia_Draw_Line_And_Fill( Canvas, Points,
+                                     S.Line_Color.To_SK_Color(),
+                                     Sub_Bottom, Label_Top );
+
+            if (Points.Length <= 150)
+            {
+              using var Line_Dot_Paint = new SkiaSharp.SKPaint  // ← renamed
+              {
+                Color = S.Line_Color.To_SK_Color().WithAlpha( 200 ),
+                IsAntialias = true,
+                Style = SkiaSharp.SKPaintStyle.Fill,
+              };
+              float Dot_R = Points.Length > 100 ? 2f
+                          : Points.Length > 50 ? 2.5f : 3f;
+              foreach (var P in Points)
+                Canvas.DrawCircle( P.X, P.Y, Dot_R, Line_Dot_Paint );
+            }
+            break;
+          }
+      }
+
+      // ── Last point marker + value label ───────────────────────────────
+      var Last = Points[ Points.Length - 1 ];
+
+      using var Glow_Paint = new SkiaSharp.SKPaint
+      {
+        Color = S.Line_Color.To_SK_Color().WithAlpha( 80 ),
+        IsAntialias = true,
+        Style = SkiaSharp.SKPaintStyle.Stroke,
+        StrokeWidth = 6f,
+      };
+      Canvas.DrawCircle( Last.X, Last.Y, 5f, Glow_Paint );
+
+      using var Dot_Paint = new SkiaSharp.SKPaint
+      {
+        Color = SkiaSharp.SKColors.White,
+        IsAntialias = true,
+        Style = SkiaSharp.SKPaintStyle.Fill,
+      };
+      Canvas.DrawCircle( Last.X, Last.Y, 3f, Dot_Paint );
+
+      string Val_Text = Multimeter_Common_Helpers_Class.Format_Value(
+          S.Points[ S.Points.Count - 1 ].Value,
+          Current_Unit, S.Type, S.Display_Digits );
+
+      float Val_W = Name_Paint.MeasureText( Val_Text );
+      float Val_X = Last.X + 8;
+      if (Val_X + Val_W > W - _Chart_Margin_Right)
+        Val_X = Last.X - Val_W - 8;
+
+      Canvas.DrawText( Val_Text, Val_X,
+                       Last.Y + Name_Paint.TextSize / 2f - 2f,
+                       Name_Paint );
+    }
+
+
+
+    protected void Skia_Draw_Histogram(
+ SkiaSharp.SKCanvas Canvas,
+ Instrument_Series S,
+ int W, int H, int Chart_W, int Chart_H )
+    {
+      using var Block = Trace_Block.Start_If_Enabled();
+
+      if (_Skia_Grid_Paint == null || _Skia_Label_Paint == null)
+        return;
+
+      int Count = S.Points.Count;
+      if (Count == 0)
+        return;
+
+      var Values = S.Points.Select( P => P.Value ).ToList();
+      double Min_V = Values.Min();
+      double Max_V = Values.Max();
+      double Range = Max_V - Min_V;
+      int Bins = Get_Bin_Count( Count );
+
+      if (Range < 1e-12)
+      {
+        Range = Math.Abs( Max_V ) * 0.1;
+        if (Range < 1e-12)
+          Range = 1.0;
+        Min_V -= Range / 2;
+        Max_V += Range / 2;
+        Range = Max_V - Min_V;
+      }
+
+      double Bin_Width = Range / Bins;
+      int[] Bin_Counts = new int[ Bins ];
+      foreach (double V in Values)
+        Bin_Counts[ Math.Clamp( (int) ((V - Min_V) / Bin_Width), 0, Bins - 1 ) ]++;
+
+      int Max_Count = Math.Max( 1, Bin_Counts.Max() );
+      double Y_Max = Max_Count * 1.1;
+      float Baseline = H - _Chart_Margin_Bottom;
+
+      // ── Y grid and labels ─────────────────────────────────────────────
+      for (int I = 0; I <= 5; I++)
+      {
+        double Frac = (double) I / 5;
+        int Y_Pos = H - _Chart_Margin_Bottom - (int) (Frac * Chart_H);
+        string Lbl = ((int) Math.Round( Frac * Y_Max )).ToString();
+
+        Canvas.DrawLine( _Chart_Margin_Left, Y_Pos,
+                         W - _Chart_Margin_Right, Y_Pos,
+                         _Skia_Grid_Paint );
+
+        float Text_W = _Skia_Label_Paint.MeasureText( Lbl );
+        Canvas.DrawText( Lbl,
+                         _Chart_Margin_Left - Text_W - 6,
+                         Y_Pos + _Skia_Label_Paint.TextSize / 2f - 2f,
+                         _Skia_Label_Paint );
+      }
+
+      // ── Bars ──────────────────────────────────────────────────────────
+      float Bar_Spacing = Chart_W / (float) Bins;
+      float Bar_W = Bar_Spacing * 0.8f;
+      float Gap = Bar_Spacing * 0.1f;
+
+      var LC = S.Line_Color.To_SK_Color();
+
+      using var Bar_Paint = new SkiaSharp.SKPaint
+      {
+        Color = LC,
+        IsAntialias = true,
+        Style = SkiaSharp.SKPaintStyle.Fill,
+      };
+      using var Border_Paint = new SkiaSharp.SKPaint
+      {
+        Color = new SkiaSharp.SKColor(
+                            (byte) (LC.Red * 0.7f),
+                            (byte) (LC.Green * 0.7f),
+                            (byte) (LC.Blue * 0.7f) ),
+        StrokeWidth = 1f,
+        IsAntialias = true,
+        Style = SkiaSharp.SKPaintStyle.Stroke,
+      };
+      using var Count_Paint = new SkiaSharp.SKPaint
+      {
+        Color = _Theme.Labels.To_SK_Color(),
+        TextSize = 9f,
+        Typeface = _Skia_Label_Paint.Typeface,
+        IsAntialias = true,
+      };
+
+      for (int I = 0; I < Bins; I++)
+      {
+        float Bar_H = (float) ((Bin_Counts[ I ] / Y_Max) * Chart_H);
+        if (Bar_H < 1f && Bin_Counts[ I ] > 0)
+          Bar_H = 1f;
+        if (Bar_H < 1f)
+          continue;
+
+        float X = _Chart_Margin_Left + I * Bar_Spacing + Gap;
+        float Y = Baseline - Bar_H;
+        var Rect = new SkiaSharp.SKRect( X, Y, X + Bar_W, Baseline );
+
+        Canvas.DrawRect( Rect, Bar_Paint );
+        Canvas.DrawRect( Rect, Border_Paint );
+
+        if (Bin_Counts[ I ] > 0)
+        {
+          string Freq = Bin_Counts[ I ].ToString();
+          float Fw = Count_Paint.MeasureText( Freq );
+          Canvas.DrawText( Freq,
+                           X + Bar_W / 2f - Fw / 2f,
+                           Y - 3f,
+                           Count_Paint );
+        }
+      }
+
+      // ── Normal curve ──────────────────────────────────────────────────
+      double Mean = Values.Average();
+      double StdDev = Math.Sqrt( Values.Sum( V => (V - Mean) * (V - Mean) ) / Count );
+
+      if (StdDev > 1e-15)
+      {
+        using var Curve_Paint = new SkiaSharp.SKPaint
+        {
+          Color = _Theme.Line_Colors[ 1 % _Theme.Line_Colors.Length ].To_SK_Color(),
+          StrokeWidth = 2.5f,
+          IsAntialias = true,
+          Style = SkiaSharp.SKPaintStyle.Stroke,
+        };
+
+        using var Curve_Path = new SkiaSharp.SKPath();
+        double Scale = Bin_Width * Count;
+        bool First = true;
+
+        for (int I = 0; I < 100; I++)
+        {
+          double X_Val = Min_V + (I / 99.0) * Range;
+          double Z = (X_Val - Mean) / StdDev;
+          double PDF = (1.0 / (StdDev * Math.Sqrt( 2.0 * Math.PI )))
+                         * Math.Exp( -0.5 * Z * Z );
+          float X = _Chart_Margin_Left +
+                         (float) ((X_Val - Min_V) / Range * Chart_W);
+          float Y = Baseline -
+                         (float) ((PDF * Scale / Y_Max) * Chart_H);
+
+          if (First)
+          {
+            Curve_Path.MoveTo( X, Y );
+            First = false;
+          }
+          else
+            Curve_Path.LineTo( X, Y );
+        }
+        Canvas.DrawPath( Curve_Path, Curve_Paint );
+
+        // ── Mean line ─────────────────────────────────────────────────
+        var Mean_Color = _Theme.Line_Colors[ 2 % _Theme.Line_Colors.Length ].To_SK_Color();
+
+        using var Mean_Dash = SkiaSharp.SKPathEffect.CreateDash( new float[] { 8f, 4f }, 0f );
+        using var Mean_Paint = new SkiaSharp.SKPaint
+        {
+          Color = Mean_Color,
+          StrokeWidth = 2f,
+          IsAntialias = true,
+          Style = SkiaSharp.SKPaintStyle.Stroke,
+          PathEffect = Mean_Dash,
+        };
+
+        float Mean_X = _Chart_Margin_Left +
+                       (float) ((Mean - Min_V) / Range * Chart_W);
+        Canvas.DrawLine( Mean_X, _Chart_Margin_Top,
+                         Mean_X, Baseline, Mean_Paint );
+
+        // ── Sigma lines ───────────────────────────────────────────────
+        using var Sigma_Dash = SkiaSharp.SKPathEffect.CreateDash( new float[] { 3f, 3f }, 0f );
+        using var Sigma_Paint = new SkiaSharp.SKPaint
+        {
+          Color = Mean_Color.WithAlpha( 120 ),
+          StrokeWidth = 1.5f,
+          IsAntialias = true,
+          Style = SkiaSharp.SKPaintStyle.Stroke,
+          PathEffect = Sigma_Dash,
+        };
+        using var Sigma_Text_Paint = new SkiaSharp.SKPaint
+        {
+          Color = Mean_Color,
+          TextSize = 10f,
+          IsAntialias = true,
+        };
+
+        string[] Sigma_Labels = { "-2σ", "-1σ", "μ", "+1σ", "+2σ" };
+        double[] Sigma_Values = { Mean - 2*StdDev, Mean - StdDev,
+                              Mean, Mean + StdDev, Mean + 2*StdDev };
+
+        for (int I = 0; I < Sigma_Values.Length; I++)
+        {
+          if (Sigma_Values[ I ] < Min_V || Sigma_Values[ I ] > Max_V)
+            continue;
+          float Sx = _Chart_Margin_Left +
+                     (float) ((Sigma_Values[ I ] - Min_V) / Range * Chart_W);
+          if (I != 2)
+            Canvas.DrawLine( Sx, _Chart_Margin_Top, Sx, Baseline, Sigma_Paint );
+          Canvas.DrawText( Sigma_Labels[ I ], Sx + 2,
+                           _Chart_Margin_Top + 14f, Sigma_Text_Paint );
+        }
+      }
+
+      // ── X axis bin labels ─────────────────────────────────────────────
+      using var X_Label_Paint = new SkiaSharp.SKPaint
+      {
+        Color = _Theme.Labels.To_SK_Color(),
+        TextSize = 9f,
+        IsAntialias = true,
+      };
+
+      int Label_Step = Math.Max( 1, Bins / 8 );
+      for (int I = 0; I < Bins; I += Label_Step)
+      {
+        double Bin_Center = Min_V + (I + 0.5) * Bin_Width;
+        string X_Lbl = Multimeter_Common_Helpers_Class.Format_Value(
+                               Bin_Center, Current_Unit, S.Type, S.Display_Digits );
+        float X_Pos = _Chart_Margin_Left + I * Bar_Spacing + Bar_Spacing / 2f;
+        float Lbl_W = X_Label_Paint.MeasureText( X_Lbl );
+        Canvas.DrawText( X_Lbl, X_Pos - Lbl_W / 2f,
+                         Baseline + 14f, X_Label_Paint );
+      }
+
+      // ── Title ─────────────────────────────────────────────────────────
+      using var Title_Paint = new SkiaSharp.SKPaint
+      {
+        Color = _Theme.Labels.To_SK_Color(),
+        TextSize = 11f,
+        IsAntialias = true,
+      };
+      string Title = $"Distribution  ({Count} readings)";
+      float Title_W = Title_Paint.MeasureText( Title );
+      Canvas.DrawText( Title,
+                       _Chart_Margin_Left + Chart_W / 2f - Title_W / 2f,
+                       Baseline + 26f,
+                       Title_Paint );
+    }
+
+    protected void Skia_Draw_Pie_Chart(
+    SkiaSharp.SKCanvas Canvas,
+    Instrument_Series S,
+    int W, int H, int Chart_W, int Chart_H )
+    {
+      using var Block = Trace_Block.Start_If_Enabled();
+
+      int Count = S.Points.Count;
+      if (Count == 0)
+        return;
+
+      var Values = S.Points.Select( P => P.Value ).ToList();
+      double Min_V = Values.Min();
+      double Max_V = Values.Max();
+      double Range = Max_V - Min_V;
+      int Bins = Get_Bin_Count( Count );
+
+      if (Range < 1e-12)
+      {
+        Range = Math.Abs( Max_V ) * 0.1;
+        if (Range < 1e-12)
+          Range = 1.0;
+        Min_V -= Range / 2;
+        Max_V += Range / 2;
+        Range = Max_V - Min_V;
+      }
+
+      double Bin_Width = Range / Bins;
+      int[] Bin_Counts = new int[ Bins ];
+      foreach (double V in Values)
+        Bin_Counts[ Math.Clamp( (int) ((V - Min_V) / Bin_Width), 0, Bins - 1 ) ]++;
+
+      // ── Legend width calculation ───────────────────────────────────────
+      int Legend_W = 160;
+      int Pie_W = Chart_W - Legend_W;
+      if (Pie_W < 100)
+      {
+        Pie_W = Chart_W;
+        Legend_W = 0;
+      }
+
+      int Diameter = Math.Max( 40, Math.Min( Pie_W, Chart_H ) - 20 );
+      int Pie_X = _Chart_Margin_Left + (Pie_W - Diameter) / 2;
+      int Pie_Y = _Chart_Margin_Top + (Chart_H - Diameter) / 2;
+
+      var Pie_Rect = new SkiaSharp.SKRect(
+          Pie_X, Pie_Y, Pie_X + Diameter, Pie_Y + Diameter );
+
+      // ── Draw slices ───────────────────────────────────────────────────
+      float Start_Angle = -90f;
+
+      using var Outline_Paint = new SkiaSharp.SKPaint
+      {
+        Color = _Theme.Background.To_SK_Color(),
+        StrokeWidth = 2f,
+        IsAntialias = true,
+        Style = SkiaSharp.SKPaintStyle.Stroke,
+      };
+
+      for (int I = 0; I < Bins; I++)
+      {
+        if (Bin_Counts[ I ] == 0)
+          continue;
+
+        float Sweep = 360f * Bin_Counts[ I ] / Count;
+        var Slice_Color = Get_Bin_Color( I ).To_SK_Color();
+
+        using var Slice_Paint = new SkiaSharp.SKPaint
+        {
+          Color = Slice_Color,
+          IsAntialias = true,
+          Style = SkiaSharp.SKPaintStyle.Fill,
+        };
+
+        using var Arc_Path = new SkiaSharp.SKPath();
+        Arc_Path.MoveTo( Pie_Rect.MidX, Pie_Rect.MidY );
+        Arc_Path.ArcTo( Pie_Rect, Start_Angle, Sweep, false );
+        Arc_Path.Close();
+
+        Canvas.DrawPath( Arc_Path, Slice_Paint );
+        Canvas.DrawPath( Arc_Path, Outline_Paint );
+
+        Start_Angle += Sweep;
+      }
+
+      // ── Legend ────────────────────────────────────────────────────────
+      if (Legend_W > 0)
+      {
+        using var Legend_Paint = new SkiaSharp.SKPaint
+        {
+          Color = _Theme.Labels.To_SK_Color(),
+          TextSize = 10f,
+          IsAntialias = true,
+        };
+        using var Title_Paint = new SkiaSharp.SKPaint
+        {
+          Color = _Theme.Labels.To_SK_Color(),
+          TextSize = 11f,
+          IsAntialias = true,
+          FakeBoldText = true,
+        };
+
+        int Leg_X = _Chart_Margin_Left + Pie_W + 10;
+        int Leg_Y = _Chart_Margin_Top + 10;
+        int Row_H = 20;
+
+        Canvas.DrawText( "Distribution", Leg_X, Leg_Y + 12f, Title_Paint );
+        Leg_Y += Row_H + 4;
+
+        for (int I = 0; I < Bins; I++)
+        {
+          if (Bin_Counts[ I ] == 0)
+            continue;
+          if (Leg_Y + Row_H > H - _Chart_Margin_Bottom)
+            break;
+
+          var Swatch_Color = Get_Bin_Color( I ).To_SK_Color();
+          using var Swatch_Paint = new SkiaSharp.SKPaint
+          {
+            Color = Swatch_Color,
+            Style = SkiaSharp.SKPaintStyle.Fill,
+          };
+
+          Canvas.DrawRect( Leg_X, Leg_Y + 2, 12, 12, Swatch_Paint );
+
+          double Bin_Low = Min_V + I * Bin_Width;
+          double Bin_High = Bin_Low + Bin_Width;
+          double Pct = 100.0 * Bin_Counts[ I ] / Count;
+
+          string Entry = $"{Multimeter_Common_Helpers_Class.Format_Value( Bin_Low, Current_Unit, S.Type, S.Display_Digits )}"
+                       + $"-{Multimeter_Common_Helpers_Class.Format_Value( Bin_High, Current_Unit, S.Type, S.Display_Digits )}"
+                       + $"  {Pct:F1}%";
+
+          Canvas.DrawText( Entry, Leg_X + 18, Leg_Y + 12f, Legend_Paint );
+          Leg_Y += Row_H;
+        }
+      }
+    }
+    protected void Skia_Draw_Split_View(
+        SkiaSharp.SKCanvas Canvas, int W, int H )
+    {
+
+      using var Block = Trace_Block.Start_If_Enabled();
+
+      if (_Skia_Grid_Paint == null ||
+          _Skia_Label_Paint == null)
+      {
+        Capture_Trace.Write( "EXIT: paints null" );
+        
+        return;
+      }
+
+
+      var (Time_Min, Time_Max) = Calculate_Time_Range();
+      double Time_Range_Sec = Math.Max(
+          (Time_Max - Time_Min).TotalSeconds, 0.001 );
+
+      int Chart_W = W - _Chart_Margin_Left - _Chart_Margin_Right;
+      int Total_H = H - _Chart_Margin_Top - _Chart_Margin_Bottom;
+      int Subplot_Count = _Series.Count( S => S.Visible );
+      int Subplot_H = (Total_H - _Chart_Subplot_Gap * (Subplot_Count - 1))
+                          / Math.Max( 1, Subplot_Count );
+
+      Capture_Trace.Write( $"Chart_W       = {Chart_W}");
+      Capture_Trace.Write( $"Subplot_H     = {Subplot_H}");
+      Capture_Trace.Write( $"Subplot_Count = {Subplot_Count}");
+      Capture_Trace.Write( $"Time_Range    = {Time_Range_Sec:F2}s" );
+
+
+
+
+
+      if (Chart_W < 10 || Subplot_H < 30)
+      {
+        Capture_Trace.Write( "EXIT: too small" );
+        Capture_Trace.Write( $" Chart_W   = {Chart_W}");
+        Capture_Trace.Write( $" Subplot_H = {Subplot_H}" );
+        return;
+      }
+
+      // ── Draw each subplot ─────────────────────────────────────────────
+      int SI = 0;
+      for (int I = 0; I < _Series.Count; I++)
+      {
+        var S = _Series[ I ];
+        if (!S.Visible)
+          continue;
+
+        int Sub_Top = _Chart_Margin_Top + SI * (Subplot_H + _Chart_Subplot_Gap);
+        int Sub_Bottom = Sub_Top + Subplot_H;
+
+        Skia_Draw_Subplot( Canvas, S, SI,
+                           Sub_Top, Sub_Bottom, W,
+                           Time_Min, Time_Range_Sec, Chart_W );
+        SI++;
+      }
+
+      // ── X axis time labels ────────────────────────────────────────────
+      int Num_X = Math.Max( 2, Math.Min( 8, (int) (Chart_W / 80.0) ) );
+      for (int I = 0; I <= Num_X; I++)
+      {
+        double Fraction = (double) I / Num_X;
+        int X_Pos = _Chart_Margin_Left + (int) (Fraction * Chart_W);
+        string Time_Text = Format_Time_Label(
+            Fraction * Time_Range_Sec, Time_Range_Sec );
+
+        float Text_W = _Skia_Label_Paint.MeasureText( Time_Text );
+        Canvas.DrawText( Time_Text,
+                         X_Pos - Text_W / 2f,
+                         H - _Chart_Margin_Bottom + 14f,
+                         _Skia_Label_Paint );
+
+        Canvas.DrawLine( X_Pos, _Chart_Margin_Top,
+                         X_Pos, H - _Chart_Margin_Bottom,
+                         _Skia_Grid_Paint );
+      }
+    }
+
+    protected void Skia_Draw_Combined_View(
+    SkiaSharp.SKCanvas Canvas, int W, int H )
+    {
+      using var Block = Trace_Block.Start_If_Enabled();
+
+      if (_Skia_Grid_Paint == null ||
+           _Skia_Label_Paint == null)
+        return;
+
+      var (Time_Min, Time_Max) = Calculate_Time_Range();
+      double Time_Range_Sec = Math.Max(
+          (Time_Max - Time_Min).TotalSeconds, 0.001 );
+
+      int Chart_W = W - _Chart_Margin_Left - _Chart_Margin_Right;
+      int Chart_H = H - _Chart_Margin_Top - _Chart_Margin_Bottom;
+
+      if (Chart_W < 10 || Chart_H < 10)
+        return;
+
+      // ── Series name legend at top ─────────────────────────────────────
+      float Name_X = _Chart_Margin_Left + 5;
+      float Name_Y = 5;
+      int Color_Idx = 0;
+
+      foreach (var S in _Series.Where( s => s.Visible ))
+      {
+        var LC = _Theme.Line_Colors[ Color_Idx % _Theme.Line_Colors.Length ];
+
+        using var Swatch_Paint = new SkiaSharp.SKPaint
+        {
+          Color = LC.To_SK_Color(),
+          Style = SkiaSharp.SKPaintStyle.Fill,
+        };
+        using var Border_Paint = new SkiaSharp.SKPaint
+        {
+          Color = _Theme.Foreground.To_SK_Color(),
+          Style = SkiaSharp.SKPaintStyle.Stroke,
+          StrokeWidth = 1f,
+        };
+        using var Name_Paint = new SkiaSharp.SKPaint
+        {
+          Color = LC.To_SK_Color(),
+          TextSize = 12f,
+          Typeface = _Skia_UI_Typeface,
+          IsAntialias = true,
+          FakeBoldText = true,
+        };
+
+        Canvas.DrawRect( Name_X, Name_Y + 2, 14, 14, Swatch_Paint );
+        Canvas.DrawRect( Name_X, Name_Y + 2, 14, 14, Border_Paint );
+        Canvas.DrawText( S.Name, Name_X + 20, Name_Y + 14, Name_Paint );
+
+        Name_X += Name_Paint.MeasureText( S.Name ) + 40;
+        Color_Idx++;
+      }
+
+      // ── X axis time labels ────────────────────────────────────────────
+      int Num_X = Math.Max( 2, Math.Min( 8, (int) (Chart_W / 80.0) ) );
+      for (int I = 0; I <= Num_X; I++)
+      {
+        double Fraction = (double) I / Num_X;
+        int X_Pos = _Chart_Margin_Left + (int) (Fraction * Chart_W);
+        string Time_Text = Format_Time_Label(
+            Fraction * Time_Range_Sec, Time_Range_Sec );
+
+        float Text_W = _Skia_Label_Paint.MeasureText( Time_Text );
+        Canvas.DrawText( Time_Text,
+                         X_Pos - Text_W / 2f,
+                         H - _Chart_Margin_Bottom + 14f,
+                         _Skia_Label_Paint );
+
+        Canvas.DrawLine( X_Pos, _Chart_Margin_Top,
+                         X_Pos, H - _Chart_Margin_Bottom,
+                         _Skia_Grid_Paint );
+      }
+
+      // ── Dispatch to correct combined style ────────────────────────────
+      switch (_Current_Graph_Style)
+      {
+        case "Scatter":
+          Skia_Draw_Combined_Scatter( Canvas, W, H, Chart_W, Chart_H );
+          break;
+        case "Step":
+          Skia_Draw_Combined_Step( Canvas, W, H, Chart_W, Chart_H );
+          break;
+        default:
+          if (_Normalized_View)
+            Skia_Draw_Combined_Normalized( Canvas, W, H, Chart_W, Chart_H );
+          else
+            Skia_Draw_Combined_Absolute( Canvas, W, H, Chart_W, Chart_H );
+          break;
+      }
+    }
+
+    protected void Skia_Draw_Combined_Absolute(
+        SkiaSharp.SKCanvas Canvas,
+        int W, int H, int Chart_W, int Chart_H )
+    {
+      using var Block = Trace_Block.Start_If_Enabled();
+
+      // ── Global Y range across all visible series ──────────────────────
+      double Global_Min = double.MaxValue, Global_Max = double.MinValue;
+      foreach (var S in _Series.Where( s => s.Visible && s.Points.Count > 0 ))
+      {
+        var (Si, Vc) = Multimeter_Common_Helpers_Class.Get_Visible_Range(
+            S.Points.Count, _Enable_Rolling, _Max_Display_Points, _View_Offset );
+        if (Vc == 0)
+          continue;
+        for (int I = Si; I < Si + Vc; I++)
+        {
+          if (S.Points[ I ].Value < Global_Min)
+            Global_Min = S.Points[ I ].Value;
+          if (S.Points[ I ].Value > Global_Max)
+            Global_Max = S.Points[ I ].Value;
+        }
+      }
+      if (Global_Min == double.MaxValue)
+        return;
+
+      double Range = Global_Max - Global_Min;
+      double Padding = Math.Max( Range * 0.5, 0.0001 );
+      double Pmin = Global_Min - Padding;
+      double Pmax = Global_Max + Padding;
+      double Pr = Math.Max( Pmax - Pmin, 0.001 );
+
+      double Display_Min = Pmin;
+      double Display_Range = Pr;
+
+      if (_Zoom_Factor > 0 && _Zoom_Factor != 1.0)
+      {
+        double Center = (Pmax + Pmin) / 2.0;
+        double Zoomed_Range = Pr / _Zoom_Factor;
+        Display_Min = Center - Zoomed_Range / 2.0;
+        Display_Range = Zoomed_Range;
+      }
+
+      // ── Y axis ────────────────────────────────────────────────────────
+      Skia_Draw_Y_Axis_Subplot( Canvas,
+                             Display_Min, Display_Range,
+                             W,
+                             H - _Chart_Margin_Bottom,
+                             Chart_H,
+                             _Series.FirstOrDefault( s => s.Visible && s.Points.Count > 0 )
+                                    ?.Display_Digits ?? 6 );
+
+      // ── Draw each series ──────────────────────────────────────────────
+      int Color_Index = 0;
+      foreach (var S in _Series)
+      {
+        if (!S.Visible || S.Points.Count == 0)
+        {
+          Color_Index++;
+          continue;
+        }
+
+        var LC = _Theme.Line_Colors[ Color_Index % _Theme.Line_Colors.Length ];
+
+        var (Si, Vc) = Multimeter_Common_Helpers_Class.Get_Visible_Range(
+            S.Points.Count, _Enable_Rolling, _Max_Display_Points, _View_Offset );
+        if (Vc == 0)
+        {
+          Color_Index++;
+          continue;
+        }
+
+        // ── Decimation ────────────────────────────────────────────────
+        int Draw_Count = Vc;
+        int Step = 1;
+        if (_Settings.Enable_Decimation && Vc > _Settings.Decimation_Threshold)
+        {
+          Step = _Settings.Decimation_Step;
+          Draw_Count = Vc / Step;
+        }
+
+        DateTime Vtmin = S.Points[ Si ].Time;
+        DateTime Vtmax = S.Points[ Si + Vc - 1 ].Time;
+        double Vtr = Math.Max( (Vtmax - Vtmin).TotalSeconds, 0.001 );
+
+        var Pts = new SkiaSharp.SKPoint[ Draw_Count ];
+        for (int I = 0; I < Draw_Count; I++)
+        {
+          int Di = Si + (I * Step);
+          var P = S.Points[ Di ];
+          float X = _Chart_Margin_Left +
+                      (float) ((P.Time - Vtmin).TotalSeconds / Vtr * Chart_W);
+          float Y = H - _Chart_Margin_Bottom -
+                      (float) ((P.Value - Display_Min) / Display_Range * Chart_H);
+          Pts[ I ] = new SkiaSharp.SKPoint( X, Y );
+        }
+
+        if (Pts.Length < 2)
+        {
+          Color_Index++;
+          continue;
+        }
+
+        // ── Line ──────────────────────────────────────────────────────
+        using var Line_Paint = new SkiaSharp.SKPaint
+        {
+          Color = LC.To_SK_Color(),
+          StrokeWidth = 2f,
+          IsAntialias = true,
+          Style = SkiaSharp.SKPaintStyle.Stroke,
+          StrokeCap = SkiaSharp.SKStrokeCap.Round,
+          StrokeJoin = SkiaSharp.SKStrokeJoin.Round,
+        };
+
+        using var Line_Path = new SkiaSharp.SKPath();
+        Line_Path.MoveTo( Pts[ 0 ] );
+        for (int I = 1; I < Pts.Length; I++)
+          Line_Path.LineTo( Pts[ I ] );
+        Canvas.DrawPath( Line_Path, Line_Paint );
+
+        // ── Dots (only when few points) ───────────────────────────────
+        if (Pts.Length <= 150)
+        {
+          using var Dot_Paint = new SkiaSharp.SKPaint
+          {
+            Color = LC.To_SK_Color(),
+            IsAntialias = true,
+            Style = SkiaSharp.SKPaintStyle.Fill,
+          };
+          foreach (var Pt in Pts)
+            Canvas.DrawCircle( Pt.X, Pt.Y, 2f, Dot_Paint );
+        }
+
+        // ── Last point marker ─────────────────────────────────────────
+        if (Pts.Length > 0)
+        {
+          var Last = Pts[ Pts.Length - 1 ];
+
+          using var Glow_Paint = new SkiaSharp.SKPaint
+          {
+            Color = S.Line_Color.To_SK_Color().WithAlpha( 80 ),
+            IsAntialias = true,
+            Style = SkiaSharp.SKPaintStyle.Stroke,
+            StrokeWidth = 6f,
+          };
+          Canvas.DrawCircle( Last.X, Last.Y, 5f, Glow_Paint );
+
+          using var Last_Dot_Paint = new SkiaSharp.SKPaint
+          {
+            Color = SkiaSharp.SKColors.White,
+            IsAntialias = true,
+            Style = SkiaSharp.SKPaintStyle.Fill,
+          };
+          Canvas.DrawCircle( Last.X, Last.Y, 3f, Last_Dot_Paint );
+
+          string Val_Text = Multimeter_Common_Helpers_Class.Format_Value(
+              S.Points[ S.Points.Count - 1 ].Value,
+              Current_Unit, S.Type, S.Display_Digits );
+
+          using var Val_Paint = new SkiaSharp.SKPaint
+          {
+            Color = S.Line_Color.To_SK_Color(),
+            TextSize = 12f,
+            Typeface = _Skia_UI_Typeface,
+            IsAntialias = true,
+            FakeBoldText = true,
+            Style = SkiaSharp.SKPaintStyle.Fill,
+          };
+
+          float Val_W = Val_Paint.MeasureText( Val_Text );
+          float Val_X = Last.X + 8;
+          if (Val_X + Val_W > W - _Chart_Margin_Right)
+            Val_X = Last.X - Val_W - 8;
+
+          Canvas.DrawText( Val_Text, Val_X,
+                           Last.Y + Val_Paint.TextSize / 2f - 2f,
+                           Val_Paint );
+        }
+
+        Color_Index++;
+      }
+    }
+
+    protected void Skia_Draw_Combined_Normalized(
+       SkiaSharp.SKCanvas Canvas,
+       int W, int H, int Chart_W, int Chart_H )
+    {
+      using var Block = Trace_Block.Start_If_Enabled();
+
+      if (_Skia_Grid_Paint == null || _Skia_Label_Paint == null)
+        return;
+
+      // ── Y axis percentage labels ──────────────────────────────────────
+      for (int I = 0; I <= 4; I++)
+      {
+        double Fraction = (double) I / 4;
+        int Y = H - _Chart_Margin_Bottom - (int) (Fraction * Chart_H);
+        string Lbl = $"{(int) (Fraction * 100)}%";
+
+        Canvas.DrawLine( _Chart_Margin_Left, Y,
+                         W - _Chart_Margin_Right, Y,
+                         _Skia_Grid_Paint );
+
+        float Text_W = _Skia_Label_Paint.MeasureText( Lbl );
+        Canvas.DrawText( Lbl,
+                         _Chart_Margin_Left - Text_W - 5,
+                         Y + _Skia_Label_Paint.TextSize / 2f - 2f,
+                         _Skia_Label_Paint );
+      }
+
+      // ── Draw each series normalised 0-100% ────────────────────────────
+      int Color_Index = 0;
+      foreach (var S in _Series)
+      {
+        if (!S.Visible || S.Points.Count == 0)
+        {
+          Color_Index++;
+          continue;
+        }
+
+        var (Si, Vc) = Multimeter_Common_Helpers_Class.Get_Visible_Range(
+            S.Points.Count, _Enable_Rolling, _Max_Display_Points, _View_Offset );
+        if (Vc == 0)
+        {
+          Color_Index++;
+          continue;
+        }
+
+        // ── Per-series min/max for normalisation ──────────────────────
+        double Series_Min = double.MaxValue, Series_Max = double.MinValue;
+        for (int I = Si; I < Si + Vc; I++)
+        {
+          if (S.Points[ I ].Value < Series_Min)
+            Series_Min = S.Points[ I ].Value;
+          if (S.Points[ I ].Value > Series_Max)
+            Series_Max = S.Points[ I ].Value;
+        }
+        double Series_Range = Series_Max - Series_Min;
+
+        var LC = _Theme.Line_Colors[ Color_Index % _Theme.Line_Colors.Length ];
+
+        DateTime Vtmin = S.Points[ Si ].Time;
+        DateTime Vtmax = S.Points[ Si + Vc - 1 ].Time;
+        double Vtr = Math.Max( (Vtmax - Vtmin).TotalSeconds, 0.001 );
+
+        using var Line_Paint = new SkiaSharp.SKPaint
+        {
+          Color = LC.To_SK_Color(),
+          StrokeWidth = 1.5f,
+          IsAntialias = true,
+          Style = SkiaSharp.SKPaintStyle.Stroke,
+          StrokeCap = SkiaSharp.SKStrokeCap.Round,
+          StrokeJoin = SkiaSharp.SKStrokeJoin.Round,
+        };
+
+        using var Line_Path = new SkiaSharp.SKPath();
+        bool First = true;
+
+        // ── Decimation ────────────────────────────────────────────────
+        int Step = 1;
+        int Draw_Count = Vc;
+        if (_Settings.Enable_Decimation && Vc > _Settings.Decimation_Threshold)
+        {
+          Step = _Settings.Decimation_Step;
+          Draw_Count = Vc / Step;
+        }
+
+        for (int I = 0; I < Draw_Count; I++)
+        {
+          int Di = Si + (I * Step);
+          var Pt = S.Points[ Di ];
+          float X = _Chart_Margin_Left +
+                        (float) ((Pt.Time - Vtmin).TotalSeconds / Vtr * Chart_W);
+          double Norm = Series_Range > 0
+                            ? (Pt.Value - Series_Min) / Series_Range
+                            : 0.5;
+          float Y = H - _Chart_Margin_Bottom - (float) (Norm * Chart_H);
+
+          if (First)
+          {
+            Line_Path.MoveTo( X, Y );
+            First = false;
+          }
+          else
+            Line_Path.LineTo( X, Y );
+        }
+        Canvas.DrawPath( Line_Path, Line_Paint );
+
+        // ── Min/Max labels at edges ───────────────────────────────────
+        using var Val_Paint = new SkiaSharp.SKPaint
+        {
+          Color = LC.To_SK_Color().WithAlpha( 180 ),
+          TextSize = 10f,
+          Typeface = _Skia_Mono_Typeface,
+          IsAntialias = true,
+        };
+
+        string Top_Lbl = Format_Sig_Figs( Series_Max, S.Display_Digits );
+        string Bot_Lbl = Format_Sig_Figs( Series_Min, S.Display_Digits );
+
+        // ── Offset each series horizontally so labels never overlap ──
+        float Label_X = _Chart_Margin_Left + 4 + (Color_Index * 80);
+        float Top_Y = H - _Chart_Margin_Bottom - Chart_H + 12f;
+        float Bot_Y = H - _Chart_Margin_Bottom - 4f;
+
+        Canvas.DrawText( Top_Lbl, Label_X, Top_Y, Val_Paint );
+        Canvas.DrawText( Bot_Lbl, Label_X, Bot_Y, Val_Paint );
+
+        Color_Index++;
+      }
+    }
+
+    protected void Skia_Draw_Combined_Scatter(
+    SkiaSharp.SKCanvas Canvas,
+    int W, int H, int Chart_W, int Chart_H )
+    {
+      using var Block = Trace_Block.Start_If_Enabled();
+
+      if (_Skia_Grid_Paint == null || _Skia_Label_Paint == null)
+        return;
+
+      // ── Global Y range ────────────────────────────────────────────────
+      double Global_Min = double.MaxValue, Global_Max = double.MinValue;
+      foreach (var S in _Series.Where( s => s.Visible && s.Points.Count > 0 ))
+      {
+        var (Si, Vc) = Multimeter_Common_Helpers_Class.Get_Visible_Range(
+            S.Points.Count, _Enable_Rolling, _Max_Display_Points, _View_Offset );
+        if (Vc == 0)
+          continue;
+        for (int I = Si; I < Si + Vc; I++)
+        {
+          if (S.Points[ I ].Value < Global_Min)
+            Global_Min = S.Points[ I ].Value;
+          if (S.Points[ I ].Value > Global_Max)
+            Global_Max = S.Points[ I ].Value;
+        }
+      }
+      if (Global_Min == double.MaxValue)
+        return;
+
+      double Range = Global_Max - Global_Min;
+      double Padding = Math.Max( Range * 0.5, 0.0001 );
+      double Pmin = Global_Min - Padding;
+      double Pmax = Global_Max + Padding;
+      double Pr = Math.Max( Pmax - Pmin, 0.001 );
+      double Display_Min = Pmin;
+      double Display_Range = Pr;
+
+      if (_Zoom_Factor > 0 && _Zoom_Factor != 1.0)
+      {
+        double Center = (Pmax + Pmin) / 2.0;
+        double Zoomed_Range = Pr / _Zoom_Factor;
+        Display_Min = Center - Zoomed_Range / 2.0;
+        Display_Range = Zoomed_Range;
+      }
+
+      // ── Y axis ────────────────────────────────────────────────────────
+      Skia_Draw_Y_Axis_Subplot( Canvas, Display_Min, Display_Range,
+                           W, H - _Chart_Margin_Bottom, Chart_H,
+                           _Series.FirstOrDefault( s => s.Visible && s.Points.Count > 0 )
+                                  ?.Display_Digits ?? 6 );
+
+      // ── Draw dots only — no connecting line ───────────────────────────
+      int Color_Index = 0;
+      foreach (var S in _Series)
+      {
+        if (!S.Visible || S.Points.Count == 0)
+        {
+          Color_Index++;
+          continue;
+        }
+
+        var (Si, Vc) = Multimeter_Common_Helpers_Class.Get_Visible_Range(
+            S.Points.Count, _Enable_Rolling, _Max_Display_Points, _View_Offset );
+        if (Vc == 0)
+        {
+          Color_Index++;
+          continue;
+        }
+
+        var LC = _Theme.Line_Colors[ Color_Index % _Theme.Line_Colors.Length ];
+
+        DateTime Vtmin = S.Points[ Si ].Time;
+        DateTime Vtmax = S.Points[ Si + Vc - 1 ].Time;
+        double Vtr = Math.Max( (Vtmax - Vtmin).TotalSeconds, 0.001 );
+        float Dot_R = Vc > 100 ? 2.5f : Vc > 50 ? 3.5f : 4.5f;
+
+        using var Dot_Paint = new SkiaSharp.SKPaint
+        {
+          Color = LC.To_SK_Color(),
+          IsAntialias = true,
+          Style = SkiaSharp.SKPaintStyle.Fill,
+        };
+        using var Ring_Paint = new SkiaSharp.SKPaint
+        {
+          Color = LC.To_SK_Color(),
+          IsAntialias = true,
+          Style = SkiaSharp.SKPaintStyle.Stroke,
+          StrokeWidth = 1.5f,
+        };
+
+        // ── Decimation ────────────────────────────────────────────────
+        int Step = 1;
+        int Draw_Count = Vc;
+        if (_Settings.Enable_Decimation && Vc > _Settings.Decimation_Threshold)
+        {
+          Step = _Settings.Decimation_Step;
+          Draw_Count = Vc / Step;
+        }
+
+        for (int I = 0; I < Draw_Count; I++)
+        {
+          int Di = Si + (I * Step);
+          var P = S.Points[ Di ];
+          float X = _Chart_Margin_Left +
+                     (float) ((P.Time - Vtmin).TotalSeconds / Vtr * Chart_W);
+          float Y = H - _Chart_Margin_Bottom -
+                     (float) ((P.Value - Display_Min) / Display_Range * Chart_H);
+
+          Canvas.DrawCircle( X, Y, Dot_R, Dot_Paint );
+          Canvas.DrawCircle( X, Y, Dot_R + 1, Ring_Paint );
+        }
+
+        Color_Index++;
+      }
+    }
+
+    protected void Skia_Draw_Combined_Step(
+    SkiaSharp.SKCanvas Canvas,
+    int W, int H, int Chart_W, int Chart_H )
+    {
+      using var Block = Trace_Block.Start_If_Enabled();
+
+      if (_Skia_Grid_Paint == null || _Skia_Label_Paint == null)
+        return;
+
+      // ── Global Y range ────────────────────────────────────────────────
+      double Global_Min = double.MaxValue, Global_Max = double.MinValue;
+      foreach (var S in _Series.Where( s => s.Visible && s.Points.Count > 0 ))
+      {
+        var (Si, Vc) = Multimeter_Common_Helpers_Class.Get_Visible_Range(
+            S.Points.Count, _Enable_Rolling, _Max_Display_Points, _View_Offset );
+        if (Vc == 0)
+          continue;
+        for (int I = Si; I < Si + Vc; I++)
+        {
+          if (S.Points[ I ].Value < Global_Min)
+            Global_Min = S.Points[ I ].Value;
+          if (S.Points[ I ].Value > Global_Max)
+            Global_Max = S.Points[ I ].Value;
+        }
+      }
+      if (Global_Min == double.MaxValue)
+        return;
+
+      double Range = Global_Max - Global_Min;
+      double Padding = Math.Max( Range * 0.5, 0.0001 );
+      double Pmin = Global_Min - Padding;
+      double Pmax = Global_Max + Padding;
+      double Pr = Math.Max( Pmax - Pmin, 0.001 );
+      double Display_Min = Pmin;
+      double Display_Range = Pr;
+
+      if (_Zoom_Factor > 0 && _Zoom_Factor != 1.0)
+      {
+        double Center = (Pmax + Pmin) / 2.0;
+        double Zoomed_Range = Pr / _Zoom_Factor;
+        Display_Min = Center - Zoomed_Range / 2.0;
+        Display_Range = Zoomed_Range;
+      }
+
+      // ── Y axis ────────────────────────────────────────────────────────
+      // In Skia_Draw_Combined_Step
+      Skia_Draw_Y_Axis_Subplot( Canvas, Display_Min, Display_Range,
+                                W, H - _Chart_Margin_Bottom, Chart_H,
+                                _Series.FirstOrDefault( s => s.Visible && s.Points.Count > 0 )
+                                       ?.Display_Digits ?? 6 );
+
+      // ── Draw each series as a step chart ──────────────────────────────
+      int Color_Index = 0;
+      foreach (var S in _Series)
+      {
+        if (!S.Visible || S.Points.Count == 0)
+        {
+          Color_Index++;
+          continue;
+        }
+
+        var (Si, Vc) = Multimeter_Common_Helpers_Class.Get_Visible_Range(
+            S.Points.Count, _Enable_Rolling, _Max_Display_Points, _View_Offset );
+        if (Vc == 0)
+        {
+          Color_Index++;
+          continue;
+        }
+
+        var LC = _Theme.Line_Colors[ Color_Index % _Theme.Line_Colors.Length ];
+
+        DateTime Vtmin = S.Points[ Si ].Time;
+        DateTime Vtmax = S.Points[ Si + Vc - 1 ].Time;
+        double Vtr = Math.Max( (Vtmax - Vtmin).TotalSeconds, 0.001 );
+
+        // ── Decimation ────────────────────────────────────────────────
+        int Step = 1;
+        int Draw_Count = Vc;
+        if (_Settings.Enable_Decimation && Vc > _Settings.Decimation_Threshold)
+        {
+          Step = _Settings.Decimation_Step;
+          Draw_Count = Vc / Step;
+        }
+
+        using var Step_Paint = new SkiaSharp.SKPaint
+        {
+          Color = LC.To_SK_Color(),
+          StrokeWidth = 1.5f,
+          IsAntialias = true,
+          Style = SkiaSharp.SKPaintStyle.Stroke,
+          StrokeCap = SkiaSharp.SKStrokeCap.Square,  // ← square caps look
+          StrokeJoin = SkiaSharp.SKStrokeJoin.Miter,  //   better on step charts
+        };
+
+        using var Step_Path = new SkiaSharp.SKPath();
+
+        float Prev_X = 0;
+        float Prev_Y = 0;
+        bool First = true;
+
+        for (int I = 0; I < Draw_Count; I++)
+        {
+          int Di = Si + (I * Step);
+          var P = S.Points[ Di ];
+          float X = _Chart_Margin_Left +
+                     (float) ((P.Time - Vtmin).TotalSeconds / Vtr * Chart_W);
+          float Y = H - _Chart_Margin_Bottom -
+                     (float) ((P.Value - Display_Min) / Display_Range * Chart_H);
+
+          if (First)
+          {
+            Step_Path.MoveTo( X, Y );
+            First = false;
+          }
+          else
+          {
+            // horizontal segment at previous Y, then drop/rise to new Y
+            Step_Path.LineTo( X, Prev_Y );
+            Step_Path.LineTo( X, Y );
+          }
+
+          Prev_X = X;
+          Prev_Y = Y;
+        }
+
+        Canvas.DrawPath( Step_Path, Step_Paint );
+
+        // ── Last point marker ─────────────────────────────────────────
+        if (Draw_Count > 0)
+        {
+          using var Glow_Paint = new SkiaSharp.SKPaint
+          {
+            Color = LC.To_SK_Color().WithAlpha( 80 ),
+            IsAntialias = true,
+            Style = SkiaSharp.SKPaintStyle.Stroke,
+            StrokeWidth = 6f,
+          };
+          using var Dot_Paint = new SkiaSharp.SKPaint
+          {
+            Color = SkiaSharp.SKColors.White,
+            IsAntialias = true,
+            Style = SkiaSharp.SKPaintStyle.Fill,
+          };
+
+          Canvas.DrawCircle( Prev_X, Prev_Y, 5f, Glow_Paint );
+          Canvas.DrawCircle( Prev_X, Prev_Y, 3f, Dot_Paint );
+        }
+
+        Color_Index++;
+      }
+    }
+    protected void Skia_Draw_Position_Indicator(
+    SkiaSharp.SKCanvas Canvas, int W, int H )
+    {
+      using var Block = Trace_Block.Start_If_Enabled();
+
+      if (!_Enable_Rolling)
+        return;
+
+      int Total_Points = _Series.Count > 0
+                         ? _Series.Max( s => s?.Points?.Count ?? 0 ) : 0;
+      if (Total_Points <= _Max_Display_Points)
+        return;
+
+      int Indicator_Y = H - 45;
+      int Indicator_W = 200;
+      int Indicator_H = 20;
+      int Indicator_X = W - Indicator_W - 20;
+
+      // ── Background ────────────────────────────────────────────────────
+      using var Bg_Paint = new SkiaSharp.SKPaint
+      {
+        Color = _Theme.Background.To_SK_Color().WithAlpha( 200 ),
+        Style = SkiaSharp.SKPaintStyle.Fill,
+      };
+      using var Border_Paint = new SkiaSharp.SKPaint
+      {
+        Color = _Theme.Grid.To_SK_Color(),
+        Style = SkiaSharp.SKPaintStyle.Stroke,
+        StrokeWidth = 1f,
+      };
+
+      Canvas.DrawRect( Indicator_X, Indicator_Y,
+                       Indicator_W, Indicator_H, Bg_Paint );
+      Canvas.DrawRect( Indicator_X, Indicator_Y,
+                       Indicator_W, Indicator_H, Border_Paint );
+
+      // ── Position bar ──────────────────────────────────────────────────
+      int Bar_W = (int) ((double) _Max_Display_Points / Total_Points * Indicator_W);
+      int Max_Offset = Total_Points - _Max_Display_Points;
+      int Bar_X = Indicator_X +
+                         (int) ((1.0 - (double) _View_Offset / Max_Offset)
+                                 * (Indicator_W - Bar_W));
+
+      using var Bar_Paint = new SkiaSharp.SKPaint
+      {
+        Color = new SkiaSharp.SKColor( 173, 216, 230, 150 ), // LightBlue alpha 150
+        Style = SkiaSharp.SKPaintStyle.Fill,
+      };
+      Canvas.DrawRect( Bar_X, Indicator_Y + 2,
+                       Bar_W, Indicator_H - 4, Bar_Paint );
+
+      // ── Text ──────────────────────────────────────────────────────────
+      string Position_Text = _Auto_Scroll ? "Live" : $"-{_View_Offset} pts";
+
+      using var Text_Paint = new SkiaSharp.SKPaint
+      {
+        Color = _Theme.Foreground.To_SK_Color(),
+        TextSize = 11f,
+        Typeface = _Skia_UI_Typeface,
+        IsAntialias = true,
+      };
+
+      float Text_W = Text_Paint.MeasureText( Position_Text );
+      Canvas.DrawText( Position_Text,
+                       Indicator_X + (Indicator_W - Text_W) / 2f,
+                       Indicator_Y + Indicator_H - 4f,
+                       Text_Paint );
+    }
+
+
+    protected void Skia_Draw_Poll_Timing_Chart(
+    SkiaSharp.SKCanvas Canvas, int W, int H )
+    {
+      using var Block = Trace_Block.Start_If_Enabled();
+
+      if (_Skia_Grid_Paint == null ||
+           _Skia_Label_Paint == null)
+        return;
+
+      int Chart_W = W - _Chart_Margin_Left - _Chart_Margin_Right;
+      int Chart_H = H - _Chart_Margin_Top - _Chart_Margin_Bottom;
+
+      if (_Timing_Count < 2 || Chart_W < 20 || Chart_H < 20)
+      {
+        using var Empty_Paint = new SkiaSharp.SKPaint
+        {
+          Color = _Theme.Labels.To_SK_Color(),
+          TextSize = 14f,
+          IsAntialias = true,
+        };
+        Canvas.DrawText( "No timing data. Enable Capture Timing and poll first.",
+                         20, H / 2, Empty_Paint );
+        return;
+      }
+
+      int Total_Samples = Math.Min( _Timing_Count, _Timing_Buffer_Size );
+      int Sample_Count = Math.Min( Total_Samples, _Max_Display_Points );
+      int Start = (_Timing_Head - Sample_Count - _Timing_View_Offset
+                            + _Timing_Buffer_Size * 2) % _Timing_Buffer_Size;
+
+      // ── Y range ───────────────────────────────────────────────────────
+      double Max_Ms = 0, Min_Ms = double.MaxValue;
+      for (int I = 0; I < Sample_Count; I++)
+      {
+        double D = _Cycle_Timing[ (Start + I) % _Timing_Buffer_Size ].Total_Ms;
+        if (D > Max_Ms)
+          Max_Ms = D;
+        if (D < Min_Ms)
+          Min_Ms = D;
+      }
+      double Ms_Range = Math.Max( Max_Ms - Min_Ms, 20.0 );
+      double Pad = Ms_Range * 0.15;
+      double Y_Min = Math.Max( 0, Min_Ms - Pad );
+      double Y_Max = Max_Ms + Pad;
+      double Y_Range = Y_Max - Y_Min;
+
+      // ── Y axis grid and labels ─────────────────────────────────────────
+      for (int I = 0; I <= 5; I++)
+      {
+        double Frac = (double) I / 5;
+        int Y = H - _Chart_Margin_Bottom - (int) (Frac * Chart_H);
+        double Val = Y_Min + Frac * Y_Range;
+        string Lbl = $"{Val:F0} ms";
+
+        Canvas.DrawLine( _Chart_Margin_Left, Y,
+                         W - _Chart_Margin_Right, Y,
+                         _Skia_Grid_Paint );
+
+        float Text_W = _Skia_Label_Paint.MeasureText( Lbl );
+        Canvas.DrawText( Lbl,
+                         _Chart_Margin_Left - Text_W - 4,
+                         Y + _Skia_Label_Paint.TextSize / 2f - 2f,
+                         _Skia_Label_Paint );
+      }
+
+      // ── Phase bands ───────────────────────────────────────────────────
+      bool Has_Phases = _Cycle_Timing[ Start ].Comm_Ms > 0;
+      if (Has_Phases)
+      {
+        Skia_Draw_Phase_Band( Canvas, Start, Sample_Count, Chart_W, H,
+            s => s.Address_Switch_Ms,
+            Y_Min, Y_Range,
+            new SkiaSharp.SKColor( 255, 215, 0, 70 ),   // Gold
+            "Addr" );
+
+        Skia_Draw_Phase_Band( Canvas, Start, Sample_Count, Chart_W, H,
+            s => s.Address_Switch_Ms + s.Comm_Ms,
+            Y_Min, Y_Range,
+            new SkiaSharp.SKColor( 30, 144, 255, 70 ),  // DodgerBlue
+            "Comm" );
+
+        Skia_Draw_Phase_Band( Canvas, Start, Sample_Count, Chart_W, H,
+            s => s.Address_Switch_Ms + s.Comm_Ms + s.UI_Ms,
+            Y_Min, Y_Range,
+            new SkiaSharp.SKColor( 50, 205, 50, 70 ),   // LimeGreen
+            "UI" );
+
+        Skia_Draw_Phase_Band( Canvas, Start, Sample_Count, Chart_W, H,
+            s => s.Address_Switch_Ms + s.Comm_Ms + s.UI_Ms + s.Record_Ms,
+            Y_Min, Y_Range,
+            new SkiaSharp.SKColor( 255, 99, 71, 70 ),   // Tomato
+            "Rec" );
+      }
+
+      // ── Total line ────────────────────────────────────────────────────
+      var Line_Pts = new SkiaSharp.SKPoint[ Sample_Count ];
+      for (int I = 0; I < Sample_Count; I++)
+      {
+        var Samp = _Cycle_Timing[ (Start + I) % _Timing_Buffer_Size ];
+        float X = _Chart_Margin_Left +
+                     (float) I / (Sample_Count - 1) * Chart_W;
+        float Y = H - _Chart_Margin_Bottom -
+                     (float) ((Samp.Total_Ms - Y_Min) / Y_Range * Chart_H);
+        Line_Pts[ I ] = new SkiaSharp.SKPoint( X, Y );
+      }
+
+      // Fill under total line
+      using var Fill_Path = new SkiaSharp.SKPath();
+      Fill_Path.MoveTo( Line_Pts[ 0 ] );
+      for (int I = 1; I < Sample_Count; I++)
+        Fill_Path.LineTo( Line_Pts[ I ] );
+      Fill_Path.LineTo( Line_Pts[ Sample_Count - 1 ].X, H - _Chart_Margin_Bottom );
+      Fill_Path.LineTo( Line_Pts[ 0 ].X, H - _Chart_Margin_Bottom );
+      Fill_Path.Close();
+
+      using var Fill_Paint = new SkiaSharp.SKPaint
+      {
+        Color = new SkiaSharp.SKColor( 255, 255, 255, 30 ),
+        Style = SkiaSharp.SKPaintStyle.Fill,
+      };
+      Canvas.DrawPath( Fill_Path, Fill_Paint );
+
+      using var Line_Paint = new SkiaSharp.SKPaint
+      {
+        Color = SkiaSharp.SKColors.White,
+        StrokeWidth = 2f,
+        IsAntialias = true,
+        Style = SkiaSharp.SKPaintStyle.Stroke,
+      };
+      using var Line_Path = new SkiaSharp.SKPath();
+      Line_Path.MoveTo( Line_Pts[ 0 ] );
+      for (int I = 1; I < Sample_Count; I++)
+        Line_Path.LineTo( Line_Pts[ I ] );
+      Canvas.DrawPath( Line_Path, Line_Paint );
+
+      // ── Disconnect markers ────────────────────────────────────────────
+      using var Disc_Paint = new SkiaSharp.SKPaint
+      {
+        Color = SkiaSharp.SKColors.OrangeRed,
+        StrokeWidth = 1.5f,
+        IsAntialias = true,
+        Style = SkiaSharp.SKPaintStyle.Stroke,
+        PathEffect = SkiaSharp.SKPathEffect.CreateDash(
+                            new float[] { 6f, 3f }, 0f ),
+      };
+      using var Disc_Text_Paint = new SkiaSharp.SKPaint
+      {
+        Color = SkiaSharp.SKColors.OrangeRed,
+        TextSize = 11f,
+        Typeface = _Skia_UI_Typeface,
+        IsAntialias = true,
+      };
+
+      long First_Cycle = _Timing_Count - Sample_Count + 1;
+      lock (_Disconnect_Events)
+      {
+        foreach (var Evt in _Disconnect_Events)
+        {
+          long Offset = Evt.Cycle_Number - First_Cycle;
+          if (Offset < 0 || Offset >= Sample_Count)
+            continue;
+
+          float Disc_X = _Chart_Margin_Left +
+                         (float) Offset / (Sample_Count - 1) * Chart_W;
+
+          Canvas.DrawLine( Disc_X, _Chart_Margin_Top,
+                           Disc_X, H - _Chart_Margin_Bottom,
+                           Disc_Paint );
+
+          string Tag = Evt.Instrument_Name.Length > 8
+                             ? Evt.Instrument_Name[ ..8 ]
+                             : Evt.Instrument_Name;
+          float Tag_W = Disc_Text_Paint.MeasureText( Tag );
+          float Tag_X = (Disc_X + Tag_W + 4 > W - _Chart_Margin_Right)
+                             ? Disc_X - Tag_W - 2
+                             : Disc_X + 2;
+
+          Canvas.DrawText( Tag, Tag_X,
+                           _Chart_Margin_Top + 14f,
+                           Disc_Text_Paint );
+        }
+      }
+
+      // ── X axis time labels ────────────────────────────────────────────
+      int Num_X = Math.Min( 8, Chart_W / 80 );
+      for (int I = 0; I <= Num_X; I++)
+      {
+        double Frac = (double) I / Num_X;
+        int X_Pos = _Chart_Margin_Left + (int) (Frac * Chart_W);
+        int S_Idx = (int) (Frac * (Sample_Count - 1));
+        var Samp = _Cycle_Timing[ (Start + S_Idx) % _Timing_Buffer_Size ];
+        string X_Lbl = Samp.Cycle_Time.ToString( "HH:mm:ss" );
+
+        float Text_W = _Skia_Label_Paint.MeasureText( X_Lbl );
+        Canvas.DrawText( X_Lbl,
+                         X_Pos - Text_W / 2f,
+                         H - _Chart_Margin_Bottom + 14f,
+                         _Skia_Label_Paint );
+
+        Canvas.DrawLine( X_Pos, _Chart_Margin_Top,
+                         X_Pos, H - _Chart_Margin_Bottom,
+                         _Skia_Grid_Paint );
+      }
+
+      // ── Title ─────────────────────────────────────────────────────────
+      double Avg_Ms = 0;
+      for (int I = 0; I < Sample_Count; I++)
+        Avg_Ms += _Cycle_Timing[ (Start + I) % _Timing_Buffer_Size ].Total_Ms;
+      Avg_Ms /= Sample_Count;
+      double Rate = Avg_Ms > 0 ? 1000.0 / Avg_Ms : 0;
+
+      int Last_Idx = (_Timing_Head - 1 + _Timing_Buffer_Size) % _Timing_Buffer_Size;
+      string Title = $"Poll Cycle Duration  |  Avg: {Avg_Ms:F0} ms  " +
+                          $"({Rate:F2} cyc/s)  |  " +
+                          $"Last: {_Cycle_Timing[ Last_Idx ].Total_Ms:F0} ms  |  " +
+                          $"Disc: {_Disconnect_Events.Count}";
+
+      using var Title_Paint = new SkiaSharp.SKPaint
+      {
+        Color = _Theme.Foreground.To_SK_Color(),
+        TextSize = 13f,
+        Typeface = _Skia_UI_Typeface,
+        IsAntialias = true,
+        FakeBoldText = true,
+      };
+
+      float Title_W = Title_Paint.MeasureText( Title );
+      if (Title_W > Chart_W)
+        Title = $"Avg: {Avg_Ms:F0} ms  ({Rate:F2} cyc/s)  |  " +
+                $"Last: {_Cycle_Timing[ Last_Idx ].Total_Ms:F0} ms  |  " +
+                $"Disc: {_Disconnect_Events.Count}";
+
+      Canvas.DrawText( Title, _Chart_Margin_Left,
+                       _Chart_Margin_Top - 8f,
+                       Title_Paint );
+    }
+
+    protected void Skia_Draw_Phase_Band(
+        SkiaSharp.SKCanvas Canvas,
+        int Start,
+        int Sample_Count,
+        int Chart_W,
+        int H,
+        Func<Poll_Cycle_Sample, double> Value_Selector,
+        double Y_Min,
+        double Y_Range,
+        SkiaSharp.SKColor Fill_Color,
+        string Label )
+    {
+      using var Block = Trace_Block.Start_If_Enabled();
+
+      if (Sample_Count < 2)
+        return;
+
+      int Bottom = H - _Chart_Margin_Bottom;
+      int Plot_H = Bottom - _Chart_Margin_Top;
+
+      var Pts = new SkiaSharp.SKPoint[ Sample_Count ];
+      for (int I = 0; I < Sample_Count; I++)
+      {
+        var S = _Cycle_Timing[ (Start + I) % _Timing_Buffer_Size ];
+        float X = _Chart_Margin_Left +
+                  (float) I / (Sample_Count - 1) * Chart_W;
+        float Y = Bottom -
+                  (float) ((Value_Selector( S ) - Y_Min) / Y_Range * Plot_H);
+        Pts[ I ] = new SkiaSharp.SKPoint( X, Y );
+      }
+
+      using var Fill_Path = new SkiaSharp.SKPath();
+      Fill_Path.MoveTo( Pts[ 0 ] );
+      for (int I = 1; I < Sample_Count; I++)
+        Fill_Path.LineTo( Pts[ I ] );
+      Fill_Path.LineTo( Pts[ Sample_Count - 1 ].X, Bottom );
+      Fill_Path.LineTo( Pts[ 0 ].X, Bottom );
+      Fill_Path.Close();
+
+      using var Band_Paint = new SkiaSharp.SKPaint
+      {
+        Color = Fill_Color,
+        Style = SkiaSharp.SKPaintStyle.Fill,
+      };
+      Canvas.DrawPath( Fill_Path, Band_Paint );
+    }
+
 
   }
 }

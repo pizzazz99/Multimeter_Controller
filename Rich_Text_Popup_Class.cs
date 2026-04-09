@@ -398,7 +398,7 @@ namespace Rich_Text_Popup_Namespace
                                      int Label_Width = 30 )
     {
 
-      using var Block = Trace_Block.Start_If_Enabled();
+   //   using var Block = Trace_Block.Start_If_Enabled();
 
       _Rtb.SelectionFont = _Font_Mono;
       _Rtb.SelectionColor = Color.FromArgb( 90, 90, 90 );
@@ -446,7 +446,7 @@ namespace Rich_Text_Popup_Namespace
     public Rich_Text_Popup Add_Instrument_Header( string Name )
     {
 
-      using var Block = Trace_Block.Start_If_Enabled();
+    //  using var Block = Trace_Block.Start_If_Enabled();
 
       _Rtb.SelectionFont = new Font( "Courier New", 9.5F, FontStyle.Bold );
       _Rtb.SelectionColor = Color.FromArgb( 20, 100, 180 );
@@ -462,7 +462,7 @@ namespace Rich_Text_Popup_Namespace
     // -------------------------------------------------------------------------
     public Rich_Text_Popup Add_Heading_Mono( string Text )
     {
-      using var Block = Trace_Block.Start_If_Enabled();
+     // using var Block = Trace_Block.Start_If_Enabled();
 
       _Rtb.SelectionFont = new Font( "Courier New", 10.5F, FontStyle.Bold );
       _Rtb.SelectionColor = Color.FromArgb( 30, 80, 160 );
@@ -492,7 +492,7 @@ namespace Rich_Text_Popup_Namespace
                                           string Font_Name = "Courier New",
                                           float Font_Size = 10F )
     {
-      using var Block = Trace_Block.Start_If_Enabled();
+   //   using var Block = Trace_Block.Start_If_Enabled();
 
       _Rtb.SelectionFont = new Font( Font_Name, Font_Size, FontStyle.Regular );
       _Rtb.SelectionColor = _Color_Body;
@@ -508,7 +508,7 @@ namespace Rich_Text_Popup_Namespace
     // -------------------------------------------------------------------------
     public Rich_Text_Popup Add_Body_Bold( string Text )
     {
-      using var Block = Trace_Block.Start_If_Enabled();
+    //  using var Block = Trace_Block.Start_If_Enabled();
 
       Append( Text, new Font( "Segoe UI", 9.5F, FontStyle.Bold ), _Color_Body );
       return this;
@@ -537,7 +537,7 @@ namespace Rich_Text_Popup_Namespace
     // -------------------------------------------------------------------------
     public Rich_Text_Popup Add_Title( string Text )
     {
-      using var Block = Trace_Block.Start_If_Enabled();
+     // using var Block = Trace_Block.Start_If_Enabled();
 
       Append( Text, _Font_Title, _Color_Title );
       return this;
@@ -551,7 +551,7 @@ namespace Rich_Text_Popup_Namespace
     public Rich_Text_Popup Add_Heading( string Text )
     {
 
-      using var Block = Trace_Block.Start_If_Enabled();
+  //    using var Block = Trace_Block.Start_If_Enabled();
       Append( string.Empty, _Font_Body, _Color_Body );   // blank line above
       Append( Text, _Font_Heading, _Color_Heading );
       return this;
@@ -564,7 +564,7 @@ namespace Rich_Text_Popup_Namespace
     // -------------------------------------------------------------------------
     public Rich_Text_Popup Add_Body( string Text )
     {
-      using var Block = Trace_Block.Start_If_Enabled();
+  //    using var Block = Trace_Block.Start_If_Enabled();
 
       Append( Text, _Font_Body, _Color_Body );
       return this;
@@ -578,7 +578,7 @@ namespace Rich_Text_Popup_Namespace
     public Rich_Text_Popup Add_Mono( string Text )
     {
 
-      using var Block = Trace_Block.Start_If_Enabled();
+  //    using var Block = Trace_Block.Start_If_Enabled();
 
       Append( Text, _Font_Mono, _Color_Mono );
       return this;
@@ -591,7 +591,7 @@ namespace Rich_Text_Popup_Namespace
     // -------------------------------------------------------------------------
     public Rich_Text_Popup Add_Warning( string Text )
     {
-      using var Block = Trace_Block.Start_If_Enabled();
+    //  using var Block = Trace_Block.Start_If_Enabled();
 
       Append( Text, _Font_Body, _Color_Warning );
       return this;
@@ -604,7 +604,7 @@ namespace Rich_Text_Popup_Namespace
     // -------------------------------------------------------------------------
     public Rich_Text_Popup Add_Error( string Text )
     {
-      using var Block = Trace_Block.Start_If_Enabled();
+  //    using var Block = Trace_Block.Start_If_Enabled();
 
       Append( Text, _Font_Body, _Color_Error );
       return this;
@@ -617,7 +617,7 @@ namespace Rich_Text_Popup_Namespace
     // -------------------------------------------------------------------------
     public Rich_Text_Popup Add_Blank()
     {
-      using var Block = Trace_Block.Start_If_Enabled();
+   //   using var Block = Trace_Block.Start_If_Enabled();
 
       Append( string.Empty, _Font_Body, _Color_Body );
       return this;
@@ -630,7 +630,7 @@ namespace Rich_Text_Popup_Namespace
     // -------------------------------------------------------------------------
     public Rich_Text_Popup Add_Separator()
     {
-      using var Block = Trace_Block.Start_If_Enabled();
+   //   using var Block = Trace_Block.Start_If_Enabled();
 
       Append( new string( '\u2500', 58 ), _Font_Mono, _Color_Heading );
       return this;
@@ -668,7 +668,7 @@ namespace Rich_Text_Popup_Namespace
 
     private void Append( string Text, Font Font, Color Color )
     {
-      using var Block = Trace_Block.Start_If_Enabled();
+     // using var Block = Trace_Block.Start_If_Enabled();
 
       _Rtb.SelectionFont = Font;
       _Rtb.SelectionColor = Color;

@@ -40,6 +40,7 @@
     <None Remove="**\.vscode\History\**\*" />
   </ItemGroup>
 
+  
   <ItemGroup>
     <Compile Remove="Info_Popup_Form.cs" />
     <Compile Remove="Info_Popup_Form.Designer.cs" />
@@ -58,7 +59,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.6" />
+    <PackageReference Include="SkiaSharp" Version="3.119.2" />
+    <PackageReference Include="SkiaSharp.Views.WindowsForms" Version="3.119.2" />
     <PackageReference Include="System.IO.Ports" Version="10.0.5" />
+    <PackageReference Include="System.Management" Version="10.0.5" />
     <PackageReference Include="System.Windows.Forms.DataVisualization" Version="1.0.0-prerelease.20110.1" />
   </ItemGroup>
 

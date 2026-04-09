@@ -153,6 +153,7 @@
 //
 // ═══════════════════════════════════════════════════════════════════════════════
 
+using Rich_Text_Popup_Namespace;
 using System.ComponentModel;
 using System.Data.Common;
 using System.Diagnostics;
@@ -239,19 +240,20 @@ namespace Multimeter_Controller
 
 
 
-    public Recording_Playback_Form ( Application_Settings Settings )
+    public Recording_Playback_Form( Application_Settings Settings )
     {
-      InitializeComponent ( );
+      InitializeComponent();
 
-      using var Block = Trace_Block.Start_If_Enabled ( );
+      using var Block = Trace_Block.Start_If_Enabled();
 
-      // Diagnostic — remove after finding the bad call site
-      if ( Settings == null )
-        throw new ArgumentNullException ( nameof ( Settings ), "Settings must not be null" );
-      if ( Settings.Current_Theme == null )
-        throw new ArgumentNullException ( "Settings.Current_Theme", "Theme must not be null — use Application_Settings.Load() not new Application_Settings()" );
+      // ── Null guards ───────────────────────────────────────────────────
+      if (Settings == null)
+        throw new ArgumentNullException( nameof( Settings ), "Settings must not be null" );
+      if (Settings.Current_Theme == null)
+        throw new ArgumentNullException( "Settings.Current_Theme",
+            "Theme must not be null — use Application_Settings.Load() not new Application_Settings()" );
 
-
+      // ── Base class control references ─────────────────────────────────
       Chart_Panel_Control = Chart_Panel;
       Pan_Scrollbar_Control = Pan_Scrollbar;
       Auto_Scroll_Check_Control = Auto_Scroll_Check;
@@ -263,29 +265,24 @@ namespace Multimeter_Controller
       Normalize_Button_Control = Normalize_Button;
       Legend_Toggle_Button_Control = Legend_Toggle_Button;
 
-
-
-      // ─────────────────────────────────────────────────────────────────
-
-      if ( LicenseManager.UsageMode == LicenseUsageMode.Designtime )
+      if (LicenseManager.UsageMode == LicenseUsageMode.Designtime)
         return;
 
+      // ── Settings and theme ────────────────────────────────────────────
       _Settings = Settings;
-      _Theme = _Settings?.Current_Theme ?? Chart_Theme.Dark_Preset ( );
+      _Theme = _Settings.Current_Theme ?? Chart_Theme.Dark_Preset();
       Chart_Panel.BackColor = _Theme.Background;
 
       _Settings.Theme_Changed += ( s, e ) =>
       {
         _Theme = _Settings.Current_Theme;
         Chart_Panel.BackColor = _Theme.Background;
-        Chart_Panel.Invalidate ( );
+        Chart_Panel.Invalidate();
       };
 
-
-      Initialize_Chart_Refresh_Timer ( );
-
-
-      Enable_Double_Buffer ( Chart_Panel );
+      // ── Chart setup ───────────────────────────────────────────────────
+      Initialize_Chart_Refresh_Timer();
+      Enable_Double_Buffer( Chart_Panel );
       Chart_Panel.Paint += Chart_Panel_Paint;
 
       _Chart_Tooltip = new ToolTip
@@ -298,17 +295,47 @@ namespace Multimeter_Controller
       Chart_Panel.MouseMove += Chart_Panel_Control_MouseMove;
       Chart_Panel.MouseWheel += Chart_Panel_Control_Mouse_Wheel;
 
-      Populate_Measurement_Combo ( );
+      Populate_Measurement_Combo();
       Normalize_Button.Visible = _Combined_View;
-     
-      Update_Graph_Style_Availability ( );
-      Initialize_Status_Panel ( );
-      Apply_Settings ( );
+      Update_Graph_Style_Availability();
+      Initialize_Status_Panel();
+      Apply_Settings();
 
       Legend_Toggle_Button.Text = "Show Stats";
       Max_Points_Numeric.Enabled = true;
       Measurement_Combo.Enabled = false;
-      Set_Button_State ( );
+      Set_Button_State();
+
+      // ── Event wiring — must be LAST so nothing fires during setup ─────
+      Max_Points_Numeric.ValueChanged += Max_Points_Numeric_ValueChanged;
+
+      // Add alongside your existing ValueChanged wiring
+      Max_Points_Numeric.KeyDown -= Max_Points_Numeric_KeyDown;
+      Max_Points_Numeric.KeyDown += Max_Points_Numeric_KeyDown;
+
+      Max_Points_Numeric.Leave -= Max_Points_Numeric_Leave;
+      Max_Points_Numeric.Leave += Max_Points_Numeric_Leave;
+
+
+      Rolling_Check.CheckedChanged += ( s, e ) =>
+      {
+        _Enable_Rolling = Rolling_Check.Checked;
+
+        if (_Series == null || _Series.Count == 0)
+          return;
+
+        int Total_Points = _Series.Count > 0
+                           ? _Series.Max( s => s.Points.Count ) : 0;
+
+        Multimeter_Common_Helpers_Class.Update_Scrollbar_Range(
+            Pan_Scrollbar,
+            Total_Points,
+            _Max_Display_Points,
+            _Auto_Scroll,
+            ref _View_Offset );
+
+        Chart_Panel.Invalidate();
+      };
     }
 
 
@@ -497,6 +524,8 @@ namespace Multimeter_Controller
 
     public void Set_Button_State ( )
     {
+      using var Block = Trace_Block.Start_If_Enabled();
+
       if ( _Polling_File_Loading || _Instrument_File_Loading )
         return;
 
@@ -539,6 +568,7 @@ namespace Multimeter_Controller
     private async void Load_Button_Click ( object Sender, EventArgs E )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
+
       if ( _Is_Running )
       {
         MessageBox.Show (
@@ -568,29 +598,48 @@ namespace Multimeter_Controller
 
 
 
-      string Path = Dlg.FileName;
+      string File_Path = Dlg.FileName;
 
-      if ( Path.EndsWith ( "_Timing.csv", StringComparison.OrdinalIgnoreCase ) )
+      if (File_Path.EndsWith( "_Timing.csv", StringComparison.OrdinalIgnoreCase ))
       {
-        await Load_Timing_Recorded_File ( Path );
-        Refresh_Panel ( );
+        await Load_Timing_Recorded_File( File_Path );
+        Refresh_Panel();
       }
-      else if ( Path.EndsWith ( "_Multi.csv", StringComparison.OrdinalIgnoreCase ) )
+      else if (File_Path.EndsWith( "_Multi.csv", StringComparison.OrdinalIgnoreCase ))
       {
-        await Load_Instrument_Recorded_File ( Path );
-        Refresh_Panel ( );
+        await Load_Instrument_Recorded_File( File_Path );
+        Refresh_Panel();
       }
       else
-        MessageBox.Show ( "Unrecognized file type. Please select a Timing or Multi CSV file.",
+      {
+        MessageBox.Show( "Unrecognized file type. Please select a Timing or Multi CSV file.",
             "Load Error", MessageBoxButtons.OK, MessageBoxIcon.Warning );
+        return;
+      }
 
+      // ── Auto-show settings snapshot if present ────────────────
+      string Session_Folder = System.IO.Path.GetDirectoryName( File_Path )!;
+      string Settings_File = Directory.GetFiles( Session_Folder, "*_Settings.txt" )
+                                         .FirstOrDefault() ?? "";
+
+      if (!string.IsNullOrEmpty( Settings_File ))
+      {
+        var Popup = new Rich_Text_Popup( "Session Settings", 740, 700, Resizable: true );
+        Popup.Add_Title( "Session Settings" ).Add_Blank();
+
+        foreach (var Line in await File.ReadAllLinesAsync( Settings_File ))
+          Popup.Add_Mono( Line );
+
+        Popup.Form.FormClosed += ( s, e ) => Popup.Dispose();
+        Popup.Show_Non_Modal( this );
+      }
     }
 
 
 
     public void Refresh_Panel ( )
     {
-
+      using var Block = Trace_Block.Start_If_Enabled();
       Chart_Panel.Invalidate ( );
       Chart_Panel.Update ( );
     }
@@ -621,7 +670,101 @@ namespace Multimeter_Controller
       }
     }
 
+    private void Max_Points_Numeric_ValueChanged( object sender, EventArgs e )
+    {
+      using var Block = Trace_Block.Start_If_Enabled();
 
+      Max_Points_Numeric.Value = Max_Points_Numeric.Value; // force parse of typed text
+      _Max_Display_Points = (int) Max_Points_Numeric.Value;
+
+      if (_Series == null || _Series.Count == 0)
+        return;
+
+      int Total_Points = _Series.Count > 0
+                         ? _Series.Max( s => s.Points.Count ) : 0;
+
+      Multimeter_Common_Helpers_Class.Update_Scrollbar_Range(
+          Pan_Scrollbar,
+          Total_Points,
+          _Max_Display_Points,
+          _Auto_Scroll,
+          ref _View_Offset );
+
+      Chart_Panel.Invalidate();
+    }
+
+
+
+    private void Max_Points_Numeric_KeyDown( object? sender, KeyEventArgs e )
+    {
+      using var Block = Trace_Block.Start_If_Enabled();
+
+      if (e.KeyCode == Keys.Enter)
+      {
+        if (decimal.TryParse( Max_Points_Numeric.Text, out decimal parsed ))
+        {
+          decimal clamped = Math.Clamp( parsed, Max_Points_Numeric.Minimum, Max_Points_Numeric.Maximum );
+          Max_Points_Numeric.Value = clamped; // force commit
+                                              // ValueChanged will fire automatically if value changed
+                                              // but if same value, call directly:
+          if (clamped == _Max_Display_Points)
+            Max_Points_Numeric_ValueChanged( sender, EventArgs.Empty );
+        }
+        e.Handled = true;
+        e.SuppressKeyPress = true;
+      }
+    }
+    private void Rolling_Check_CheckedChanged( object sender, EventArgs e )
+    {
+      using var Block = Trace_Block.Start_If_Enabled();
+
+      Capture_Trace.Write( $" Checked         = {Rolling_Check.Checked}" );
+      Capture_Trace.Write( $" Numeric.Text    = {Max_Points_Numeric.Text}" );
+      Capture_Trace.Write( $" Numeric.Value   = {Max_Points_Numeric.Value}" );
+      Capture_Trace.Write( $" _Max_Display_Points = {_Max_Display_Points}" );
+
+      if (Rolling_Check.Checked)
+      {
+        Commit_Numeric_Value(); // parse whatever is typed right now
+      }
+      else
+      {
+        Max_Points_Numeric.Value = _Max_Display_Points;
+      }
+
+      Set_Button_State();
+    }
+
+
+    private void Commit_Numeric_Value()
+    {
+
+      using var Block = Trace_Block.Start_If_Enabled();
+
+      if (decimal.TryParse( Max_Points_Numeric.Text, out decimal parsed ))
+      {
+        decimal Clamped = Math.Clamp( parsed, Max_Points_Numeric.Minimum, Max_Points_Numeric.Maximum );
+        if (Clamped != Max_Points_Numeric.Value)
+          Max_Points_Numeric.Value = Clamped; // this WILL fire ValueChanged
+        else
+          Max_Points_Numeric_ValueChanged( null, EventArgs.Empty ); // same value, force update
+      }
+    }
+
+
+
+
+    private void Max_Points_Numeric_Leave( object? sender, EventArgs e )
+    {
+      using var Block = Trace_Block.Start_If_Enabled();
+
+      if (decimal.TryParse( Max_Points_Numeric.Text, out decimal parsed ))
+      {
+        decimal clamped = Math.Clamp( parsed, Max_Points_Numeric.Minimum, Max_Points_Numeric.Maximum );
+        if (clamped != Max_Points_Numeric.Value)
+          Max_Points_Numeric.Value = clamped; // fires ValueChanged automatically
+      }
+    }
 
     private async Task Load_Instrument_Recorded_File ( string File_Path )
     {
@@ -631,7 +774,11 @@ namespace Multimeter_Controller
 
         _Instrument_File_Loading = true;
         _Loaded_File_Path = File_Path;
-        _Max_Display_Points = (int) Max_Points_Numeric.Value;
+        _Max_Display_Points = Math.Max( 10,
+                         Math.Min( (int) Max_Points_Numeric.Value,
+                                   _Series.Count > 0
+                                       ? _Series.Max( s => s.Points.Count )
+                                       : (int) Max_Points_Numeric.Value ) );
         _View_Offset = 0;
         _Auto_Scroll = false;
 
@@ -767,7 +914,7 @@ namespace Multimeter_Controller
 
         Multimeter_Common_Helpers_Class.Update_Scrollbar_Range (
             Pan_Scrollbar,
-            _Series.Max ( s => s.Points.Count ),
+         _Series.Count > 0 ? _Series.Max( s => s.Points.Count ) : 0,
             _Max_Display_Points,
             _Auto_Scroll,
             ref _View_Offset );
@@ -797,6 +944,8 @@ namespace Multimeter_Controller
 
     private void Theme_Button_Click ( object Sender, EventArgs E )
     {
+      using var Block = Trace_Block.Start_If_Enabled();
+
       using var Dlg = new Theme_Settings_Form ( _Theme );
       if ( Dlg.ShowDialog ( this ) == DialogResult.OK )
       {
@@ -871,7 +1020,9 @@ namespace Multimeter_Controller
 
       // Default max display points
       _Max_Display_Points = _Settings.Max_Display_Points;
-      Max_Points_Numeric.Value = _Settings.Max_Display_Points;
+      Max_Points_Numeric.Value = Math.Max( Max_Points_Numeric.Minimum,
+                                 Math.Min( Max_Points_Numeric.Maximum,
+                                           _Settings.Max_Display_Points ) );
 
       // View mode defaults (only apply if no data yet)
       if ( _Series.All ( s => s.Points.Count == 0 ) )
@@ -1448,33 +1599,7 @@ namespace Multimeter_Controller
 
 
     // ── Call from a button (wire in designer) ────────────────────────────────
-    private void old_Analyze_Instrument_Data_Button_Click ( object Sender, EventArgs E )
-        => Show_Analysis_Popup ( );
-
-    private void Show_Analysis_Popup ( )
-    {
-      if ( _Series == null || _Series.Count == 0 || _Series [ 0 ].Points.Count == 0 )
-      {
-        Show_Progress ( "Analysis requires at least 1 series with data.", Color.Orange );
-        return;
-      }
-
-      var Points_A = _Series [ 0 ].Points;
-      var Points_B = _Series.Count > 1 && _Series [ 1 ].Points.Count > 0
-          ? _Series [ 1 ].Points
-          : null;
-      string Name_A = _Series [ 0 ].Name;
-      string Name_B = Points_B != null ? _Series [ 1 ].Name : "";
-
-      var Popup = new Analysis_Popup_Form (
-          Points_A,
-          Points_B,
-          Name_A,
-          Name_B,
-          _Theme
-      );
-      Popup.Show ( this );
-    }
+   
 
  
 

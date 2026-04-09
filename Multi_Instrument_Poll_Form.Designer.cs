@@ -61,6 +61,10 @@ namespace Multimeter_Controller
       Total_Time_TextBox = new TextBox();
       Start_Time_TextBox = new TextBox();
       Stop_Time_TextBox = new TextBox();
+      Render_Mode_Textbox = new TextBox();
+      Rendering_Label = new Label();
+      GPU_Monitor_Button = new Button();
+      GPU_Summary_Button = new Button();
       ((System.ComponentModel.ISupportInitialize) Delay_Numeric).BeginInit();
       ((System.ComponentModel.ISupportInitialize) Cycles_Numeric).BeginInit();
       ((System.ComponentModel.ISupportInitialize) Max_Points_Numeric).BeginInit();
@@ -220,9 +224,9 @@ namespace Multimeter_Controller
       // Max_Points_Numeric
       // 
       Max_Points_Numeric.Enabled = false;
-      Max_Points_Numeric.Increment = new decimal( new int[] { 2, 0, 0, 0 } );
+      Max_Points_Numeric.Increment = new decimal( new int[] { 1000, 0, 0, 0 } );
       Max_Points_Numeric.Location = new Point( 592, 302 );
-      Max_Points_Numeric.Maximum = new decimal( new int[] { 100000, 0, 0, 0 } );
+      Max_Points_Numeric.Maximum = new decimal( new int[] { 50_000_000, 0, 0, 0 } );
       Max_Points_Numeric.Minimum = new decimal( new int[] { 5, 0, 0, 0 } );
       Max_Points_Numeric.Name = "Max_Points_Numeric";
       Max_Points_Numeric.Size = new Size( 80, 23 );
@@ -394,9 +398,9 @@ namespace Multimeter_Controller
       // 
       // Poll_Speed_Button
       // 
-      Poll_Speed_Button.Location = new Point( 180, 236 );
+      Poll_Speed_Button.Location = new Point( 180, 235 );
       Poll_Speed_Button.Name = "Poll_Speed_Button";
-      Poll_Speed_Button.Size = new Size( 92, 23 );
+      Poll_Speed_Button.Size = new Size( 92, 24 );
       Poll_Speed_Button.TabIndex = 44;
       Poll_Speed_Button.Text = "Poll Timing";
       Poll_Speed_Button.UseVisualStyleBackColor = true;
@@ -416,7 +420,7 @@ namespace Multimeter_Controller
       Capture_Timing_Checkbox.AutoSize = true;
       Capture_Timing_Checkbox.Location = new Point( 374, 270 );
       Capture_Timing_Checkbox.Name = "Capture_Timing_Checkbox";
-      Capture_Timing_Checkbox.Size = new Size( 109, 19 );
+      Capture_Timing_Checkbox.Size = new Size( 108, 19 );
       Capture_Timing_Checkbox.TabIndex = 46;
       Capture_Timing_Checkbox.Text = "Capture Timing";
       Capture_Timing_Checkbox.UseVisualStyleBackColor = true;
@@ -434,7 +438,7 @@ namespace Multimeter_Controller
       // 
       // NPLC_Summary_Button
       // 
-      NPLC_Summary_Button.Location = new Point( 21, 58 );
+      NPLC_Summary_Button.Location = new Point( 21, 39 );
       NPLC_Summary_Button.Name = "NPLC_Summary_Button";
       NPLC_Summary_Button.Size = new Size( 75, 44 );
       NPLC_Summary_Button.TabIndex = 55;
@@ -454,7 +458,7 @@ namespace Multimeter_Controller
       // 
       // Memory_Monitor_Button
       // 
-      Memory_Monitor_Button.Location = new Point( 21, 108 );
+      Memory_Monitor_Button.Location = new Point( 21, 86 );
       Memory_Monitor_Button.Name = "Memory_Monitor_Button";
       Memory_Monitor_Button.Size = new Size( 75, 41 );
       Memory_Monitor_Button.TabIndex = 57;
@@ -467,7 +471,7 @@ namespace Multimeter_Controller
       label1.AutoSize = true;
       label1.Location = new Point( 137, 133 );
       label1.Name = "label1";
-      label1.Size = new Size( 64, 15 );
+      label1.Size = new Size( 63, 15 );
       label1.TabIndex = 60;
       label1.Text = "Start Time:";
       // 
@@ -476,7 +480,7 @@ namespace Multimeter_Controller
       label3.AutoSize = true;
       label3.Location = new Point( 137, 162 );
       label3.Name = "label3";
-      label3.Size = new Size( 64, 15 );
+      label3.Size = new Size( 63, 15 );
       label3.TabIndex = 61;
       label3.Text = "Stop Time:";
       // 
@@ -485,7 +489,7 @@ namespace Multimeter_Controller
       label4.AutoSize = true;
       label4.Location = new Point( 137, 193 );
       label4.Name = "label4";
-      label4.Size = new Size( 66, 15 );
+      label4.Size = new Size( 64, 15 );
       label4.TabIndex = 63;
       label4.Text = "Total Time:";
       // 
@@ -510,11 +514,51 @@ namespace Multimeter_Controller
       Stop_Time_TextBox.Size = new Size( 100, 23 );
       Stop_Time_TextBox.TabIndex = 67;
       // 
+      // Render_Mode_Textbox
+      // 
+      Render_Mode_Textbox.Location = new Point( 393, 130 );
+      Render_Mode_Textbox.Name = "Render_Mode_Textbox";
+      Render_Mode_Textbox.Size = new Size( 100, 23 );
+      Render_Mode_Textbox.TabIndex = 69;
+      // 
+      // Rendering_Label
+      // 
+      Rendering_Label.AutoSize = true;
+      Rendering_Label.Location = new Point( 323, 133 );
+      Rendering_Label.Name = "Rendering_Label";
+      Rendering_Label.Size = new Size( 64, 15 );
+      Rendering_Label.TabIndex = 68;
+      Rendering_Label.Text = "Rendering:";
+      // 
+      // GPU_Monitor_Button
+      // 
+      GPU_Monitor_Button.Location = new Point( 21, 130 );
+      GPU_Monitor_Button.Name = "GPU_Monitor_Button";
+      GPU_Monitor_Button.Size = new Size( 75, 41 );
+      GPU_Monitor_Button.TabIndex = 70;
+      GPU_Monitor_Button.Text = "GPU Monitor";
+      GPU_Monitor_Button.UseVisualStyleBackColor = true;
+      GPU_Monitor_Button.Click += GPU_Monitor_Button_Click;
+      // 
+      // GPU_Summary_Button
+      // 
+      GPU_Summary_Button.Location = new Point( 21, 176 );
+      GPU_Summary_Button.Name = "GPU_Summary_Button";
+      GPU_Summary_Button.Size = new Size( 75, 41 );
+      GPU_Summary_Button.TabIndex = 71;
+      GPU_Summary_Button.Text = "GPU Summary";
+      GPU_Summary_Button.UseVisualStyleBackColor = true;
+      GPU_Summary_Button.Click += GPU_Summary_Button_Click;
+      // 
       // Multi_Instrument_Poll_Form
       // 
       AutoScaleDimensions = new SizeF( 7F, 15F );
       AutoScaleMode = AutoScaleMode.Font;
       ClientSize = new Size( 943, 830 );
+      Controls.Add( GPU_Summary_Button );
+      Controls.Add( GPU_Monitor_Button );
+      Controls.Add( Render_Mode_Textbox );
+      Controls.Add( Rendering_Label );
       Controls.Add( Stop_Time_TextBox );
       Controls.Add( Start_Time_TextBox );
       Controls.Add( label4 );
@@ -626,5 +670,9 @@ namespace Multimeter_Controller
     private TextBox Total_Time_TextBox;
     private TextBox Start_Time_TextBox;
     private TextBox Stop_Time_TextBox;
+    private TextBox Render_Mode_Textbox;
+    private Label Rendering_Label;
+    private Button GPU_Monitor_Button;
+    private Button GPU_Summary_Button;
   }
 }
