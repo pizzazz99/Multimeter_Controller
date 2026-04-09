@@ -152,6 +152,121 @@
 // breakdown visible for post-session analysis.
 //
 // ═══════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
+// CHART DECIMATION  —  Design, Purpose, and Implementation Notes
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// OVERVIEW
+// ────────
+// Chart decimation is a display-only optimisation that keeps the chart
+// responsive during long polling sessions by drawing every Nth stored point
+// rather than every point. No stored data is affected — all points remain
+// in memory and are written to CSV in full.
+//
+//
+// SCENARIO: 24-HOUR DUAL INSTRUMENT SESSION (NO ROLLING WINDOW)
+// ─────────────────────────────────────────────────────────────
+// Two HP3458A meters, one reading per second each.
+//
+//   After 24 hours:
+//     Instrument 1 points = 86,400
+//     Instrument 2 points = 86,400
+//     Total stored        = 172,800
+//
+//   User settings:
+//     Enable decimation   = true
+//     Decimate above      = 10,000 points
+//     Sample every        = 17 points
+//
+//
+// WHAT HAPPENS OVER TIME
+// ──────────────────────
+//
+//   Time     Stored    Drawn    Render saving
+//   ──────   ───────   ──────   ─────────────
+//   2  hrs    14,400      848        94%
+//   6  hrs    43,200    2,541        94%
+//   12 hrs    86,400    5,082        94%
+//   24 hrs   172,800   10,164        94%
+//
+//   Render cost stays proportional to (Total / Step) which grows slowly,
+//   not proportional to Total which grows continuously. GDI+ can render
+//   ~10,000 points comfortably in real time. Without decimation it would
+//   be rendering 172,800 points by hour 24 — the chart becomes unusable.
+//
+//
+// HOW THE STEP IS CALCULATED
+// ──────────────────────────
+// The step is NOT derived automatically — it is set directly by the user
+// in Settings → Performance → "Sample every N points". This gives the
+// user full, predictable control:
+//
+//   Step = _Settings.Decimation_Step   (e.g. 17)
+//
+//   Points drawn per instrument = Visible_Count / Step
+//
+//   Example at 24 hrs:
+//     86,400 / 17 = ~5,082 points drawn per instrument
+//     ~10,164 total drawn across both instruments
+//
+//
+// USER TUNING
+// ───────────
+//   Lower step  →  more detail, slightly slower
+//   Higher step →  less detail, faster
+//
+//   Step =  5  → 24 hrs draws ~17,280 points  (more detail)
+//   Step = 17  → 24 hrs draws ~10,164 points  (balanced)
+//   Step = 50  → 24 hrs draws  ~3,456 points  (maximum speed)
+//
+//
+// WHAT IS NOT LOST
+// ────────────────
+//   • All 172,800 points remain in memory at all times
+//   • All 172,800 points are written to CSV continuously
+//   • Chart shape and trend are preserved — the user sees the correct
+//     waveform at reduced resolution during the live session
+//   • When the session ends the full dataset is available for post-
+//     session analysis and the CSV can be reloaded to see every point
+//
+//
+// CHART WARNING
+// ─────────────
+// When decimation is active the chart shows an orange warning label
+// so the user always knows the view is simplified:
+//
+//   ⚠ Decimated — drawing every 17 points  |  Showing ~10,164 of 172,800 stored
+//
+//
+// SETTINGS
+// ────────
+//   Enable_Decimation    bool   Enable / disable (default: true)
+//   Decimation_Threshold int    Point count above which decimation activates
+//                               (default: 10,000)
+//   Decimation_Step      int    Draw every Nth point (default: 10, range 2–100)
+//
+//
+// IMPLEMENTATION
+// ──────────────
+// Decimation is applied inside Build_Point_Array() in Base_Chart_Form.
+// When Visible_Count exceeds Decimation_Threshold the loop increments by
+// Step instead of 1:
+//
+//   if ( _Settings.Enable_Decimation &&
+//        Visible_Count > _Settings.Decimation_Threshold )
+//   {
+//       Step       = _Settings.Decimation_Step;
+//       Draw_Count = Visible_Count / Step;
+//   }
+//
+//   for ( int I = 0; I < Draw_Count; I++ )
+//   {
+//       int Data_Index = Start_Index + ( I * Step );
+//       // ... map to screen coordinates
+//   }
+//
+// ═══════════════════════════════════════════════════════════════════════════════
+
 
 using Rich_Text_Popup_Namespace;
 using System.Data.Common;
@@ -937,10 +1052,21 @@ namespace Multimeter_Controller
         _Baseline_Samples = 0;
 
         this.Invoke( () =>
-                     {
-                       Initialize_Current_Values_Display();
-                       // _Last_Legend_Series_Count = _Series.Count;   // sync the rebuild guard too
-                     } );
+        {
+          Initialize_Current_Values_Display();
+          // _Last_Legend_Series_Count = _Series.Count;   // sync the rebuild guard too
+
+          // ── Force rolling window ON for live session ──────────────
+          Rolling_Check.Checked = true;
+          Rolling_Check.Enabled = false;   // lock — can't turn off while polling
+          _Enable_Rolling = true;
+
+          // Cap live display at a sane number if user had it set too high
+          if (Max_Points_Numeric.Value > 5000)
+            Max_Points_Numeric.Value = 5000;
+
+          _Max_Display_Points = (int) Max_Points_Numeric.Value;
+        } );
 
         _Cycle_Stopwatch.Restart();
         var      Sw               = Stopwatch.StartNew();
@@ -1087,18 +1213,7 @@ namespace Multimeter_Controller
                   } );
                   break;  // ← let the cancellation propagate naturally to finally
                 }
-                else
-                {
-                  // Only trim when 10% over limit — reduces trim frequency dramatically
-                  int Trim_Threshold = (int) ( _Settings.Max_Display_Points * 1.1 );
-                  if ( S.Points.Count >= Trim_Threshold )
-                  {
-                    // Trim back to 90% of limit so next trim won't happen for a while
-                    int Target = (int) ( _Settings.Max_Display_Points * 0.9 );
-                    int Excess = S.Points.Count - Target;
-                    S.Points.RemoveRange( 0, Excess );
-                  }
-                }
+             
               }
 
               S.Consecutive_Errors  = 0;
@@ -2135,7 +2250,7 @@ namespace Multimeter_Controller
         Update_Graph_Style_Availability();
 
         Multimeter_Common_Helpers_Class.Update_Scrollbar_Range( Pan_Scrollbar,
-                                                                _Series.Max( s => s.Points.Count ),
+                                                                _Series.Count > 0 ? _Series.Max( s => s.Points.Count ) : 0,
                                                                 _Max_Display_Points,
                                                                 _Auto_Scroll,
                                                                 ref _View_Offset );
@@ -2172,51 +2287,83 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      if ( _File_Loading )
-        return; // ← don't draw anything while loading
+      if (_File_Loading)
+        return;
 
       Multimeter_Common_Helpers_Class.Track_FPS( ref _Paint_Count,
                                                  ref _Actual_FPS,
                                                  _FPS_Stopwatch,
                                                  Update_Performance_Status );
 
-      Graphics G          = e.Graphics;
-      G.SmoothingMode     = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+      Graphics G = e.Graphics;
+      G.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
       G.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
 
-      int       W = Chart_Panel.ClientSize.Width;
-      int       H = Chart_Panel.ClientSize.Height;
+      int W = Chart_Panel.ClientSize.Width;
+      int H = Chart_Panel.ClientSize.Height;
 
       using var Bg_Brush = new SolidBrush( _Theme.Background );
       G.FillRectangle( Bg_Brush, 0, 0, W, H );
 
       // ── Timing view overrides everything else ─────────────────────────
-      if ( _Show_Timing_View )
+      if (_Show_Timing_View)
       {
         Draw_Poll_Timing_Chart( G, W, H );
         return;
       }
-      // ─────────────────────────────────────────────────────────────────
 
-      if ( _Series.Count == 0 )
+      if (_Series.Count == 0)
       {
         Draw_Empty_State( G, W, H, "No instruments. Add instruments and press Start." );
         return;
       }
 
       bool Has_Data = _Series.Any( s => s.Visible && s.Points.Count > 0 );
-      if ( ! Has_Data )
+      if (!Has_Data)
       {
         Draw_Instrument_List( G, H );
         return;
       }
 
-      if ( _Combined_View || _Current_Graph_Style == "Pie" )
+      if (_Combined_View || _Current_Graph_Style == "Pie")
         Draw_Combined_View( G, W, H );
       else
         Draw_Split_View( G, W, H );
 
       Draw_Position_Indicator( e.Graphics, W, H );
+
+      // ── Decimation warning ────────────────────────────────────────────
+      // Drawn inside the chart area so it is never clipped by the form edge.
+      // Position it just above the bottom margin so it clears the X-axis
+      // labels but stays well inside the panel bounds.
+      if (_Settings.Enable_Decimation)
+      {
+        int Total = _Series.Sum( s => s.Points.Count );
+        if (Total > _Settings.Decimation_Threshold)
+        {
+          string Warn_Text = $"⚠ Decimated — drawing every {_Settings.Decimation_Step} points  " +
+                             $"|  Showing ~{Total / _Settings.Decimation_Step:N0} " +
+                             $"of {Total:N0} stored";
+
+
+          using var Warn_Font = new Font( "Segoe UI", 8f );
+          using var Warn_Brush = new SolidBrush( Color.Orange );
+
+          // Measure and right-align so it doesn't clash with Y-axis labels
+          SizeF Warn_Size = G.MeasureString( Warn_Text, Warn_Font );
+          float Warn_X = W - _Chart_Margin_Right - Warn_Size.Width;
+          float Warn_Y = H - _Chart_Margin_Bottom - Warn_Size.Height - 2;
+
+          // Dark background pill so it's readable over any chart color
+          using var Pill_Brush = new SolidBrush( Color.FromArgb( 180, Color.Black ) );
+          G.FillRectangle( Pill_Brush,
+                           Warn_X - 4, Warn_Y - 2,
+                           Warn_Size.Width + 8, Warn_Size.Height + 4 );
+
+          G.DrawString( Warn_Text, Warn_Font, Warn_Brush, Warn_X, Warn_Y );
+        }
+      }
+
       Capture_Trace.Write( "Paint complete" );
     }
 
@@ -2469,8 +2616,10 @@ namespace Multimeter_Controller
       Update_Chart_Refresh_Rate();
 
       // Default max display points
-      _Max_Display_Points      = _Settings.Max_Display_Points;
-      Max_Points_Numeric.Value = _Settings.Max_Display_Points;
+      _Max_Display_Points = _Settings.Max_Display_Points;
+      Max_Points_Numeric.Value = Math.Max( Max_Points_Numeric.Minimum,
+                                 Math.Min( Max_Points_Numeric.Maximum,
+                                           _Settings.Max_Display_Points ) );
 
       // View mode defaults (only apply if no data yet)
       if ( _Series.All( s => s.Points.Count == 0 ) )
@@ -2555,7 +2704,7 @@ namespace Multimeter_Controller
       // ===== TRIGGER UPDATES =====
 
       Multimeter_Common_Helpers_Class.Update_Scrollbar_Range( Pan_Scrollbar,
-                                                              _Series.Max( s => s.Points.Count ),
+                                                             _Series.Count > 0 ? _Series.Max( s => s.Points.Count ) : 0,
                                                               _Max_Display_Points,
                                                               _Auto_Scroll,
                                                               ref _View_Offset );

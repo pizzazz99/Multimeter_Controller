@@ -342,32 +342,45 @@ namespace Multimeter_Controller
 
     // ===== PERFORMANCE/MEMORY =====
 
-    [JsonPropertyName ( "max_data_points_in_memory" )]
+    [JsonPropertyName( "max_data_points_in_memory" )]
     public int Max_Data_Points_In_Memory { get; set; } = 100000;
 
-    [JsonPropertyName ( "warning_threshold_percent" )]
+    [JsonPropertyName( "warning_threshold_percent" )]
     public int Warning_Threshold_Percent { get; set; } = 80;
 
-    [JsonPropertyName ( "warn_at_threshold" )]
+    [JsonPropertyName( "warn_at_threshold" )]
     public bool Warn_At_Threshold { get; set; } = true;
 
-    [JsonPropertyName ( "throttle_when_many_points" )]
+    [JsonPropertyName( "throttle_when_many_points" )]
     public bool Throttle_When_Many_Points { get; set; } = true;
 
-    [JsonPropertyName ( "throttle_point_threshold" )]
+    [JsonPropertyName( "throttle_point_threshold" )]
     public int Throttle_Point_Threshold { get; set; } = 10000;
 
-    [JsonPropertyName ( "auto_trim_old_data" )]
+    [JsonPropertyName( "auto_trim_old_data" )]
     public bool Auto_Trim_Old_Data { get; set; } = false;
 
-    [JsonPropertyName ( "keep_last_n_points" )]
+    [JsonPropertyName( "keep_last_n_points" )]
     public int Keep_Last_N_Points { get; set; } = 10000;
 
-    [JsonPropertyName ( "reduce_refresh_rate_when_large" )]
+    [JsonPropertyName( "reduce_refresh_rate_when_large" )]
     public bool Reduce_Refresh_Rate_When_Large { get; set; } = true;
 
+    // ── Decimation ────────────────────────────────────────────────────────────
+    // When enabled, the chart draws at most Decimation_Max_Draw points
+    // regardless of how many are stored in memory.  Decimation only kicks in
+    // when the visible point count exceeds Decimation_Threshold.
+    // All stored points are always written to CSV — decimation is display-only.
+   
+[JsonPropertyName( "enable_decimation" )]
+    public bool Enable_Decimation { get; set; } = true;
 
-    // ===== Analysis ======
+    [JsonPropertyName( "decimation_threshold" )]
+    public int Decimation_Threshold { get; set; } = 10_000;  // start decimating above this
+
+    [JsonPropertyName( "decimation_step" )]
+    public int Decimation_Step { get; set; } = 10;  // draw every Nth point
+
 
     // ===== Analysis ======
     [JsonPropertyName ( "auto_analyze_after_recording" )]
@@ -578,6 +591,13 @@ namespace Multimeter_Controller
       // Default subnet to empty so Get_Local_Subnet auto-detects
       if ( Network_Scan_Subnet == null )
         Network_Scan_Subnet = "";
+
+
+      // Decimation
+      Decimation_Threshold = Math.Max( 1_000, Math.Min( 1_000_000, Decimation_Threshold ) );
+      Decimation_Step = Math.Max( 2, Math.Min( 100, Decimation_Step ) );
+
+     
 
       Skew_Warning_Threshold_Seconds = Math.Max ( 0.2, Math.Min ( 10.0, Skew_Warning_Threshold_Seconds ) );
       Stale_Data_Threshold_Seconds = Math.Max ( 0.2, Math.Min ( 60.0, Stale_Data_Threshold_Seconds ) );

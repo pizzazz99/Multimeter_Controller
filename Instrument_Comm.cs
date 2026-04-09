@@ -1742,7 +1742,21 @@ namespace Multimeter_Controller
       Capture_Trace.Write ( "Abort complete." );
     }
 
+    public string Query_Instrument_At_Address( int address, string command )
+    {
+      using var Block = Trace_Block.Start_If_Enabled();
 
+      Send_Prologix_Command( $"++addr {address}" );
+      Thread.Sleep( 50 );
+
+      Raw_Write( command );
+      Thread.Sleep( Instrument_Settle_Ms );
+
+      Raw_Write_Prologix( "++read eoi" );
+      Thread.Sleep( Prologix_Fetch_Ms );
+
+      return Read_Instrument( CancellationToken.None ) ?? "";
+    }
 
     private static bool Is_Measurement ( string Response )
     {

@@ -187,8 +187,14 @@ namespace Multimeter_Controller
     private NumericUpDown _Keep_Last_N_Numeric;
     private CheckBox _Reduce_Refresh_Check;
 
+    // Decimation controls
+    // Decimation controls
+    private CheckBox _Enable_Decimation_Check;
+    private NumericUpDown _Decimation_Threshold_Numeric;
+    private NumericUpDown _Decimation_Step_Numeric;
+
     // Analysis tab controls
-   
+
     private RadioButton _Analysis_One_Series_Radio;
     private RadioButton _Analysis_Two_Series_Radio;
     private CheckBox _Analysis_Mean_Check;
@@ -1269,6 +1275,90 @@ namespace Multimeter_Controller
         AutoSize = true
       };
       Performance_Tab.Controls.Add ( _Reduce_Refresh_Check );
+
+      Y += 35;
+
+      // ── Decimation separator ──────────────────────────────────────────────
+      Performance_Tab.Controls.Add( new Label
+      {
+        Text = "Chart Decimation:",
+        Location = new Point( 15, Y ),
+        Font = new Font( "Segoe UI", 9F, FontStyle.Bold ),
+        AutoSize = true
+      } );
+      Y += 22;
+
+      Performance_Tab.Controls.Add( new Label
+      {
+        Text = "When point count is very high, decimation draws every Nth point\n" +
+                      "keeping the chart fast without losing stored data or CSV accuracy.",
+        Location = new Point( 15, Y ),
+        AutoSize = true,
+        ForeColor = SystemColors.GrayText
+      } );
+      Y += 40;
+
+      _Enable_Decimation_Check = new CheckBox
+      {
+        Text = "Enable chart decimation (recommended for long sessions)",
+        Location = new Point( 15, Y ),
+        AutoSize = true
+      };
+      Performance_Tab.Controls.Add( _Enable_Decimation_Check );
+      Y += 30;
+
+      Performance_Tab.Controls.Add( new Label
+      {
+        Text = "Decimate above (points):",
+        Location = new Point( 15, Y ),
+        AutoSize = true
+      } );
+      _Decimation_Threshold_Numeric = new NumericUpDown
+      {
+        Location = new Point( 250, Y - 3 ),
+        Size = new Size( 100, 23 ),
+        Minimum = 1_000,
+        Maximum = 1_000_000,
+        Increment = 1_000,
+        Value = 10_000,
+        ThousandsSeparator = true
+      };
+      Performance_Tab.Controls.Add( _Decimation_Threshold_Numeric );
+      Performance_Tab.Controls.Add( new Label
+      {
+        Text = "(start decimating above this count)",
+        Location = new Point( 360, Y ),
+        AutoSize = true,
+        ForeColor = SystemColors.GrayText
+      } );
+      Y += 30;
+
+      Performance_Tab.Controls.Add( new Label
+      {
+        Text = "Sample every N points:",
+        Location = new Point( 15, Y ),
+        AutoSize = true
+      } );
+      _Decimation_Step_Numeric = new NumericUpDown
+      {
+        Location = new Point( 250, Y - 3 ),
+        Size = new Size( 80, 23 ),
+        Minimum = 2,
+        Maximum = 100,
+        Increment = 1,
+        Value = 10,
+      };
+      Performance_Tab.Controls.Add( _Decimation_Step_Numeric );
+      Performance_Tab.Controls.Add( new Label
+      {
+        Text = "(e.g. 10 = draw every 10th point above threshold)",
+        Location = new Point( 340, Y ),
+        AutoSize = true,
+        ForeColor = SystemColors.GrayText
+      } );
+
+
+
     }
 
     private void Initialize_UI_Tab ( )
@@ -1808,6 +1898,14 @@ namespace Multimeter_Controller
       _Keep_Last_N_Numeric.Value = _Settings.Keep_Last_N_Points;
       _Reduce_Refresh_Check.Checked = _Settings.Reduce_Refresh_Rate_When_Large;
 
+      // Decimation      _Enable_Decimation_Check.Checked = _Settings.Enable_Decimation;
+      _Decimation_Threshold_Numeric.Value = Math.Max( _Decimation_Threshold_Numeric.Minimum,
+                                            Math.Min( _Decimation_Threshold_Numeric.Maximum,
+                                                      _Settings.Decimation_Threshold ) );
+      _Decimation_Step_Numeric.Value = Math.Max( _Decimation_Step_Numeric.Minimum,
+                                            Math.Min( _Decimation_Step_Numeric.Maximum,
+                                                      _Settings.Decimation_Step ) );
+
       // UI tab
       _Window_Title_Text.Text = _Settings.Default_Window_Title;
       _Remember_Size_Check.Checked = _Settings.Remember_Window_Size;
@@ -1918,6 +2016,10 @@ namespace Multimeter_Controller
       _Settings.Auto_Trim_Old_Data = _Auto_Trim_Check.Checked;
       _Settings.Keep_Last_N_Points = (int) _Keep_Last_N_Numeric.Value;
       _Settings.Reduce_Refresh_Rate_When_Large = _Reduce_Refresh_Check.Checked;
+      // Decimation
+      _Settings.Enable_Decimation = _Enable_Decimation_Check.Checked;
+      _Settings.Decimation_Threshold = (int) _Decimation_Threshold_Numeric.Value;
+      _Settings.Decimation_Step = (int) _Decimation_Step_Numeric.Value;
 
       // UI tab
       _Settings.Default_Window_Title = _Window_Title_Text.Text;

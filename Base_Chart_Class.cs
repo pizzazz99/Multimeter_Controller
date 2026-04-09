@@ -278,25 +278,32 @@ namespace Multimeter_Controller
     // Subclasses supply whether polling is active
     protected virtual bool _Is_Running_State ( ) => false;
 
+    protected Pen[]? _Series_Pens;
+    protected Brush[]? _Series_Brushes;
+
     // ════════════════════════════════════════════════════════════════════
     // GDI RESOURCE MANAGEMENT
     // ════════════════════════════════════════════════════════════════════
 
-    protected void Initialize_Chart_Resources ( )
+    protected void Initialize_Chart_Resources()
     {
-      using var Block = Trace_Block.Start_If_Enabled ( );
+      using var Block = Trace_Block.Start_If_Enabled();
 
-      _Chart_Label_Font = new Font ( "Consolas", 7.5F );
-      _Chart_Name_Font = new Font ( "Segoe UI", 8F, FontStyle.Bold );
-      _Chart_X_Label_Font = new Font ( "Segoe UI", 7.5F );
-      _Chart_Grid_Pen = new Pen ( _Theme.Grid, 1f );
-      _Chart_Sep_Pen = new Pen ( _Theme.Separator, 1f )
-      {
-        DashStyle = DashStyle.Dash
-      };
-      _Chart_Label_Brush = new SolidBrush ( _Theme.Labels );
+      _Chart_Label_Font = new Font( "Consolas", 7.5F );
+      _Chart_Name_Font = new Font( "Segoe UI", 8F, FontStyle.Bold );
+      _Chart_X_Label_Font = new Font( "Segoe UI", 7.5F );
+      _Chart_Grid_Pen = new Pen( _Theme.Grid, 1f );
+      _Chart_Sep_Pen = new Pen( _Theme.Separator, 1f ) { DashStyle = DashStyle.Dash };
+      _Chart_Label_Brush = new SolidBrush( _Theme.Labels );
+
+      _Series_Pens = _Theme.Line_Colors
+                           .Select( C => new Pen( C, 2f ) )
+                           .ToArray();
+
+      _Series_Brushes = _Theme.Line_Colors
+                              .Select( C => (Brush) new SolidBrush( C ) )
+                              .ToArray();
     }
-
 
     protected void Initialize_Chart_Refresh_Timer ( )
     {
@@ -357,23 +364,36 @@ namespace Multimeter_Controller
       // call them unconditionally without needing to null-check or know whether
       // a subclass cares.
     }
-    protected void Dispose_Chart_Resources ( )
+    protected void Dispose_Chart_Resources()
     {
+      using var Block = Trace_Block.Start_If_Enabled();
 
-      using var Block = Trace_Block.Start_If_Enabled ( );
-
-      _Chart_Label_Font?.Dispose ( );
+      _Chart_Label_Font?.Dispose();
       _Chart_Label_Font = null;
-      _Chart_Name_Font?.Dispose ( );
+      _Chart_Name_Font?.Dispose();
       _Chart_Name_Font = null;
-      _Chart_X_Label_Font?.Dispose ( );
+      _Chart_X_Label_Font?.Dispose();
       _Chart_X_Label_Font = null;
-      _Chart_Grid_Pen?.Dispose ( );
+      _Chart_Grid_Pen?.Dispose();
       _Chart_Grid_Pen = null;
-      _Chart_Sep_Pen?.Dispose ( );
+      _Chart_Sep_Pen?.Dispose();
       _Chart_Sep_Pen = null;
-      _Chart_Label_Brush?.Dispose ( );
+      _Chart_Label_Brush?.Dispose();
       _Chart_Label_Brush = null;
+
+      if (_Series_Pens != null)
+      {
+        foreach (var P in _Series_Pens)
+          P?.Dispose();
+        _Series_Pens = null;
+      }
+
+      if (_Series_Brushes != null)
+      {
+        foreach (var B in _Series_Brushes)
+          B?.Dispose();
+        _Series_Brushes = null;
+      }
     }
 
 
@@ -578,41 +598,51 @@ namespace Multimeter_Controller
       return (Time_Min, Time_Max);
     }
 
-    protected PointF [ ] Build_Point_Array (
-        List<(DateTime Time, double Value)> Points,
-        DateTime Time_Min, double Time_Range_Sec,
-        double Padded_Min, double Padded_Range,
-        int Chart_W, int Sub_Bottom, int Plot_H )
+    protected PointF[] Build_Point_Array(
+     List<(DateTime Time, double Value)> Points,
+     DateTime Time_Min, double Time_Range_Sec,
+     double Padded_Min, double Padded_Range,
+     int Chart_W, int Sub_Bottom, int Plot_H )
     {
-      using var Block = Trace_Block.Start_If_Enabled ( );
-
-      var (Start_Index, Visible_Count) = Multimeter_Common_Helpers_Class.Get_Visible_Range (
+      var (Start_Index, Visible_Count) = Multimeter_Common_Helpers_Class.Get_Visible_Range(
           Points.Count, _Enable_Rolling, _Max_Display_Points, _View_Offset );
 
-      if ( Visible_Count == 0 )
-        return Array.Empty<PointF> ( );
+      if (Visible_Count == 0)
+        return Array.Empty<PointF>();
 
-      PointF [ ] Result = new PointF [ Visible_Count ];
+      // ── Decimation ────────────────────────────────────────────────────
+      int Draw_Count = Visible_Count;
+      int Step = 1;
 
-      DateTime Visible_Time_Min = Points [ Start_Index ].Time;
-      DateTime Visible_Time_Max = Points [ Start_Index + Visible_Count - 1 ].Time;
-      double Visible_Time_Range_Sec = ( Visible_Time_Max - Visible_Time_Min ).TotalSeconds;
-      if ( Visible_Time_Range_Sec < 0.001 )
+      if (_Settings.Enable_Decimation &&
+           Visible_Count > _Settings.Decimation_Threshold)
+      {
+        Step = _Settings.Decimation_Step;
+        Draw_Count = Visible_Count / Step;
+      }
+      // ─────────────────────────────────────────────────────────────────
+
+      PointF[] Result = new PointF[ Draw_Count ];
+
+      DateTime Visible_Time_Min = Points[ Start_Index ].Time;
+      DateTime Visible_Time_Max = Points[ Start_Index + Visible_Count - 1 ].Time;
+      double Visible_Time_Range_Sec = (Visible_Time_Max - Visible_Time_Min).TotalSeconds;
+      if (Visible_Time_Range_Sec < 0.001)
         Visible_Time_Range_Sec = 1.0;
 
-      for ( int I = 0; I < Visible_Count; I++ )
+      for (int I = 0; I < Draw_Count; I++)
       {
-        int Data_Index = Start_Index + I;
-        double Time_Sec = ( Points [ Data_Index ].Time - Visible_Time_Min ).TotalSeconds;
+        int Data_Index = Start_Index + (I * Step);
+
+        double Time_Sec = (Points[ Data_Index ].Time - Visible_Time_Min).TotalSeconds;
         double Time_Frac = Time_Sec / Visible_Time_Range_Sec;
-        double V_Frac = ( Points [ Data_Index ].Value - Padded_Min ) / Padded_Range;
-        float X = _Chart_Margin_Left + (float) ( Time_Frac * Chart_W );
-        float Y = Sub_Bottom - (float) ( V_Frac * Plot_H );
-        Result [ I ] = new PointF ( X, Y );
+        double V_Frac = (Points[ Data_Index ].Value - Padded_Min) / Padded_Range;
+        float X = _Chart_Margin_Left + (float) (Time_Frac * Chart_W);
+        float Y = Sub_Bottom - (float) (V_Frac * Plot_H);
+        Result[ I ] = new PointF( X, Y );
       }
       return Result;
     }
-
     protected int Get_Bin_Count ( int N )
     {
       using var Block = Trace_Block.Start_If_Enabled ( );
@@ -2175,21 +2205,20 @@ namespace Multimeter_Controller
           Pts.Add ( new PointF ( X, Y ) );
         }
 
-        if ( Pts.Count > 1 )
+        var S_Pen = _Series_Pens[ Color_Index % _Series_Pens.Length ];
+        var S_Brush = _Series_Brushes[ Color_Index % _Series_Brushes.Length ];
+
+        if (Pts.Count > 1)
+          G.DrawLines( S_Pen, Pts.ToArray() );
+
+        if (Pts.Count <= 150)
+          foreach (var Pt in Pts)
+            G.FillEllipse( S_Brush, Pt.X - 2, Pt.Y - 2, 4, 4 );
+
+        if (Pts.Count > 0)
         {
-          using var Pen = new Pen ( LC, 2f );
-          G.DrawLines ( Pen, Pts.ToArray ( ) );
-        }
-        foreach ( var Pt in Pts )
-        {
-          using var Br = new SolidBrush ( LC );
-          G.FillEllipse ( Br, Pt.X - 2, Pt.Y - 2, 4, 4 );
-        }
-        if ( Pts.Count > 0 )
-        {
-          var Last = Pts [ Pts.Count - 1 ];
-          using var Br = new SolidBrush ( LC );
-          G.FillEllipse ( Br, Last.X - 4, Last.Y - 4, 8, 8 );
+          var Last = Pts[ Pts.Count - 1 ];
+          G.FillEllipse( S_Brush, Last.X - 4, Last.Y - 4, 8, 8 );
         }
 
         Color_Index++;
@@ -2233,7 +2262,7 @@ namespace Multimeter_Controller
         double Series_Range = Series_Max - Series_Min;
 
         Color LC = _Theme.Line_Colors [ Color_Index % _Theme.Line_Colors.Length ];
-        using var Line_Pen = new Pen ( LC, 1.5f );
+        var Line_Pen = _Series_Pens[ Color_Index % _Series_Pens.Length ];
         var Pts = new List<PointF> ( Vc );
 
         for ( int I = Si; I < Si + Vc; I++ )
@@ -2316,8 +2345,8 @@ namespace Multimeter_Controller
         double Vtr = Math.Max ( ( Vtmax - Vtmin ).TotalSeconds, 0.001 );
         float Dot_Size = Vc > 100 ? 5f : Vc > 50 ? 7f : 9f;
 
-        using var Dot_Brush = new SolidBrush ( LC );
-        using var Ring_Pen = new Pen ( LC, 1.5f );
+        var Dot_Brush = _Series_Brushes[ Color_Index % _Series_Brushes.Length ];
+        var Ring_Pen = _Series_Pens[ Color_Index % _Series_Pens.Length ];
 
         for ( int I = 0; I < Vc; I++ )
         {
@@ -2397,8 +2426,7 @@ namespace Multimeter_Controller
         }
         if ( Step_Points.Count > 1 )
         {
-          using var Pen = new Pen ( LC, 1.5f );
-          G.DrawLines ( Pen, Step_Points.ToArray ( ) );
+          G.DrawLines( _Series_Pens[ Color_Index % _Series_Pens.Length ], Step_Points.ToArray() );
         }
 
         Color_Index++;

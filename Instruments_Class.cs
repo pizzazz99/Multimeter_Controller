@@ -1,142 +1,29 @@
-
-
-// ════════════════════════════════════════════════════════════════════════════════
-// FILE:    Instrument.cs
-// PROJECT: Multimeter_Controller
-// ════════════════════════════════════════════════════════════════════════════════
+// ============================================================================
+// File:        Instrument_Class.cs
+// Project:     Multimeter_Controller
+// Description: Instrument and Instrument_Series data models supporting all
+//              GPIB instrument types — DMMs, function generators, frequency
+//              counters, and LCR meters.
 //
-// PURPOSE
-//   Defines the two core data-model classes used throughout the application:
-//   Instrument (hardware identity and configuration) and Instrument_Series
-//   (time-series data + O(1) running statistics for one instrument per session).
+// Changes from previous version:
+//   - Compute_Display_Digits() extended for HP34411, HP53132, HP53181,
+//     HP33120, HP33220, HP4263
+//   - Comms_Overhead_Ms extended for all new types
+//   - Poll_Delay_Ms now routes non-DMM types through Poll_Interval_Ms
+//     instead of calculating from NPLC (which is meaningless for them)
+//   - Poll_Interval_Ms property added — fixed poll period in ms for
+//     non-DMM instruments; ignored for DMMs (they use NPLC-derived timing)
+//   - Is_DMM convenience property added
 //
-// ── CLASS: Instrument ────────────────────────────────────────────────────────
-//
-//   Represents a single physical instrument on the GPIB bus.  Holds identity,
-//   address, and measurement configuration.  Shared by reference into every
-//   Instrument_Series that wraps it.
-//
-//   Key properties
-//     Name            Display name assigned by the user or auto-detected.
-//     Meter_Roll      Role label (e.g. "DUT", "Reference") for multi-meter runs.
-//     Address         GPIB bus address (0–30).
-//     Verified        True once the address has been confirmed via IDN/ID? query.
-//     Visible         Controls chart series visibility; toggled from the legend.
-//     NPLC            Integration time in power-line cycles; drives Display_Digits.
-//     Type            Meter_Type enum; drives Display_Digits lookup.
-//     Display_Digits  Computed property — delegates to Compute_Display_Digits().
-//
-//   Compute_Display_Digits(Meter_Type, decimal NPLC)
-//     Static pure function mapping (type, NPLC) → significant digit count:
-//       HP3458A  — 4–10 digits depending on NPLC (≥0.01 → 4, ≥1000 → 10)
-//       HP34401  — fixed 6 digits
-//       HP34420  — fixed 7 digits
-//       HP3456   — fixed 6 digits
-//       others   — fixed 6 digits
-//
-//   Display / DisplayString(transportMode)
-//     Short formatted strings for list boxes and combo boxes.
-//     DisplayString omits the GPIB address in Direct Serial mode.
-//
-// ── CLASS: Instrument_Series ─────────────────────────────────────────────────
-//
-//   Wraps an Instrument with a time-series point list and incremental
-//   (Welford) running statistics so that mean, variance, min, max, and RMS
-//   are available in O(1) without iterating Points on every chart repaint.
-//
-//   Data
-//     Points          List<(DateTime Time, double Value)> — the raw sample log.
-//     Is_Recording    True while the polling loop is actively appending points.
-//     File_Stats      Optional Dictionary loaded from a recorded CSV preamble;
-//                     null during live sessions.
-//
-//   Error tracking
-//     Consecutive_Errors   Resets to 0 on each successful read; used to
-//                          trigger instrument disable after the configured
-//                          threshold.
-//     Total_Errors         Cumulative error count for the session.
-//     Disconnect_Count     Number of times the instrument was lost and re-found.
-//     Comm_Error_Count     Number of communication-level errors (timeout, etc.)
-//
-//   NPLC-derived properties (computed from Instrument.NPLC)
-//     Integration_Ms       NPLC × (1000 / 60)  — integration window in ms.
-//     Settle_Ms            Integration_Ms × 2   — accounts for autozero.
-//     Readings_Per_Min     60 000 / Settle_Ms   — single-instrument throughput.
-//     Get_Readings_Per_Min(n)  Same but divided by instrument count for
-//                          multi-meter round-robin estimates.
-//     NPLC_Warning_Text    "Slow settle" / "Moderate settle" / "Fast"
-//     NPLC_Warning_Color   Orange / Blue / Black — for status label coloring.
-//
-//   Incremental statistics  (Welford online algorithm)
-//     Add_Point_Value(double)   Must be called every time a point is appended
-//                               to Points.  Updates _Stat_N, _Stat_Mean,
-//                               _Stat_M2 (for variance), _Stat_Min, _Stat_Max,
-//                               and _Stat_Sum_Sq (for RMS) in O(1).
-//     Reset_Stats()             Clears Points and all accumulators; resets all
-//                               error counters and File_Stats.
-//
-//   O(1) stat accessors
-//     Get_Average()      Welford mean.
-//     Get_StdDev()       Sample standard deviation (Bessel-corrected, N−1).
-//     Get_Min()          Running minimum.
-//     Get_Max()          Running maximum.
-//     Get_RMS()          Root-mean-square from _Stat_Sum_Sq.
-//     Get_Range()        Max − Min.
-//     Get_Peak_To_Peak() Alias for Get_Range().
-//     Get_Last()         Most recent point value; 0 if Points is empty.
-//
-//   O(n) accessors  (kept for callers that require them)
-//     Get_Trend()        Compares the mean of the last 5 points to the
-//                        preceding 5; returns "↑", "↓", or "→" (flat < 0.1%).
-//                        Returns "—" with fewer than 10 points.
-//     Get_Sample_Rate()  (Count − 1) / total elapsed seconds across all points.
-//     Get_Average_From(source)  Average over an arbitrary point list.
-//
-// NOTES
-//   • Add_Point_Value() and Points.Add() must be called together by the caller —
-//     the class does not enforce this pairing internally.
-//   • Instrument_Series does not own the Instrument; the same Instrument
-//     instance may be referenced from the polling form and the series list
-//     simultaneously.
-//   • Display_Digits is a pass-through to Instrument.Display_Digits, ensuring
-//     chart renderers always see the current value without caching stale digits.
-//
-// AUTHOR:  [Your name]
-// CREATED: [Date]
-// ════════════════════════════════════════════════════════════════════════════════
-
-
-
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Drawing;
-using System.Threading.Tasks;
-using System.Data.Common;
-using System.Diagnostics;
-using System.Diagnostics.Metrics;
-using System.Globalization;
-using System.IO.Ports;
-using System.Threading.Channels;
-using System.Windows.Forms;
-using System.Xml.Linq;
-using Trace_Execution_Namespace;
-using static System.ComponentModel.Design.ObjectSelectorEditor;
-using static System.Runtime.InteropServices.JavaScript.JSType;
-using static Trace_Execution_Namespace.Trace_Execution;
-
-
-
+// Author:       Mike
+// Framework:    .NET 9.0, Windows Forms
+// ============================================================================
 
 namespace Multimeter_Controller
 {
   public class Instrument
   {
-
-    public int Poll_Delay_Ms => (int) ((double) NPLC / 60.0 * 1000) + Comms_Overhead_Ms;
-    public bool Is_Master { get; set; } = false;
-
+    // ── Identity ──────────────────────────────────────────────────────────
     public string Name { get; set; } = "";
     public string Meter_Roll { get; set; } = string.Empty;
     public int Address
@@ -148,26 +35,61 @@ namespace Multimeter_Controller
       get; set;
     }
     public bool Visible { get; set; } = true;
+    public bool Is_Master { get; set; } = false;
 
-    private decimal _NPLC = 1m;
-    public decimal NPLC
-    {
-      get => _NPLC;
-      set => _NPLC = value;   // no more Compute_Display_Digits call
-    }
-
-    public int Display_Digits => Compute_Display_Digits ( _Type, _NPLC );
-
+    // ── Type ──────────────────────────────────────────────────────────────
     private Meter_Type _Type;
     public Meter_Type Type
     {
       get => _Type;
-      set => _Type = value;   // no more Compute_Display_Digits call
+      set => _Type = value;
     }
 
-    public static int Compute_Display_Digits ( Meter_Type Type, decimal NPLC ) =>
+    // True for instruments whose primary job is voltage / current / resistance
+    // measurement.  False for function generators, counters, and LCR meters.
+    public bool Is_DMM =>
+        _Type == Meter_Type.HP3458 ||
+        _Type == Meter_Type.HP34401 ||
+        _Type == Meter_Type.HP34411 ||
+        _Type == Meter_Type.HP34420 ||
+        _Type == Meter_Type.HP3456 ||
+        _Type == Meter_Type.Generic_GPIB;
+
+    // ── NPLC (DMMs only) ──────────────────────────────────────────────────
+    private decimal _NPLC = 1m;
+    public decimal NPLC
+    {
+      get => _NPLC;
+      set => _NPLC = value;
+    }
+
+    // ── Poll interval for non-DMM instruments (ms) ────────────────────────
+    // For function generators, counters, and LCR meters the user sets a
+    // fixed poll period directly instead of deriving it from NPLC.
+    // Default 500 ms gives a comfortable 2 readings/sec without hammering
+    // the GPIB bus.
+    private int _Poll_Interval_Ms = 500;
+    public int Poll_Interval_Ms
+    {
+      get => _Poll_Interval_Ms;
+      set => _Poll_Interval_Ms = Math.Max( 50, value );   // floor at 50 ms
+    }
+
+    // ── Poll delay used by the poller loop ───────────────────────────────
+    // DMMs:     derived from NPLC + comms overhead  (existing behaviour)
+    // Non-DMMs: use the user-configured Poll_Interval_Ms
+    public int Poll_Delay_Ms =>
+        Is_DMM
+            ? (int) ((double) _NPLC / 60.0 * 1000) + Comms_Overhead_Ms
+            : _Poll_Interval_Ms + Comms_Overhead_Ms;
+
+    // ── Display digits ───────────────────────────────────────────────────
+    public int Display_Digits => Compute_Display_Digits( _Type, _NPLC );
+
+    public static int Compute_Display_Digits( Meter_Type Type, decimal NPLC ) =>
         Type switch
         {
+          // ── DMMs ────────────────────────────────────────────────────────
           Meter_Type.HP3458 =>
               NPLC >= 1000 ? 10 :
               NPLC >= 100 ? 9 :
@@ -175,94 +97,171 @@ namespace Multimeter_Controller
               NPLC >= 1 ? 7 :
               NPLC >= 0.1m ? 6 :
               NPLC >= 0.01m ? 5 : 4,
+
           Meter_Type.HP34401 => 6,
           Meter_Type.HP34420 => 7,
           Meter_Type.HP3456 => 6,
+
+          // HP 34411A: digit count tracks NPLC like the 3458A but tops at 6.5
+          Meter_Type.HP34411 =>
+              NPLC >= 100 ? 6 :
+              NPLC >= 10 ? 6 :
+              NPLC >= 1 ? 6 :
+              NPLC >= 0.06m ? 5 :
+              NPLC >= 0.006m ? 4 : 3,
+
+          // ── Frequency counters ──────────────────────────────────────────
+          // Display "digits" here represents the number of significant digits
+          // in a frequency reading at the default gate time.
+          Meter_Type.HP53132 => 12,   // up to 12 digits with 10 s gate
+          Meter_Type.HP53181 => 10,   // up to 10 digits with 1 s gate
+
+          // ── Function generators ─────────────────────────────────────────
+          // Represents the frequency resolution digits shown on the display.
+          Meter_Type.HP33120 => 9,    // 15 MHz, 9-digit frequency resolution
+          Meter_Type.HP33220 => 9,    // 20 MHz, 9-digit frequency resolution
+
+          // ── LCR meter ───────────────────────────────────────────────────
+          Meter_Type.HP4263 => 5,    // 5-digit measurement display
+
+          Meter_Type.Generic_GPIB => 6,
           _ => 6,
         };
 
-
+    // ── Comms overhead ───────────────────────────────────────────────────
+    // Additional latency on top of the integration / poll time.
+    // Values are conservative estimates for Prologix GPIB-USB at 9600 baud
+    // or Prologix GPIB-Ethernet.  Adjust if your bus runs faster.
     public int Comms_Overhead_Ms => Type switch
     {
-      Meter_Type.HP3458 => 333,  // ~333ms comms overhead on top of NPLC time
+      // DMMs
+      Meter_Type.HP3458 => 333,   // slow HP-IB framing
       Meter_Type.HP34401 => 20,
+      Meter_Type.HP34411 => 15,    // faster DSP path than 34401
+      Meter_Type.HP34420 => 25,
+      Meter_Type.HP3456 => 50,    // older HP-IB instrument
+
+      // Frequency counters — fast ASCII response once gate closes
+      Meter_Type.HP53132 => 30,
+      Meter_Type.HP53181 => 30,
+
+      // Function generators — query response is a short ASCII string
+      Meter_Type.HP33120 => 25,
+      Meter_Type.HP33220 => 25,
+
+      // LCR meter — measurement + ASCII response
+      Meter_Type.HP4263 => 40,
+
       Meter_Type.Generic_GPIB => 50,
       _ => 20
     };
 
+    // ── Display helpers ───────────────────────────────────────────────────
     public string Display => $"{Name}  (GPIB {Address})";
 
-    public string DisplayString ( string Transport_Mode )
+    public string DisplayString( string Transport_Mode )
     {
-      bool Is_GPIB = Transport_Mode == "Prologix_GPIB" || Transport_Mode == "Prologix_Ethernet";
+      bool Is_GPIB =
+          Transport_Mode == "Prologix_GPIB" ||
+          Transport_Mode == "Prologix_Ethernet";
       return Is_GPIB ? $"{Name}  (GPIB {Address})" : Name;
     }
   }
 
-
-
-
-
-
-  // ===== Data Model =====
-
+  // ==========================================================================
+  // Instrument_Series — wraps Instrument and accumulates time-series data
+  // ==========================================================================
   public class Instrument_Series
   {
-    public Instrument Instrument { get; set; } = new Instrument ( );
 
+    //
+    //
+    // DESCRIPTION:
+    //   Corrected timing properties for Instrument_Series. Replace the existing
+    //   Integration_Ms, Settle_Ms, Readings_Per_Min, NPLC_Warning_Text, and
+    //   NPLC_Warning_Color property definitions in Instrument_Class.cs with
+    //   these versions.
+    //
+    //   The fix ensures that non-DMM instruments (function generators, frequency
+    //   counters, LCR meters) never use the NPLC-derived timing formula, which
+    //   is meaningless for those types. Instead they use Poll_Interval_Ms, which
+    //   is a user-configurable fixed poll period set directly on the Instrument.
+    //
+    // -----------------------------------------------------------------------------
+    // PROPERTY BEHAVIOUR SUMMARY:
+    //
+    //   Property              DMM                        Non-DMM
+    //   ─────────────────     ────────────────────────   ────────────────────────
+    //   Integration_Ms        NPLC / 60 * 1000           Poll_Interval_Ms
+    //   Settle_Ms             Integration_Ms * 2          Poll_Interval_Ms
+    //   Readings_Per_Min      60000 / Settle_Ms           60000 / Poll_Interval_Ms
+    //   Get_Readings_Per_Min  60000 / (Settle_Ms * N)     60000 / (Poll_Interval_Ms * N)
+    //   NPLC_Warning_Text     Slow/Moderate/Fast          "Fixed interval"
+    //   NPLC_Warning_Color    Orange/Blue/Black           Color.Gray
+    //
+    // -----------------------------------------------------------------------------
+    // INTEGRATION NOTE:
+    //   These properties replace the equivalently-named properties in the
+    //   Instrument_Series class inside Instrument_Class.cs. No other changes
+    //   are required — all other properties and methods remain as-is.
+    //
+    // =============================================================================
+
+
+
+
+
+
+
+    public Instrument Instrument { get; set; } = new Instrument();
+
+    // ── Forwarded properties ──────────────────────────────────────────────
     public decimal NPLC
     {
       get => Instrument.NPLC;
       set => Instrument.NPLC = value;
     }
 
-    public int Disconnect_Count { get; set; } = 0;
-    public int Comm_Error_Count { get; set; } = 0;
-    public string Name => Instrument?.Name ?? "";
+    public int Poll_Interval_Ms
+    {
+      get => Instrument.Poll_Interval_Ms;
+      set => Instrument.Poll_Interval_Ms = value;
+    }
 
+    public string Name => Instrument?.Name ?? "";
     public string Role => Instrument.Meter_Roll;
     public int Address => Instrument.Address;
     public Meter_Type Type => Instrument.Type;
+    public bool Is_DMM => Instrument.Is_DMM;
+
     public bool Visible
     {
       get => Instrument.Visible;
       set => Instrument.Visible = value;
     }
-    public Dictionary<string, string> File_Stats { get; set; } = null;
-    public List<(DateTime Time, double Value)> Points { get; set; } = new ( );
-    public bool Is_Recording { get; set; } = false;
+
     public int Display_Digits => Instrument.Display_Digits;
-    public int Consecutive_Errors { get; set; } = 0;
-    public int Total_Errors { get; set; } = 0;
     public Color Line_Color
     {
       get; set;
     }
 
+    // ── Error tracking ────────────────────────────────────────────────────
+    public int Disconnect_Count { get; set; } = 0;
+    public int Comm_Error_Count { get; set; } = 0;
+    public int Consecutive_Errors { get; set; } = 0;
+    public int Total_Errors { get; set; } = 0;
 
-    // ── NPLC calculated properties ───────────────────────────────────
-    public double Integration_Ms => (double) NPLC * ( 1000.0 / 60.0 );
-    public double Settle_Ms => Integration_Ms * 2.0;   // autozero doubles it
-    public int Readings_Per_Min => Settle_Ms > 0 ? (int) ( 60000.0 / Settle_Ms ) : 0;
+    // ── Recording state ───────────────────────────────────────────────────
+    public bool Is_Recording { get; set; } = false;
+    public Dictionary<string, string> File_Stats { get; set; } = null;
+    public List<(DateTime Time, double Value)> Points { get; set; } = new();
 
-    public string NPLC_Warning_Text => Settle_Ms >= 1000 ? "Slow settle"
-                                     : Settle_Ms >= 200 ? "Moderate settle"
-                                     : "Fast";
+    // ── NPLC-derived timing (DMMs) ────────────────────────────────────────
+  
+  
 
-    public Color NPLC_Warning_Color => Settle_Ms >= 1000 ? Color.Orange
-                                     : Settle_Ms >= 200 ? Color.Blue
-                                     : Color.Black;
-
-
-    public int Get_Readings_Per_Min ( int Instrument_Count = 1 )
-    => Settle_Ms > 0
-        ? (int) ( 60000.0 / ( Settle_Ms * Instrument_Count ) )
-        : 0;
-
-
-
-
-    // ── Incremental stats ────────────────────────────────────────────
+    // ── Incremental statistics (Welford online algorithm) ─────────────────
     private int _Stat_N = 0;
     private double _Stat_Mean = 0;
     private double _Stat_M2 = 0;
@@ -270,22 +269,22 @@ namespace Multimeter_Controller
     private double _Stat_Max = double.MinValue;
     private double _Stat_Sum_Sq = 0;
 
-    // Call this every time you add a point - replaces all O(n) scans
-    public void Add_Point_Value ( double Value )
+    public void Add_Point_Value( double Value )
     {
       _Stat_N++;
       double Delta = Value - _Stat_Mean;
       _Stat_Mean += Delta / _Stat_N;
-      _Stat_M2 += Delta * ( Value - _Stat_Mean );
-      if ( Value < _Stat_Min )
+      _Stat_M2 += Delta * (Value - _Stat_Mean);
+      if (Value < _Stat_Min)
         _Stat_Min = Value;
-      if ( Value > _Stat_Max )
+      if (Value > _Stat_Max)
         _Stat_Max = Value;
       _Stat_Sum_Sq += Value * Value;
     }
-    public void Reset_Stats ( )
+
+    public void Reset_Stats()
     {
-      Points.Clear ( );
+      Points.Clear();
       Points.Capacity = 0;
       _Stat_N = 0;
       _Stat_Mean = 0;
@@ -300,45 +299,115 @@ namespace Multimeter_Controller
       File_Stats = null;
     }
 
-    // ── O(1) stat accessors ──────────────────────────────────────────
-    public double Get_Average ( ) => _Stat_N > 0 ? _Stat_Mean : 0.0;
-    public double Get_StdDev ( ) => _Stat_N > 1 ? Math.Sqrt ( _Stat_M2 / ( _Stat_N - 1 ) ) : 0.0;
-    public double Get_Min ( ) => _Stat_N > 0 ? _Stat_Min : 0.0;
-    public double Get_Max ( ) => _Stat_N > 0 ? _Stat_Max : 0.0;
-    public double Get_RMS ( ) => _Stat_N > 0 ? Math.Sqrt ( _Stat_Sum_Sq / _Stat_N ) : 0.0;
-    public double Get_Range ( ) => Get_Max ( ) - Get_Min ( );
-    public double Get_Peak_To_Peak ( ) => Get_Range ( );
-    public double Get_Last ( ) => Points.Count > 0 ? Points [ Points.Count - 1 ].Value : 0.0;
-    public int Get_Consecutive_Errors ( ) => Consecutive_Errors;
+    // ── O(1) stat accessors ───────────────────────────────────────────────
+    public double Get_Average() => _Stat_N > 0 ? _Stat_Mean : 0.0;
+    public double Get_StdDev() => _Stat_N > 1 ? Math.Sqrt( _Stat_M2 / (_Stat_N - 1) ) : 0.0;
+    public double Get_Min() => _Stat_N > 0 ? _Stat_Min : 0.0;
+    public double Get_Max() => _Stat_N > 0 ? _Stat_Max : 0.0;
+    public double Get_RMS() => _Stat_N > 0 ? Math.Sqrt( _Stat_Sum_Sq / _Stat_N ) : 0.0;
+    public double Get_Range() => Get_Max() - Get_Min();
+    public double Get_Peak_To_Peak() => Get_Range();
+    public double Get_Last() => Points.Count > 0
+                                          ? Points[ Points.Count - 1 ].Value
+                                          : 0.0;
+    public int Get_Consecutive_Errors() => Consecutive_Errors;
 
-    // ── These were already fine ──────────────────────────────────────
-    public string Get_Trend ( )
+    // ── Trend and sample rate ─────────────────────────────────────────────
+    public string Get_Trend()
     {
-      if ( Points == null || Points.Count < 10 )
+      if (Points == null || Points.Count < 10)
         return "—";
-      double Recent = Points.Skip ( Points.Count - 5 ).Average ( P => P.Value );
-      double Previous = Points.Skip ( Points.Count - 10 ).Take ( 5 ).Average ( P => P.Value );
-      double Change = ( Recent - Previous ) / Previous * 100;
-      if ( Math.Abs ( Change ) < 0.1 )
+
+      double Recent = Points.Skip( Points.Count - 5 ).Average( P => P.Value );
+      double Previous = Points.Skip( Points.Count - 10 ).Take( 5 ).Average( P => P.Value );
+      double Change = (Recent - Previous) / Previous * 100;
+
+      if (Math.Abs( Change ) < 0.1)
         return "→";
       return Change > 0 ? "↑" : "↓";
     }
 
-    public double Get_Sample_Rate ( )
+    public double Get_Sample_Rate()
     {
-      if ( Points == null || Points.Count < 2 )
+      if (Points == null || Points.Count < 2)
         return 0.0;
-      TimeSpan Elapsed = Points [ Points.Count - 1 ].Time - Points [ 0 ].Time;
-      return ( Points.Count - 1 ) / Elapsed.TotalSeconds;
+
+      TimeSpan Elapsed =
+          Points[ Points.Count - 1 ].Time - Points[ 0 ].Time;
+      return (Points.Count - 1) / Elapsed.TotalSeconds;
     }
 
-    // ── Kept for any callers that use it directly ────────────────────
-    public double Get_Average_From ( List<(DateTime Time, double Value)> Source )
+    // ── Legacy helper kept for callers that pass a source list directly ───
+    public double Get_Average_From(
+        List<(DateTime Time, double Value)> Source )
     {
-      if ( Source == null || Source.Count == 0 )
+      if (Source == null || Source.Count == 0)
         return 0.0;
-      return Source.Average ( P => P.Value );
+      return Source.Average( P => P.Value );
     }
+
+
+    
+   
+
+    // True integration time in milliseconds.
+    // For DMMs:     derived from NPLC — one power line cycle at 60 Hz = 16.67 ms.
+    //               Autozero doubles the effective settle time (handled in Settle_Ms).
+    // For non-DMMs: the NPLC concept does not apply. Return Poll_Interval_Ms so
+    //               that all downstream timing calculations remain meaningful.
+    public double Integration_Ms =>
+        Is_DMM
+            ? (double) NPLC * (1000.0 / 60.0)
+            : Poll_Interval_Ms;
+
+    // Effective settle time — the minimum time to wait between readings.
+    // For DMMs:     Integration_Ms * 2 accounts for the autozero cycle which
+    //               doubles the actual measurement time at any given NPLC.
+    // For non-DMMs: Poll_Interval_Ms is the full period between polls.
+    //               There is no autozero equivalent, so no doubling is applied.
+    public double Settle_Ms =>
+        Is_DMM
+            ? Integration_Ms * 2.0
+            : Poll_Interval_Ms;
+
+    // Estimated readings per minute at current settings with a single instrument.
+    // Returns 0 if Settle_Ms is zero (should not occur in practice).
+    public int Readings_Per_Min =>
+        Settle_Ms > 0
+            ? (int) (60000.0 / Settle_Ms)
+            : 0;
+
+    // Estimated readings per minute shared across N instruments on the same
+    // GPIB bus. Each instrument adds its own Settle_Ms to the round-robin cycle.
+    // For non-DMM instruments the same Poll_Interval_Ms is used per slot.
+    public int Get_Readings_Per_Min( int Instrument_Count = 1 ) =>
+        Settle_Ms > 0
+            ? (int) (60000.0 / (Settle_Ms * Math.Max( 1, Instrument_Count )))
+            : 0;
+
+    // Human-readable speed indicator shown in the UI.
+    // Non-DMM instruments always show "Fixed interval" since NPLC is not
+    // applicable — the rate is controlled by Poll_Interval_Ms instead.
+    public string NPLC_Warning_Text =>
+        !Is_DMM ? "Fixed interval" :
+        Settle_Ms >= 1000 ? "Slow settle" :
+        Settle_Ms >= 200 ? "Moderate settle" :
+                               "Fast";
+
+    // Colour-coded speed indicator for UI binding.
+    // Gray  — non-DMM, NPLC not applicable
+    // Orange — DMM, very slow settle (>= 1 second)
+    // Blue   — DMM, moderate settle (>= 200 ms)
+    // Black  — DMM, fast settle (< 200 ms)
+    public Color NPLC_Warning_Color =>
+        !Is_DMM ? Color.Gray :
+        Settle_Ms >= 1000 ? Color.Orange :
+        Settle_Ms >= 200 ? Color.Blue :
+                               Color.Black;
+
+
+
+
+
   }
 }
-
