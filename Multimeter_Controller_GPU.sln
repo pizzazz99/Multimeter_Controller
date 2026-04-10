@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.14.36915.13 d17.14
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Multimeter_Controller", "Multimeter_Controller.csproj", "{21186C0B-43BB-49E8-8C6E-33777F5886B0}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Multimeter_Controller_GPU", "Multimeter_Controller_GPU.csproj", "{21186C0B-43BB-49E8-8C6E-33777F5886B0}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

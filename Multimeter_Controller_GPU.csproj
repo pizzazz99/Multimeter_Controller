@@ -1,0 +1,87 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <EnableWindowsFormsDesigner>true</EnableWindowsFormsDesigner>
+    <RootNamespace>Multimeter_Controller</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591;CA1416</NoWarn>
+    <DisableFastUpToDateCheck>true</DisableFastUpToDateCheck>
+    <BuildInParallel>false</BuildInParallel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <PublishTrimmed>false</PublishTrimmed>
+  </PropertyGroup>
+
+
+  <!-- Exclusions -->
+  <PropertyGroup>
+    <DefaultItemExcludes>
+      $(DefaultItemExcludes);
+      **\.history\**;
+      **\.vscode\**;
+    </DefaultItemExcludes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="**\.history\**\*.cs" />
+    <None Remove="**\.history\**\*" />
+    <Compile Remove="**\.vscode\History\**\*.cs" />
+    <None Remove="**\.vscode\History\**\*" />
+  </ItemGroup>
+
+  
+  <ItemGroup>
+    <Compile Remove="Info_Popup_Form.cs" />
+    <Compile Remove="Info_Popup_Form.Designer.cs" />
+    <Compile Remove="Session_Settings_Form.cs" />
+    <Compile Remove="Trace_Window.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Remove="Info_Popup_Form.resx" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="Main_Form_About.txt" />
+    <None Remove="Properties\Resources\Meter_Info.txt" />
+    <None Remove="README.md" />
+    <None Remove="Recording_Playback_Form.resx-old" />
+    <None Remove="Recording_Playback_Form_Help.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Settings_Form_Help.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Main_Form_About.txt" />
+    <EmbeddedResource Include="Main_Form_Help.txt" />
+    <EmbeddedResource Include="Multi_Poll_Form_Help.txt" />
+    <EmbeddedResource Include="Recording_Playback_Form_Help.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.6" />
+    <PackageReference Include="SkiaSharp" Version="3.119.2" />
+    <PackageReference Include="SkiaSharp.Views.WindowsForms" Version="3.119.2" />
+    <PackageReference Include="System.IO.Ports" Version="10.0.5" />
+    <PackageReference Include="System.Management" Version="10.0.5" />
+    <PackageReference Include="System.Windows.Forms.DataVisualization" Version="1.0.0-prerelease.20110.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Properties\Resources\" />
+  </ItemGroup>
+  
+</Project>

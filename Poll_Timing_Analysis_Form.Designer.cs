@@ -1,16 +1,9 @@
 namespace Multimeter_Controller
 {
-  partial class Info_Popup_Form
+  partial class Poll_Timing_Analysis_Form
   {
-    /// <summary>
-    /// Required designer variable.
-    /// </summary>
     private System.ComponentModel.IContainer components = null;
 
-    /// <summary>
-    /// Clean up any resources being used.
-    /// </summary>
-    /// <param name="disposing">true if managed resources should be disposed; otherwise, false.</param>
     protected override void Dispose ( bool disposing )
     {
       if ( disposing && ( components != null ) )
@@ -22,16 +15,16 @@ namespace Multimeter_Controller
 
     #region Windows Form Designer generated code
 
-    /// <summary>
-    /// Required method for Designer support - do not modify
-    /// the contents of this method with the code editor.
-    /// </summary>
     private void InitializeComponent ( )
     {
       this.components = new System.ComponentModel.Container ( );
+      this.SuspendLayout ( );
+
       this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-      this.ClientSize = new System.Drawing.Size ( 800, 450 );
-      this.Text = "Form2";
+      this.ClientSize = new System.Drawing.Size ( 960, 640 );
+      this.Text = "Poll Timing Analysis";
+
+      this.ResumeLayout ( false );
     }
 
     #endregion

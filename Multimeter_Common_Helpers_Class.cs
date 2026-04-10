@@ -1,9 +1,160 @@
-using System;
-// ============================================================================
-// MULTIMETER_COMMON.CS
-// Shared utility methods extracted from Single_Instrument_Poll_Form
-// and Multi_Instrument_Poll_Form
-// ============================================================================
+// ════════════════════════════════════════════════════════════════════════════════
+// FILE:    Multimeter_Common_Helpers_Class.cs
+// PROJECT: Multimeter_Controller
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// PURPOSE
+//   Static utility library shared by every form and subsystem in the
+//   application.  Centralises logic that would otherwise be duplicated between
+//   Single_Instrument_Poll_Form and Multi_Instrument_Poll_Form, including
+//   NPLC command building, value formatting, CSV I/O, statistics, chart
+//   refresh throttling, scrollbar management, network scanning, and UI helpers.
+//
+// ── INSTRUMENT CONFIGURATION ─────────────────────────────────────────────────
+//
+//   Build_NPLC_Command(measurementLabel, nplcValue)
+//     Maps a human-readable measurement label (e.g. "DC Voltage") to the
+//     correct SCPI NPLC command string.  Returns null for functions that
+//     have no NPLC parameter (Freq, Period, Diode, Continuity).
+//
+//   Calculate_Settle_Ms(nplcValue, safetyFactor)
+//     Converts an NPLC string to a settle delay in milliseconds
+//     (NPLC × 16.67 ms × safetyFactor), clamped to a minimum of 50 ms.
+//     Default safety factor of 2.0 accounts for autozero.
+//
+//   Get_Meter_Type(name)
+//     Substring-matches an instrument ID string to a Meter_Type enum value.
+//     Falls back to Generic_GPIB for unrecognised strings.
+//
+// ── VALUE FORMATTING ─────────────────────────────────────────────────────────
+//
+//   Format_Value(value, unit, meter, digits)
+//     Full-precision SI-prefix formatter for chart labels and stats panels.
+//     Handles: Hz (MHz/kHz/Hz), s (ns/µs/ms/s), Ohm (MOhm/kOhm/Ohm),
+//     °C, and V/A (with milli/micro/nano prefix scaling driven by Digits).
+//     Falls back to G2 scientific notation for values below 1 nV/nA.
+//
+//   Format_Time_Span(span)
+//     Human-readable duration string: ms / s / m / h / d, one decimal place.
+//
+// ── STATISTICS ───────────────────────────────────────────────────────────────
+//
+//   Calculate_Stats(points)
+//     Single-pass O(n) computation of Min, Max, Avg, Std_Dev (population),
+//     Range, Duration, sample Rate (S/s), and Avg_Interval_Ms from a
+//     List<(DateTime, double)>.  Returns a named tuple; zero-fills on empty input.
+//
+// ── CSV FILE I/O ─────────────────────────────────────────────────────────────
+//
+//   Save_Single_Series_CSV(filePath, function, unit, points, meter)
+//     Writes a commented preamble (function, unit, capture time, statistics)
+//     followed by "Timestamp,Value" rows in InvariantCulture format.
+//
+//   Save_Multi_Series_CSV(filePath, series)
+//     Writes a preamble with per-series statistics blocks, then a merged
+//     wide-format table: one column per instrument, rows aligned to the
+//     union of all timestamps.  Missing values are written as empty cells.
+//
+//   Write_Stats_Block(writer, …)
+//     Shared helper that writes a "#  Key: Value" statistics block for one
+//     series into an already-open StreamWriter.
+//
+//   Load_CSV_Preamble(filePath)   [async]
+//     Parses the "#" comment preamble of any application CSV into a
+//     CSV_Preamble_Result containing:
+//       Lines[]          — all raw lines
+//       Header_Index     — index of the first non-comment, non-blank line
+//       Flat_Stats       — key/value pairs from un-sectioned "# Key: Value" lines
+//       Sectioned_Stats  — per-instrument stats from "# [Name]" sections
+//     Returns null and shows a MessageBox on file-not-found or no-data.
+//
+//   Parse_Single_Column_Data(lines, headerIndex)
+//     Parses "Timestamp,Value" data rows below the preamble into parallel
+//     List<double> and List<DateTime>.  Skips blank and comment lines.
+//
+// ── CHART / DISPLAY HELPERS ───────────────────────────────────────────────────
+//
+//   Calculate_Refresh_Rate(settings, totalPoints)
+//     Returns the appropriate timer interval in ms, applying the step-wise
+//     throttle multiplier (×2/×3/×4) when totalPoints exceeds the configured
+//     threshold.
+//
+//   Get_Visible_Range(totalCount, enableRolling, maxDisplayPoints, viewOffset)
+//     Computes (Start_Index, Visible_Count) for the currently visible slice
+//     of a point list, respecting rolling-window mode and pan offset.
+//     Used by both forms and by Base_Chart_Form draw helpers.
+//
+//   Track_FPS(ref paintCount, ref actualFps, stopwatch, updateStatus)
+//     Increments paintCount and recalculates FPS once per second via the
+//     supplied Stopwatch.  Calls updateStatus() after each recalculation.
+//
+//   Update_Performance_Status(perfLabel, memLabel, fps, …)
+//     Updates ToolStripStatusLabel text and ForeColor for the FPS/points
+//     display (orange below 5 FPS) and the memory usage display
+//     (orange ≥ warning threshold, red ≥ 90%).
+//
+//   Get_Next_Theme(current)
+//     Cycles through Dark → Light → Dark presets by name match.
+//
+// ── SCROLLBAR MANAGEMENT ──────────────────────────────────────────────────────
+//
+//   Update_Scrollbar_Range(scrollbar, totalPoints, maxDisplayPoints,
+//                          autoScroll, ref viewOffset)
+//     Configures HScrollBar Minimum/Maximum/LargeChange/SmallChange for the
+//     current point count.  Disables the scrollbar when all points fit in the
+//     window.  Resets Value to 0 when autoScroll is true.
+//
+// ── SETTINGS APPLICATION ──────────────────────────────────────────────────────
+//
+//   Apply_Common_Settings(settings, comm, autoSaveTimer, chartTimer, pointCount)
+//     Applies settings shared by both forms: save-folder creation, GPIB
+//     read timeout, auto-save timer start/stop, and chart refresh throttling.
+//
+// ── RECORDING UI HELPERS ──────────────────────────────────────────────────────
+//
+//   Start_Recording_UI(button)   Sets button to "Stop Rec" / red.
+//   Stop_Recording_UI(button)    Resets button to "Record" / system colors.
+//   Stop_Recording(…)            Stops recording, resets UI, shows "no data"
+//                                dialog if point count is zero, otherwise
+//                                calls the supplied Save_Recorded_Data action.
+//
+// ── MEMORY LIMIT CHECK ────────────────────────────────────────────────────────
+//
+//   Check_Memory_Limit(settings, getCount, stopRecording,
+//                      showWarning, ref warningShown)
+//     Calls stopRecording() if the point count reaches Max_Data_Points_In_Memory.
+//     Calls showWarning() once when the configurable warning threshold is crossed.
+//
+// ── STATUS STRIP INITIALIZATION ───────────────────────────────────────────────
+//
+//   Initialize_Status_Strip(owner, settings, instrumentCount)
+//     Removes any existing StatusStrip, builds Memory and Performance labels,
+//     optionally adds an Instruments count label (multi-form only), and
+//     docks the strip to the form.  Returns the two mutable labels.
+//
+// ── FILE / FOLDER HELPERS ─────────────────────────────────────────────────────
+//
+//   Get_Graph_Captures_Folder(settings)
+//     Resolves Default_Save_Folder to an absolute path.  Absolute paths are
+//     used directly; relative paths are searched upward from BaseDirectory
+//     for an existing folder, falling back to creating one beside the executable.
+//
+//   Get_Filename_From_Pattern(pattern, functionName)
+//     Expands {date}, {time}, {function} tokens in a filename pattern and
+//     appends ".csv" if not already present.
+//
+// ── NETWORK SCANNING ─────────────────────────────────────────────────────────
+//
+//   Scan_For_Prologix(subnet, timeoutMs, progress, trace)   [async]
+//     Scans subnet.1–254 in parallel (50 concurrent) via TCP port 1234.
+//     Confirms each responding host by sending "++ver\n" and checking that
+//     the response contains "Prologix".  Returns discovered IPs sorted by
+//     last octet.  Reports progress via IProgress<(int, int)>.
+//
+// AUTHOR:  [Your name]
+// CREATED: [Date]
+// ════════════════════════════════════════════════════════════════════════════════
+
 
 using System;
 using System.Collections.Concurrent;
@@ -69,31 +220,56 @@ namespace Multimeter_Controller
     // FILE / FOLDER HELPERS
     // ========================================================================
 
-    public static string Get_Graph_Captures_Folder ( string Default_Save_Folder )
+    public static string Get_Graph_Captures_Folder ( Application_Settings Settings )
     {
-      // 1. Check settings first
-      if ( !string.IsNullOrWhiteSpace ( Default_Save_Folder ) )
+
+      using var Block = Trace_Block.Start_If_Enabled();
+
+      string Folder = Settings.Default_Save_Folder;
+
+      // If user gave an absolute path, use it directly
+      if (Path.IsPathRooted( Folder ))
       {
-        Directory.CreateDirectory ( Default_Save_Folder );
-        return Default_Save_Folder;
+        Directory.CreateDirectory( Folder );
+        Capture_Trace.Write( $"  → Using rooted path: [{Folder}]" );
+        return Folder;
       }
 
-      // 2. Fall back: walk up from base directory
+      // Otherwise walk up from BaseDirectory to find project root
       string Base = AppContext.BaseDirectory;
       string? Dir = Base;
+
       while ( Dir != null )
       {
-        string Candidate = Path.Combine ( Dir, "Graph_Captures" );
+        string Candidate = Path.Combine ( Dir, Folder );
         if ( Directory.Exists ( Candidate ) )
           return Candidate;
         Dir = Directory.GetParent ( Dir )?.FullName;
       }
 
-      // 3. Last resort: create next to the executable
-      string Fallback = Path.Combine ( Base, "Graph_Captures" );
+      // Fallback: create next to executable
+      string Fallback = Path.Combine ( Base, Folder );
       Directory.CreateDirectory ( Fallback );
       return Fallback;
     }
+
+
+
+    public static string Get_Filename_From_Pattern (
+      string Pattern,
+      string Function_Name )
+    {
+      string Filename = Pattern;
+      Filename = Filename.Replace ( "{date}", DateTime.Now.ToString ( "yyyy-MM-dd" ) );
+      Filename = Filename.Replace ( "{time}", DateTime.Now.ToString ( "HH-mm-ss" ) );
+      Filename = Filename.Replace ( "{function}", Function_Name );
+
+      if ( !Filename.EndsWith ( ".csv", StringComparison.OrdinalIgnoreCase ) )
+        Filename += ".csv";
+
+      return Filename;
+    }
+
 
     // ========================================================================
     // VALUE FORMATTING
@@ -376,10 +552,15 @@ namespace Multimeter_Controller
       bool Auto_Scroll,
       ref int View_Offset )
     {
+      using var Block = Trace_Block.Start_If_Enabled ( );
+
       if ( Pan_Scrollbar == null )
         return;
 
       int Max_Offset = Math.Max ( 0, Total_Points - Max_Display_Points );
+
+     
+
 
       if ( Max_Offset <= 0 || Total_Points <= Max_Display_Points )
       {
@@ -391,12 +572,24 @@ namespace Multimeter_Controller
         return;
       }
 
-      int Large_Change = Math.Max ( 5, Max_Offset / 20 );
+      int Large_Change = Math.Max ( 1, Max_Display_Points / 10 );  // thumb represents viewport size
       Pan_Scrollbar.Minimum = 0;
-      Pan_Scrollbar.Maximum = Max_Offset + Large_Change;
+      Pan_Scrollbar.Maximum = Max_Offset + Large_Change - 1;
       Pan_Scrollbar.LargeChange = Large_Change;
-      Pan_Scrollbar.SmallChange = Math.Max ( 1, Max_Offset / 100 );
+      Pan_Scrollbar.SmallChange = Math.Max ( 1, Max_Display_Points / 100 );
       Pan_Scrollbar.Enabled = true;
+
+      Capture_Trace.Write ( $"Scrollbar:" );
+      Capture_Trace.Write ( $"  Total       = {Total_Points}" );
+      Capture_Trace.Write ( $"  Max_Display = {Max_Display_Points}" );
+      Capture_Trace.Write ( $"  Max_Offset  = {Max_Offset}" );
+      Capture_Trace.Write ( $"  Min         = {Pan_Scrollbar.Minimum}" );
+      Capture_Trace.Write ( $"  Max         = {Pan_Scrollbar.Maximum}" );
+      Capture_Trace.Write ( $"  LargeChange = {Pan_Scrollbar.LargeChange}" );
+      Capture_Trace.Write ( $"  Value       = {Pan_Scrollbar.Value}" );
+      Capture_Trace.Write ( $"  Enabled     = {Pan_Scrollbar.Enabled}" );
+
+
 
       if ( Auto_Scroll )
       {
@@ -418,27 +611,36 @@ namespace Multimeter_Controller
     // Multi form:   pass individual S.Points.Count per series
     // ========================================================================
 
-    public static (int Start_Index, int Visible_Count) Get_Visible_Range (
-      int Total_Count,
-      bool Enable_Rolling,
-      int Max_Display_Points,
-      int View_Offset )
+    public static (int Start_Index, int Visible_Count) Get_Visible_Range(
+    int Total_Count,
+    bool Enable_Rolling,
+    int Max_Display_Points,
+    int View_Offset )
     {
-      if ( Total_Count == 0 )
+      if (Total_Count == 0)
         return (0, 0);
 
-      if ( !Enable_Rolling || Total_Count <= Max_Display_Points )
+      // Always respect Max_Display_Points — show all only if within limit
+      if (Total_Count <= Max_Display_Points)
         return (0, Total_Count);
 
-      int End_Index = Total_Count - View_Offset;
-      End_Index = Math.Max ( Max_Display_Points, Math.Min ( Total_Count, End_Index ) );
+      // Rolling off — show the last Max_Display_Points with no offset
+      if (!Enable_Rolling)
+      {
+        int Start = Math.Max( 0, Total_Count - Max_Display_Points );
+        return (Start, Math.Min( Max_Display_Points, Total_Count - Start ));
+      }
 
-      int Start_Index = Math.Max ( 0, End_Index - Max_Display_Points );
+      // Rolling on — respect View_Offset for panning
+      int End_Index = Total_Count - View_Offset;
+      End_Index = Math.Max( Max_Display_Points,
+                     Math.Min( Total_Count, End_Index ) );
+
+      int Start_Index = Math.Max( 0, End_Index - Max_Display_Points );
       int Visible_Count = End_Index - Start_Index;
 
       return (Start_Index, Visible_Count);
     }
-
     public static void Update_Performance_Status (
       ToolStripStatusLabel? Performance_Label,
       ToolStripStatusLabel? Memory_Label,
@@ -612,7 +814,7 @@ namespace Multimeter_Controller
       // Column headers
       Writer.Write ( "Timestamp" );
       foreach ( var (Name, _) in Series )
-        Writer.Write ( $",\"{Name}\"" );
+        Writer.Write ( $",{Name}" );
       Writer.WriteLine ( );
 
       // Merged timestamp rows
@@ -642,41 +844,64 @@ namespace Multimeter_Controller
     // Both forms call this then handle the data differently
     // ========================================================================
 
-    public static bool Load_CSV_Preamble (
-      string File_Path,
-      out string [ ] Lines,
-      out int Header_Index,
-      out Dictionary<string, string> Flat_Stats,
-      out Dictionary<string, Dictionary<string, string>> Sectioned_Stats )
-    {
-      Lines = Array.Empty<string> ( );
-      Header_Index = -1;
-      Flat_Stats = new Dictionary<string, string> ( );
-      Sectioned_Stats = new Dictionary<string, Dictionary<string, string>> ( );
 
+    public class CSV_Preamble_Result
+    {
+      public string [ ] Lines
+      {
+        get; init;
+      }
+      public int Header_Index
+      {
+        get; init;
+      }
+      public Dictionary<string, string> Flat_Stats
+      {
+        get; init;
+      }
+      public Dictionary<string, Dictionary<string, string>> Sectioned_Stats
+      {
+        get; init;
+      }
+    }
+
+
+
+
+    public static async Task<CSV_Preamble_Result?> Load_CSV_Preamble ( string File_Path )
+    {
       if ( !File.Exists ( File_Path ) )
       {
         MessageBox.Show ( "File not found.", "Load Error",
           MessageBoxButtons.OK, MessageBoxIcon.Warning );
-        return false;
+        return null;
       }
 
-      Lines = File.ReadAllLines ( File_Path );
+      string [ ] Lines = await File.ReadAllLinesAsync ( File_Path );
 
-      // Parse header comments
+      int Header_Index = -1;
+      var Flat_Stats = new Dictionary<string, string> ( );
+      var Sectioned_Stats = new Dictionary<string, Dictionary<string, string>> ( );
       string? Current_Section = null;
 
       foreach ( string Line in Lines )
       {
         if ( Line.StartsWith ( "# [" ) && Line.EndsWith ( "]" ) )
         {
-          // Sectioned stats: "# [Instrument Name]"
           Current_Section = Line.Substring ( 3, Line.Length - 4 );
           Sectioned_Stats [ Current_Section ] = new Dictionary<string, string> ( );
         }
-        else if ( Line.StartsWith ( "# Unit:" ) )
+        else if ( Line.StartsWith ( "# Unit" ) )
         {
-          Flat_Stats [ "Unit" ] = Line.Substring ( "# Unit:".Length ).Trim ( );
+          int Colon = Line.IndexOf ( ':' );
+          if ( Colon > 0 )
+            Flat_Stats [ "Unit" ] = Line.Substring ( Colon + 1 ).Trim ( );
+        }
+        else if ( Line.StartsWith ( "# Measurement" ) )
+        {
+          int Colon = Line.IndexOf ( ':' );
+          if ( Colon > 0 )
+            Flat_Stats [ "Measurement" ] = Line.Substring ( Colon + 1 ).Trim ( );
         }
         else if ( Line.StartsWith ( "#   " ) )
         {
@@ -686,8 +911,6 @@ namespace Multimeter_Controller
           {
             string Key = Stat.Substring ( 0, Colon_Idx ).Trim ( );
             string Value = Stat.Substring ( Colon_Idx + 1 ).Trim ( );
-
-            // Add to current section if in one, otherwise flat
             if ( Current_Section != null )
               Sectioned_Stats [ Current_Section ] [ Key ] = Value;
             else
@@ -696,7 +919,6 @@ namespace Multimeter_Controller
         }
       }
 
-      // Find first non-comment non-empty line (header row)
       for ( int I = 0; I < Lines.Length; I++ )
       {
         if ( !Lines [ I ].StartsWith ( "#" ) && !string.IsNullOrWhiteSpace ( Lines [ I ] ) )
@@ -710,12 +932,20 @@ namespace Multimeter_Controller
       {
         MessageBox.Show ( "No valid data found in file.", "Load Error",
           MessageBoxButtons.OK, MessageBoxIcon.Warning );
-        return false;
+        return null;
       }
 
-      return true;
+      return new CSV_Preamble_Result
+      {
+        Lines = Lines,
+        Header_Index = Header_Index,
+        Flat_Stats = Flat_Stats,
+        Sectioned_Stats = Sectioned_Stats
+      };
     }
 
+
+  
 
     // ========================================================================
     // CSV DATA ROW PARSING - SINGLE COLUMN
@@ -734,7 +964,7 @@ namespace Multimeter_Controller
         if ( string.IsNullOrEmpty ( Line ) || Line.StartsWith ( "#" ) )
           continue;
 
-        string [ ] Parts = Multimeter_Common_Helpers_Class.Parse_CSV_Line ( Line );
+        string [ ] Parts = Line.Split ( ',' );
         if ( Parts.Length < 2 )
           continue;
 
@@ -869,14 +1099,10 @@ namespace Multimeter_Controller
         try
         {
           string IP = $"{Subnet}.{I}";
+          Trace?.Invoke ( $"  Trying {IP}" );
 
-          // Step 1: quick ping to skip dead hosts
-          using var Ping = new Ping ( );
-          var Reply = await Ping.SendPingAsync ( IP, Timeout_Ms / 2 );
-          if ( Reply.Status != IPStatus.Success )
-            return;
-
-          // Step 2: try to connect and identify as Prologix
+          // Skip ping - Prologix may not respond to ICMP
+          // Go straight to TCP connect on port 1234
           if ( await Is_Prologix ( IP, 1234, Timeout_Ms, Trace ) )
           {
             Trace?.Invoke ( $"  ✓ Confirmed Prologix at {IP}" );
@@ -907,6 +1133,7 @@ namespace Multimeter_Controller
     {
       try
       {
+
         using var TCP = new TcpClient ( );
         using var CTS = new CancellationTokenSource ( Timeout_Ms );
 
@@ -914,7 +1141,11 @@ namespace Multimeter_Controller
         {
           await TCP.ConnectAsync ( IP, Port, CTS.Token );
         }
-        catch { return false; }
+        
+        catch ( Exception Ex )
+        {
+          return false;
+        }
 
         if ( !TCP.Connected )
           return false;
@@ -941,6 +1172,13 @@ namespace Multimeter_Controller
         int Bytes = Read_Task.Result;
         string Response = Encoding.ASCII.GetString ( Buf, 0, Bytes ).Trim ( );
         Trace?.Invoke ( $"  {IP} ver response: '{Response}'" );
+
+        if ( await Task.WhenAny ( Read_Task, Task.Delay ( Timeout_Ms ) ) != Read_Task )
+        {
+          Trace?.Invoke ( $"  {IP} read timed out" );
+          return false;
+        }
+
         return Response.Contains ( "Prologix", StringComparison.OrdinalIgnoreCase );
       }
       catch
@@ -952,6 +1190,20 @@ namespace Multimeter_Controller
 
 
 
+    public static Meter_Type Get_Meter_Type ( string Name )
+    {
+      if ( Name.Contains ( "34401" ) )
+        return Meter_Type.HP34401;
+      if ( Name.Contains ( "33120" ) )
+        return Meter_Type.HP33120;
+      if ( Name.Contains ( "34420" ) )
+        return Meter_Type.HP34420;
+      if ( Name.Contains ( "53132" ) )
+        return Meter_Type.HP53132;
+      if ( Name.Contains ( "3458" ) )
+        return Meter_Type.HP3458;
+      return Meter_Type.Generic_GPIB;
+    }
 
     public static int Calculate_Settle_Ms ( string NPLC_Value, double Safety_Factor = 2.0 )
     {
@@ -962,33 +1214,6 @@ namespace Multimeter_Controller
       double Measurement_Ms = NPLC * ( 1000.0 / 60.0 );
       return Math.Max ( 50, (int) ( Measurement_Ms * Safety_Factor ) );
     }
-
-
-    public static string [ ] Parse_CSV_Line ( string Line )
-    {
-      var Fields = new List<string> ( );
-      bool In_Quotes = false;
-      var Current = new System.Text.StringBuilder ( );
-      foreach ( char C in Line )
-      {
-        if ( C == '"' )
-        {
-          In_Quotes = !In_Quotes;
-        }
-        else if ( C == ',' && !In_Quotes )
-        {
-          Fields.Add ( Current.ToString ( ) );
-          Current.Clear ( );
-        }
-        else
-        {
-          Current.Append ( C );
-        }
-      }
-      Fields.Add ( Current.ToString ( ) );
-      return Fields.ToArray ( );
-    }
-
 
   }
 }
