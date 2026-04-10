@@ -65,64 +65,7 @@ namespace Multimeter_Controller
                                                long SharedSystemMemory );
 
     // ── Public API ────────────────────────────────────────────────────────────
-    public static bool old_GPU_Available()
-    {
-      // Pass 1: LibreHardwareMonitor
-      try
-      {
-        var Computer = new LibreHardwareMonitor.Hardware.Computer { IsGpuEnabled = true };
-        Computer.Open();
-        bool Found = Computer.Hardware.Any(
-          H => H.HardwareType == LibreHardwareMonitor.Hardware.HardwareType.GpuNvidia ||
-               H.HardwareType == LibreHardwareMonitor.Hardware.HardwareType.GpuAmd ||
-               H.HardwareType == LibreHardwareMonitor.Hardware.HardwareType.GpuIntel );
-        Computer.Close();
-        if (Found)
-          return true;
-      }
-      catch
-      {
-      }
-
-      // Pass 2: WMI
-      try
-      {
-        using var Searcher = new ManagementObjectSearcher( "SELECT Name, AdapterCompatibility FROM " +
-                                                           "Win32_VideoController" );
-
-        foreach (ManagementObject Obj in Searcher.Get())
-        {
-          var Name = Obj[ "Name" ]?.ToString() ?? "";
-          var Compat = Obj[ "AdapterCompatibility" ]?.ToString() ?? "";
-
-          bool Is_Software = Name.IndexOf( "Microsoft Basic", StringComparison.OrdinalIgnoreCase ) >= 0 ||
-                             Name.IndexOf( "Remote Desktop", StringComparison.OrdinalIgnoreCase ) >= 0 ||
-                             Name.IndexOf( "VirtualBox", StringComparison.OrdinalIgnoreCase ) >= 0 ||
-                             Name.IndexOf( "VMware", StringComparison.OrdinalIgnoreCase ) >= 0 ||
-                             Compat.IndexOf( "Microsoft", StringComparison.OrdinalIgnoreCase ) >= 0;
-
-          if (!Is_Software)
-            return true;
-        }
-      }
-      catch
-      {
-      }
-
-      // Pass 3: DXGI
-      try
-      {
-        return GPU_Helper.Check_Via_DXGI();
-      }
-      catch
-      {
-      }
-
-      return false;
-    }
-
-
-
+  
 
 
     public static bool GPU_Available()

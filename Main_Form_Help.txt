@@ -1,0 +1,256 @@
+═══════════════════════════════════════════════════════════════
+  MULTI-INSTRUMENT POLLER — LAUNCHER
+═══════════════════════════════════════════════════════════════
+
+  The Launcher is the main control window for the Multi-Instrument
+  Poller. From here you configure your connection, build your
+  instrument list, send commands, and launch a polling session.
+
+
+═══════════════════════════════════════════════════════════════
+  COMMANDS PANEL  (left side)
+═══════════════════════════════════════════════════════════════
+
+  Displays all supported GPIB commands for the currently selected
+  instrument. Click a command to see its full syntax, parameters,
+  default value, and an example in the detail box to the right.
+
+  Dictionary
+  ──────────
+  Opens the full searchable command reference for the selected
+  instrument in a separate window.
+
+  Send Command
+  ────────────
+  Type or select a command and press Execute to send it to the
+  instrument. Query commands ending in ? return a response that
+  is shown in the Response box below.
+
+  Raw Diagnostic
+  ──────────────
+  Sends the contents of the Send Command box without any
+  formatting or interpretation. Use this for low-level
+  troubleshooting or sending Prologix ++ commands directly.
+
+  Command History
+  ───────────────
+  Shows the last 50 commands sent during this session.
+  Double-click any entry to reload it into the Send Command
+  box for re-execution or editing.
+
+  Response Box
+  ────────────
+  Displays all responses received from instruments, connection
+  events, verification results, and diagnostic output.
+
+
+═══════════════════════════════════════════════════════════════
+  GPIB INSTRUMENTS PANEL  (center-right)
+═══════════════════════════════════════════════════════════════
+
+  Name / Type / GPIB Address
+  ──────────────────────────
+  Enter the instrument name, select its type from the dropdown,
+  and set its GPIB address before clicking Add. If connected,
+  the application will verify the instrument is present on the
+  bus before adding it to the list.
+
+  Add / Remove
+  ────────────
+  Add instruments one at a time. If the detected instrument type
+  does not match the selected type, you will be prompted to
+  correct it. Remove deletes the selected instrument from the
+  list.
+
+  Scan Bus
+  ────────
+  Automatically scans all GPIB addresses 1–30 and adds any
+  instruments found. Useful for quickly discovering what is
+  connected without manual entry.
+
+  Instrument List
+  ───────────────
+  Shows all configured instruments. Click an entry to switch
+  the Commands panel and NPLC context to that instrument.
+  Double-click to switch and select in one step.
+
+  Meter Roll
+  ──────────
+  Assigns a descriptive label to an instrument for use during
+  a multi-instrument polling session. Each instrument must have
+  a unique role label. The field is locked after the first
+  instrument is added.
+
+  NPLC
+  ────
+  Controls the integration time and noise rejection for the
+  selected instrument. Higher NPLC values give better noise
+  rejection but slower readings.
+
+    0.02 PLC  — Very fast, minimal noise rejection (~4.5 digits)
+    1    PLC  — Full line-cycle rejection (~6.5 digits)
+    10   PLC  — sqrt(10) noise reduction vs 1 PLC
+    100  PLC  — Maximum noise rejection, ~1.67 s per reading
+
+  Apply to All
+  ────────────
+  Sets the same NPLC value across all instruments that support
+  it. Instruments that do not support the selected value are
+  skipped.
+
+  Master Instrument
+  ─────────────────
+  When three or more instruments are configured, a Master must
+  be selected. All delta measurements in the polling session
+  are calculated relative to the master instrument's readings.
+  The dropdown is disabled when fewer than three instruments
+  are present.
+
+  About Selections
+  ────────────────
+  Explains why a master instrument is required when three or
+  more instruments are configured.
+
+  Launch Poller
+  ─────────────
+  Opens the Multi-Instrument Polling session window. All
+  instruments must be configured and a master selected (if
+  three or more are present) before launching.
+
+  About NPLC
+  ──────────
+  Opens a detailed technical reference on NPLC, integration
+  time, noise rejection, and the speed vs. accuracy trade-off.
+
+
+═══════════════════════════════════════════════════════════════
+  CONNECTION SETTINGS PANEL  (right side)
+═══════════════════════════════════════════════════════════════
+
+  Connection Mode
+  ───────────────
+  Select the interface used to communicate with the Prologix
+  adapter or instrument:
+
+    Prologix GPIB     — USB-to-GPIB via Prologix GPIB-USB-HS
+    Direct Serial     — RS-232 direct connection to instrument
+    Ethernet          — TCP/IP via Prologix GPIB-ETHERNET
+
+  Serial Settings
+  ───────────────
+  Configure COM port, baud rate, data bits, parity, stop bits,
+  flow control, and read timeout. These settings apply to both
+  Prologix GPIB-USB and Direct Serial modes. Settings are
+  locked while connected.
+
+    Defaults — Restores all serial settings to recommended
+               values for the selected connection mode.
+
+  IP Address / Subnet
+  ───────────────────
+  For Ethernet mode, enter the Prologix IP address manually
+  or use Find Prologix IP to scan the local subnet and detect
+  the adapter automatically.
+
+  Prologix Settings
+  ─────────────────
+  Find Prologix IP  — Scans the local network subnet for a
+                      Prologix GPIB-ETHERNET adapter and fills
+                      in the IP address automatically.
+
+  Prologix Health   — Verifies the Prologix adapter is
+                      responding correctly and reports its
+                      firmware version, mode, auto-read state,
+                      EOI, EOS, and save-config settings.
+                      Also attempts to identify the instrument
+                      at the currently selected GPIB address.
+
+  Scan Bus          — Scans all GPIB addresses and populates
+                      the instrument list with detected devices.
+                      Available after connecting.
+
+  Connect / Disconnect
+  ────────────────────
+  Opens or closes the connection to the Prologix adapter.
+  While connected, all serial and port settings are disabled
+  to prevent changes mid-session.
+
+  Connected To
+  ────────────
+  Displays the name of the most recently initialized instrument.
+
+
+═══════════════════════════════════════════════════════════════
+  BOTTOM BUTTONS
+═══════════════════════════════════════════════════════════════
+
+  GPU Info          Shows GPU hardware details and live sensor
+                    data for this PC. Disabled if no discrete
+                    GPU is detected.
+
+  View Recorded Data
+                    Opens the Recording Playback window to
+                    review and replay previously saved polling
+                    sessions.
+
+  Meter Info        Opens a detailed reference window covering
+                    all supported instrument types, their
+                    capabilities, and typical usage.
+
+  Settings          Opens the application settings dialog for
+                    configuring defaults, file paths, polling
+                    parameters, and display preferences.
+
+  Session Settings  Displays a summary of the current session
+                    configuration including all instrument
+                    settings, polling parameters, display
+                    options, memory limits, and theme colors.
+
+  Reset Defaults    Restores connection settings to factory
+                    defaults for the selected connection mode.
+
+  Trace On / Off    Enables or disables execution tracing.
+                    When active the button turns yellow.
+                    Trace output is written to the trace
+                    window for diagnostics and debugging.
+
+
+═══════════════════════════════════════════════════════════════
+  TYPICAL WORKFLOW
+═══════════════════════════════════════════════════════════════
+
+  1.  Select the connection mode that matches your hardware.
+
+  2.  Configure the COM port or IP address as required.
+
+  3.  Click Connect to establish communication with the
+      Prologix adapter.
+
+  4.  Add instruments manually using Name / Type / Address,
+      or click Scan Bus to detect them automatically.
+
+  5.  Set NPLC and Meter Roll for each instrument as needed.
+
+  6.  If using three or more instruments, select a Master
+      instrument from the dropdown.
+
+  7.  Click Launch Poller to open the polling session window
+      and begin multi-instrument data acquisition.
+
+
+═══════════════════════════════════════════════════════════════
+  NOTES
+═══════════════════════════════════════════════════════════════
+
+  - All GPIB addresses must be unique across instruments.
+  - Instruments are verified on the bus when added if connected.
+  - The polling session runs in a separate window and can be
+    kept open while the Launcher remains accessible.
+  - Settings and instrument lists are not automatically saved
+    between sessions. Use the Settings dialog to configure
+    persistent defaults.
+
+
+───────────────────────────────────────────────────────────────
+  Multi-Instrument Poller  |  Author: Mike Wheeler  |  2026
+───────────────────────────────────────────────────────────────

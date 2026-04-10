@@ -19,7 +19,6 @@ namespace Multimeter_Controller
 
     private void InitializeComponent()
     {
-      Title_Label = new Label();
       Clear_Button = new Button();
       Load_Button = new Button();
       Chart_Panel = new Panel();
@@ -53,17 +52,13 @@ namespace Multimeter_Controller
       Total_Time_TextBox = new TextBox();
       label6 = new Label();
       label7 = new Label();
+      menuStrip1 = new MenuStrip();
+      helpToolStripMenuItem = new ToolStripMenuItem();
       ((System.ComponentModel.ISupportInitialize) Max_Points_Numeric).BeginInit();
       ((System.ComponentModel.ISupportInitialize) Zoom_Slider).BeginInit();
       Auto_Scroll_Panel.SuspendLayout();
+      menuStrip1.SuspendLayout();
       SuspendLayout();
-      // 
-      // Title_Label
-      // 
-      Title_Label.Location = new Point( 13, 9 );
-      Title_Label.Name = "Title_Label";
-      Title_Label.Size = new Size( 100, 23 );
-      Title_Label.TabIndex = 46;
       // 
       // Clear_Button
       // 
@@ -389,6 +384,19 @@ namespace Multimeter_Controller
       label7.TabIndex = 68;
       label7.Text = "Start Time:";
       // 
+      // menuStrip1
+      // 
+      menuStrip1.Items.AddRange( new ToolStripItem[] { helpToolStripMenuItem } );
+      menuStrip1.Location = new Point( 0, 0 );
+      menuStrip1.Name = "menuStrip1";
+      menuStrip1.Size = new Size( 943, 24 );
+      menuStrip1.TabIndex = 74;
+      menuStrip1.Text = "menuStrip1";
+      // helpToolStripMenuItem
+      helpToolStripMenuItem.Name = "helpToolStripMenuItem";
+      helpToolStripMenuItem.Size = new Size( 44, 20 );
+      helpToolStripMenuItem.Text = "Help";
+      // 
       // Recording_Playback_Form
       // 
       AutoScaleDimensions = new SizeF( 7F, 15F );
@@ -423,28 +431,27 @@ namespace Multimeter_Controller
       Controls.Add( Legend_Toggle_Button );
       Controls.Add( Rolling_Check );
       Controls.Add( Max_Points_Numeric );
-      Controls.Add( Title_Label );
       Controls.Add( Measurement_Label );
       Controls.Add( Clear_Button );
       Controls.Add( Load_Button );
+      Controls.Add( menuStrip1 );
+      MainMenuStrip = menuStrip1;
       MinimumSize = new Size( 600, 400 );
       Name = "Recording_Playback_Form";
       StartPosition = FormStartPosition.CenterParent;
       Text = "Multi-Instrument Poll Form";
+      
       ((System.ComponentModel.ISupportInitialize) Max_Points_Numeric).EndInit();
       ((System.ComponentModel.ISupportInitialize) Zoom_Slider).EndInit();
       Auto_Scroll_Panel.ResumeLayout( false );
       Auto_Scroll_Panel.PerformLayout();
+      menuStrip1.ResumeLayout( false );
+      menuStrip1.PerformLayout();
       ResumeLayout( false );
       PerformLayout();
     }
 
-
-
-
     #endregion
-
-    private System.Windows.Forms.Label Title_Label;
     private System.Windows.Forms.Button Clear_Button;
     private System.Windows.Forms.Button Load_Button;
     private System.Windows.Forms.Panel Chart_Panel;
@@ -478,5 +485,7 @@ namespace Multimeter_Controller
     private Label label5;
     private Label label6;
     private TextBox Total_Time_TextBox;
+    private MenuStrip menuStrip1;
+    private ToolStripMenuItem helpToolStripMenuItem;
   }
 }

@@ -381,6 +381,10 @@ namespace Multimeter_Controller
 
       InitializeComponent();
 
+
+      helpToolStripMenuItem.Click += ( s, e ) => App_Help.Show_Multi_Poll_Form_Help( this );
+      
+
       _Instruments = Instruments;
       _Comm = Comm;
       _Settings = Settings;
@@ -445,6 +449,11 @@ namespace Multimeter_Controller
         _Settings.GPU_Rendering_Available = false;
         Initialize_GDI_Panel();
       }
+
+      // ── Discrete GPU availability (cached once for analysis comparison) ────
+      _Settings.Discrete_GPU_Available = GPU_Helper.Discrete_GPU_Available();
+      Capture_Trace.Write( $"Discrete GPU available: {_Settings.Discrete_GPU_Available}" );
+
 
       // ── Step 3: Theme change handler ──────────────────────────────────
       _Settings.Theme_Changed += ( s, e ) =>
@@ -1349,7 +1358,11 @@ namespace Multimeter_Controller
         _Baseline_FPS = 0;
         _Baseline_Samples = 0;
         _Is_Running = true;
-        _GPU_Baseline = GPU_Snapshot.Capture();
+
+        if (_Settings.Analysis_Show_GPU_Comparison)
+        {
+          _GPU_Baseline = GPU_Snapshot.Capture();
+        }
 
         this.Invoke( () =>
         {
@@ -1806,7 +1819,7 @@ namespace Multimeter_Controller
       _Chart_Refresh_Timer?.Stop();
 
       _Is_Running = false;
-      _Is_Shutting_Down = false;
+      
 
       _Is_Shutting_Down = false;
       _Poll_Error_Shown = false;
@@ -1824,7 +1837,7 @@ namespace Multimeter_Controller
       Load_Button.Enabled = true;
       Rolling_Check.Enabled = true;
 
-      _Chart_Refresh_Timer?.Stop();
+      
       Set_Button_State();
 
       Run_Auto_Analysis_If_Enabled();
@@ -2008,15 +2021,21 @@ namespace Multimeter_Controller
       _Record_Start = DateTime.Now;
       _Memory_Warning_Shown = false;
 
-      _GPU_Start = _Settings.Use_GPU_Rendering && GPU_Helper.Discrete_GPU_Available()
-      ? GPU_Snapshot.Capture()
-      : null;
+      if (_Settings.Analysis_Show_GPU_Comparison && _Settings.Discrete_GPU_Available)
+      {
+        _GPU_Start = GPU_Snapshot.Capture();
+      }
+      else
+      {
+        _GPU_Start = null;
+      }
+
 
       if (_GPU_Start == null)
       {
-        Capture_Trace.Write( _Settings.Use_GPU_Rendering
+        Capture_Trace.Write( _Settings.Analysis_Show_GPU_Comparison
             ? "GPU_Start: null — no discrete GPU found"
-            : "GPU_Start: null — CPU rendering selected" );
+            : "GPU_Start: null — GPU comparison not enabled" );
       }
       else
       {
@@ -2108,7 +2127,7 @@ namespace Multimeter_Controller
       Capture_Trace.Write( $"  _GPU_Start       = {(_GPU_Start == null ? "null" : "set")}" );
       Capture_Trace.Write( $"  _Settings_File_Path = {(_Settings_File_Path ?? "null")}" );
 
-      if (_GPU_Start != null && _Settings_File_Path != null)
+      if (_GPU_Start != null && _Settings_File_Path != null && _Settings.Analysis_Show_GPU_Comparison)
       {
         try
         {
@@ -2127,6 +2146,8 @@ namespace Multimeter_Controller
       }
       else
       {
+        Capture_Trace.Write( "GPU append: skipped" );
+        _GPU_Start = null;
         Capture_Trace.Write( "GPU append: skipped" );
       }
 

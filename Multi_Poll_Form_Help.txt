@@ -1,0 +1,423 @@
+═══════════════════════════════════════════════════════════════
+  MULTI-INSTRUMENT POLLER
+═══════════════════════════════════════════════════════════════
+
+  The Multi-Instrument Poller window is the primary data
+  acquisition interface. It polls all configured instruments
+  simultaneously, plots readings in real time, and records
+  sessions to CSV for post-run analysis.
+
+
+═══════════════════════════════════════════════════════════════
+  GETTING STARTED
+═══════════════════════════════════════════════════════════════
+
+  1.  Select a measurement type from the Measurement dropdown.
+  2.  Set the poll delay and cycle count as needed.
+  3.  Press Start to begin polling all instruments.
+  4.  Press Record to save the session to CSV files.
+  5.  Press Stop when finished.
+  6.  Press Analyze to review statistics and trends.
+
+
+═══════════════════════════════════════════════════════════════
+  MEASUREMENT SELECTION
+═══════════════════════════════════════════════════════════════
+
+  Select the measurement type before starting. The available
+  options depend on which instruments are configured:
+
+    DC Voltage      DCV / MEAS:VOLT:DC
+    AC Voltage      ACV / MEAS:VOLT:AC
+    DC Current      DCI / MEAS:CURR:DC
+    AC Current      ACI / MEAS:CURR:AC
+    2-Wire Ohms     OHM / MEAS:RES
+    4-Wire Ohms     OHMF / MEAS:FRES
+    Frequency       FREQ / MEAS:FREQ
+    Period          PER / MEAS:PER
+    Temperature     TEMP
+
+  The measurement type is locked once polling starts.
+  Change it only while the session is idle.
+
+
+═══════════════════════════════════════════════════════════════
+  POLLING CONTROLS
+═══════════════════════════════════════════════════════════════
+
+  Start / Stop
+  ────────────
+  Starts or stops the polling loop. All configured instruments
+  are polled in sequence every cycle. The cycle counter and
+  S/s indicator update in real time.
+
+  Continuous
+  ──────────
+  When checked, polling runs indefinitely until manually
+  stopped. When unchecked, polling stops after the number
+  of cycles set in the Cycles field.
+
+  Cycles
+  ──────
+  The number of poll cycles to run when Continuous is off.
+
+  Poll Delay
+  ──────────
+  The minimum time between poll cycles in milliseconds.
+  The actual cycle time may be longer if instrument reads
+  take more time than the delay allows. The delay is
+  automatically set to the minimum required by the slowest
+  instrument's NPLC setting.
+
+  Cycle Display
+  ─────────────
+  Shows the current cycle count and polling rate in S/s.
+  The background color indicates polling health:
+
+    Green   — Performance is within 10% of baseline
+    Yellow  — Mild slowdown detected (10-20% below baseline)
+    Red     — Significant slowdown detected (>20% below)
+
+  A slowdown is most often caused by point accumulation
+  in long sessions. Use the Rolling Window to prevent this.
+
+
+═══════════════════════════════════════════════════════════════
+  CHART DISPLAY
+═══════════════════════════════════════════════════════════════
+
+  Combined / Split View
+  ─────────────────────
+  Combined view plots all instruments on a single chart
+  with a shared Y axis. Split view gives each instrument
+  its own chart panel with an independent Y axis. Use the
+  View Mode button to toggle between them.
+
+  Normalize
+  ─────────
+  In combined view, Normalize scales all series to a common
+  baseline so instruments with very different absolute values
+  can be compared on the same axis. Toggle with the Normalize
+  button. Only available in combined view.
+
+  Graph Style
+  ───────────
+  Select from Line, Scatter, Histogram, or Pie chart styles.
+  Histogram and Pie are only available after polling stops.
+
+  Zoom
+  ────
+  Use the Zoom slider to scale the chart vertically.
+  Use the mouse wheel to zoom the rolling window in and out.
+
+  Pan
+  ───
+  Use the Pan scrollbar to scroll backward through the
+  data history. Pan is only active when Auto Scroll is off.
+
+  Auto Scroll
+  ───────────
+  When checked, the chart always shows the most recent
+  data. Uncheck to freeze the view and pan manually.
+
+  Tooltips
+  ────────
+  Hover over any data point to see its timestamp and value.
+  The tooltip distance threshold can be adjusted in Settings.
+
+
+═══════════════════════════════════════════════════════════════
+  ROLLING WINDOW
+═══════════════════════════════════════════════════════════════
+
+  The Rolling Window limits how many points are shown on the
+  live chart. All data remains in memory and is written to
+  CSV in full — only the chart display is limited.
+
+  Rolling Window is automatically enabled and locked during
+  live polling to keep the chart responsive. It can be
+  adjusted freely when polling is stopped.
+
+  Maximum Points
+  ──────────────
+  Sets how many points are visible in the rolling window.
+  Lower values keep the chart faster. Higher values show
+  more history but may slow rendering in long sessions.
+
+  For runs longer than one hour, a value between 2,000 and
+  10,000 is recommended. Rendering cost is proportional to
+  the number of visible points — not the total stored.
+
+  Decimation Warning
+  ──────────────────
+  When chart decimation is active, an orange warning appears
+  at the bottom of the chart:
+
+    ⚠ Decimated — drawing every N points | Showing ~X of Y stored
+
+  This means the chart is drawing every Nth stored point to
+  keep rendering fast. No data is lost. The decimation step
+  and threshold can be configured in Settings > Performance.
+
+
+═══════════════════════════════════════════════════════════════
+  CURRENT VALUES PANEL
+═══════════════════════════════════════════════════════════════
+
+  Shows the most recent reading from each instrument with:
+
+    ●  Instrument name and GPIB address
+    Timestamp of the last reading
+    Error count (Err:NNN)
+    Most recent measured value
+
+  Color coding:
+    Green   — Reading is current and valid
+    Orange  — Reading age exceeds the skew warning threshold
+    Red     — Reading age exceeds the stale data threshold
+              or consecutive errors have occurred
+
+
+═══════════════════════════════════════════════════════════════
+  RECORDING
+═══════════════════════════════════════════════════════════════
+
+  Record Button
+  ─────────────
+  Press Record to start saving the session to CSV files.
+  Press again to stop recording. Recording can run
+  independently of polling — you can start recording after
+  polling has already begun.
+
+  When recording starts, the application creates a session
+  folder containing:
+
+    SessionName.csv          Instrument readings
+    SessionName_Timing.csv   Poll cycle timing data
+    SessionName_Settings.txt Session configuration snapshot
+
+  The settings snapshot records all application settings,
+  instrument configuration, NPLC values, theme colors, and
+  GPU baseline state at the time recording started. If GPU
+  comparison is enabled, the GPU delta is appended when
+  recording stops.
+
+  Auto Save
+  ─────────
+  When enabled in Settings, the session is automatically
+  saved at a configured interval during polling. A separate
+  auto-save file is created each time.
+
+
+═══════════════════════════════════════════════════════════════
+  POLL TIMING / POLL SPEED VIEW
+═══════════════════════════════════════════════════════════════
+
+  Press Poll Speed to switch the chart to the Poll Timing
+  view. This shows a stacked area graph of where time is
+  being spent in each poll cycle:
+
+    Gold band    — GPIB address switch time
+    Blue band    — Instrument communication time
+    Green band   — UI update time
+    Red band     — CSV record write time
+    White line   — Total cycle wall-clock time
+
+  Orange dashed vertical lines mark cycles where a
+  communication disconnect was first detected on any
+  instrument.
+
+  How to Read the Timing Chart
+  ────────────────────────────
+  Green band growing    — UI thread is the bottleneck.
+                          Reduce chart refresh rate or
+                          lower the Max Points setting.
+
+  Blue band growing     — Instrument is slowing down.
+                          Check NPLC setting and signal
+                          stability.
+
+  Spike at orange line  — Physical connection dropout.
+                          The spike height indicates how
+                          long the timeout wait was.
+
+  Regular periodic spikes — Auto-save or flush timer
+                            firing every 100 cycles.
+
+  Press Data View to return to the instrument data chart.
+
+  Capture Timing
+  ──────────────
+  When checked, timing data is captured for every cycle.
+  Uncheck to disable timing capture if overhead is a concern.
+  Timing capture must be enabled before polling starts.
+
+
+═══════════════════════════════════════════════════════════════
+  LOADING RECORDED DATA
+═══════════════════════════════════════════════════════════════
+
+  Load Button
+  ───────────
+  Opens a file dialog to load a previously recorded CSV file.
+  The application automatically restores the measurement type,
+  instrument names, and start/stop timestamps from the file.
+
+  If a _Timing.csv file is selected, the chart switches
+  directly to the Poll Timing view with the full phase
+  breakdown for post-session analysis.
+
+  If a settings snapshot file is found in the same session
+  folder, it is displayed automatically in a separate window
+  alongside the chart.
+
+  Session Start / Stop / Total
+  ────────────────────────────
+  Shows the wall-clock start time, stop time, and total
+  duration of the loaded or active session.
+
+
+═══════════════════════════════════════════════════════════════
+  ANALYSIS
+═══════════════════════════════════════════════════════════════
+
+  Analyze Button
+  ──────────────
+  Opens the Analysis window for the current dataset. Shows
+  statistics including mean, standard deviation, min, max,
+  RMS, sample rate, trend, and Allan deviation for each
+  instrument. Delta analysis is shown relative to the
+  master instrument when one is configured.
+
+  Auto Analyze
+  ────────────
+  When enabled in Settings, the Analysis window opens
+  automatically after each polling session ends.
+
+  Stats / Legend Toggle
+  ─────────────────────
+  Toggles the statistics panel alongside the chart.
+  Shows per-instrument running statistics updated live
+  during polling.
+
+  NPLC Summary
+  ────────────
+  Shows the NPLC setting, integration time, estimated
+  settle time, and approximate readings per minute for
+  each instrument. Also shows the session bottleneck —
+  the slowest instrument that limits the overall poll rate.
+
+  Polling Info
+  ────────────
+  Opens a detailed guide explaining why polling slows down
+  over time and how to configure the rolling window and
+  decimation settings to prevent it.
+
+
+═══════════════════════════════════════════════════════════════
+  GPU AND MEMORY MONITORING
+═══════════════════════════════════════════════════════════════
+
+  Render Mode
+  ───────────
+  Shows the current rendering engine:
+    ⚡ GPU   — SkiaSharp / OpenGL GPU rendering active
+    ◻ CPU   — GDI+ software rendering active
+
+  GPU Monitor
+  ───────────
+  Opens a live GPU sensor monitor showing temperature,
+  load, memory, clock, power, and fan speed. Only available
+  when GPU rendering is active.
+
+  GPU Summary
+  ───────────
+  Shows a comparison of GPU state between recording start
+  and the current moment. Useful for assessing GPU load
+  during a long acquisition session.
+
+  Memory Monitor
+  ──────────────
+  Opens a live memory usage monitor showing .NET heap size,
+  GC collection frequency, and total points in memory.
+
+  Memory Status Bar
+  ─────────────────
+  The status bar at the bottom shows current memory usage
+  as a percentage of the configured limit. A warning is
+  shown when the threshold is exceeded.
+
+
+═══════════════════════════════════════════════════════════════
+  OTHER CONTROLS
+═══════════════════════════════════════════════════════════════
+
+  Theme
+  ─────
+  Opens the theme editor to change chart colors, series
+  colors, grid, labels, and background. Theme changes
+  apply immediately to the live chart.
+
+  Clear
+  ─────
+  Clears all data from memory and resets the chart.
+  If Prompt Before Clear is enabled in Settings, a
+  confirmation dialog is shown first. Cannot clear
+  while polling is active.
+
+  Reset Errors
+  ────────────
+  Resets all error counts for all instruments and
+  re-enables any instruments that were hidden due to
+  errors.
+
+  Close
+  ─────
+  Gracefully shuts down the polling session. All instruments
+  are returned to local control before the window closes.
+  Cannot close while recording is active.
+
+
+═══════════════════════════════════════════════════════════════
+  TYPICAL WORKFLOW
+═══════════════════════════════════════════════════════════════
+
+  1.  Select the measurement type from the dropdown.
+  2.  Enable Continuous and set Max Points to 5,000.
+  3.  Press Start to begin polling.
+  4.  Press Record to start saving to CSV.
+  5.  Monitor the S/s indicator and current values panel.
+  6.  If S/s begins to drop, the rolling window is likely
+      set too high — reduce Max Points.
+  7.  Press Stop when the session is complete.
+  8.  Press Analyze to review the full dataset.
+  9.  Load the session CSV at any time for post-analysis.
+
+
+═══════════════════════════════════════════════════════════════
+  PERFORMANCE TIPS
+═══════════════════════════════════════════════════════════════
+
+  - Always use Rolling Window for sessions longer than
+    30 minutes to prevent render slowdown.
+
+  - Set Max Points to 2,000-10,000 for most sessions.
+    Lower is faster. All data is still recorded to CSV.
+
+  - Enable decimation in Settings > Performance for very
+    long sessions to keep chart rendering fast.
+
+  - GPU rendering (SkiaSharp/OpenGL) renders significantly
+    faster than CPU (GDI+) at high point counts. Enable
+    it in Settings if a discrete GPU is available.
+
+  - Reduce the chart refresh rate in Settings > Display
+    if the UI thread is the identified bottleneck.
+
+  - Use Poll Speed view to identify which phase of the
+    poll cycle is consuming the most time.
+
+
+───────────────────────────────────────────────────────────────
+  Multi-Instrument Poller  |  Author: Mike Wheeler  |  2026
+───────────────────────────────────────────────────────────────

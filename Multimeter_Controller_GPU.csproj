@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net9.0-windows</TargetFramework>
@@ -53,9 +53,22 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Remove="Main_Form_About.txt" />
     <None Remove="Properties\Resources\Meter_Info.txt" />
     <None Remove="README.md" />
     <None Remove="Recording_Playback_Form.resx-old" />
+    <None Remove="Recording_Playback_Form_Help.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Settings_Form_Help.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Main_Form_About.txt" />
+    <EmbeddedResource Include="Main_Form_Help.txt" />
+    <EmbeddedResource Include="Multi_Poll_Form_Help.txt" />
+    <EmbeddedResource Include="Recording_Playback_Form_Help.txt" />
   </ItemGroup>
 
   <ItemGroup>

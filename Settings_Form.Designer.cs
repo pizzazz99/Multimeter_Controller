@@ -48,10 +48,10 @@ namespace Multimeter_Controller
       Main_Tab_Control.Controls.Add ( Analysis_Tab );
       Main_Tab_Control.Controls.Add ( UI_Tab );
       Main_Tab_Control.Controls.Add ( Zoom_Tab );
-      Main_Tab_Control.Location = new Point ( 12, 12 );
       Main_Tab_Control.Name = "Main_Tab_Control";
       Main_Tab_Control.SelectedIndex = 0;
-      Main_Tab_Control.Size = new Size ( 560, 487 );
+      Main_Tab_Control.Location = new Point( 12, 36 );
+      Main_Tab_Control.Size = new Size( 560, 463 );
       Main_Tab_Control.TabIndex = 0;
       // 
       // HP3458_Tab

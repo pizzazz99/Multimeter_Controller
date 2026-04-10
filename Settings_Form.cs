@@ -239,7 +239,7 @@ namespace Multimeter_Controller
     private NumericUpDown     _Decimation_Step_Numeric;
 
     // Analysis tab controls
-
+    private CheckBox _Analysis_Show_GPU_Comparison_Check;
     private RadioButton       _Analysis_One_Series_Radio;
     private RadioButton       _Analysis_Two_Series_Radio;
     private CheckBox          _Analysis_Mean_Check;
@@ -299,112 +299,17 @@ namespace Multimeter_Controller
 
       // ── GPU availability check ────────────────────────────────────────
       Check_GPU_Availability();
+      Initialize_Menu_Strip();
     }
 
-    private void old_Check_GPU_Availability()
-    {
-      using var Block = Trace_Block.Start_If_Enabled();
-
-      bool      GPU_Found = false;
-
-      // --- Pass 1: LibreHardwareMonitor ---
-      try
-      {
-        var Computer = new LibreHardwareMonitor.Hardware.Computer { IsGpuEnabled = true };
-        Computer.Open();
-        GPU_Found = Computer.Hardware.Any(
-          H => H.HardwareType == LibreHardwareMonitor.Hardware.HardwareType.GpuNvidia ||
-               H.HardwareType == LibreHardwareMonitor.Hardware.HardwareType.GpuAmd ||
-               H.HardwareType == LibreHardwareMonitor.Hardware.HardwareType.GpuIntel );
-        Computer.Close();
-      }
-      catch
-      {
-      }
-
-      // --- Pass 2: WMI Win32_VideoController ---
-      if ( ! GPU_Found )
-      {
-        try
-        {
-          using var searcher = new System.Management.ManagementObjectSearcher( "SELECT Name, " +
-                                                                               "AdapterCompatibility FROM " +
-                                                                               "Win32_VideoController" );
-
-          var       sb = new System.Text.StringBuilder();
-
-          foreach ( ManagementObject obj in searcher.Get() )
-          {
-            Capture_Trace.Write( $"Name:   {obj[ "Name" ]}" );
-            Capture_Trace.Write( $"Compat: {obj[ "AdapterCompatibility" ]}" );
-            Capture_Trace.Write( "" );
-          }
-
-          foreach ( ManagementObject obj in searcher.Get() )
-          {
-            var  name   = obj[ "Name" ]?.ToString() ?? "";
-            var  compat = obj[ "AdapterCompatibility" ]?.ToString() ?? "";
-
-            bool isSoftware =
-              name.IndexOf( "Microsoft Basic", StringComparison.OrdinalIgnoreCase ) >= 0 ||
-              name.IndexOf( "Remote Desktop", StringComparison.OrdinalIgnoreCase ) >= 0 ||
-              name.IndexOf( "VirtualBox", StringComparison.OrdinalIgnoreCase ) >= 0 ||
-              name.IndexOf( "VMware", StringComparison.OrdinalIgnoreCase ) >= 0 ||
-              compat.Equals( "Microsoft", StringComparison.OrdinalIgnoreCase ); // exact match only
-
-            if ( ! isSoftware )
-            {
-              GPU_Found = true;
-              break;
-            }
-          }
-        }
-        catch
-        {
-        }
-      }
-
-      // --- Pass 3: DXGI adapter enumeration (works with DCH drivers, no elevation) ---
-      if ( ! GPU_Found )
-      {
-        try
-        {
-          GPU_Found = GPU_Helper.GPU_Available();
-        }
-        catch
-        {
-        }
-      }
-
-      // --- UI update ---
-      if ( GPU_Found )
-      {
-        _Use_GPU_Check.Enabled = true;
-
-        _Rendering_Mode_Label.Text = _Settings.GPU_Rendering_Available ? "GPU detected and active"
-                                                                       : "GPU detected — enable above to use";
-        _Rendering_Mode_Label.ForeColor =
-          _Settings.GPU_Rendering_Available ? Color.LimeGreen : SystemColors.GrayText;
-      }
-      else
-      {
-        _Use_GPU_Check.Checked          = false;
-        _Use_GPU_Check.Enabled          = false;
-        _Rendering_Mode_Label.Text      = "No GPU detected — CPU rendering only";
-        _Rendering_Mode_Label.ForeColor = Color.Orange;
-
-        _Settings.Use_GPU_Rendering       = false;
-        _Settings.GPU_Rendering_Available = false;
-      }
-    }
-
+ 
 
 
     private void Check_GPU_Availability()
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      bool GPU_Found = GPU_Helper.Discrete_GPU_Available();
+      bool GPU_Found = _Settings.Discrete_GPU_Available;
 
       Capture_Trace.Write( $"Discrete GPU found: {GPU_Found}" );
 
@@ -852,75 +757,137 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
+      var Scroll_Panel = new Panel { AutoScroll = true, Dock = DockStyle.Fill };
+      Analysis_Tab.Controls.Add( Scroll_Panel );
+
+
       int       Left_Col = 15;
       int       Y        = 15;
       int       Row_H    = 28;
 
-      // ── Auto-run ─────────────────────────────────────────────────────
-      Analysis_Tab.Controls.Add( new Label { Text     = "Trigger:",
-                                             Location = new Point( Left_Col, Y ),
-                                             Font     = new Font( "Segoe UI", 9F, FontStyle.Bold ),
-                                             AutoSize = true } );
+      // ── Trigger ───────────────────────────────────────────────────────────
+      Scroll_Panel.Controls.Add( new Label
+      {
+        Text = "Trigger:",
+        Location = new Point( Left_Col, Y ),
+        Font = new Font( "Segoe UI", 9F, FontStyle.Bold ),
+        AutoSize = true
+      } );
       Y += 22;
 
-      _Auto_Analyze_Check = new CheckBox { Text = "Automatically show analysis popup when recording stops",
-                                           Location = new Point( Left_Col, Y ),
-                                           AutoSize = true };
-      Analysis_Tab.Controls.Add( _Auto_Analyze_Check );
+      _Auto_Analyze_Check = new CheckBox
+      {
+        Text = "Automatically show analysis popup when recording stops",
+        Location = new Point( Left_Col, Y ),
+        AutoSize = true
+      };
+      Scroll_Panel.Controls.Add( _Auto_Analyze_Check );
       Y += Row_H + 8;
 
-      // ── Series count ─────────────────────────────────────────────────
-      Analysis_Tab.Controls.Add( new Label { Text     = "Compare:",
-                                             Location = new Point( Left_Col, Y ),
-                                             Font     = new Font( "Segoe UI", 9F, FontStyle.Bold ),
-                                             AutoSize = true } );
+      // ── GPU Comparison ────────────────────────────────────────────────────
+      Scroll_Panel.Controls.Add( new Label
+      {
+        Text = "GPU Comparison:",
+        Location = new Point( Left_Col, Y ),
+        Font = new Font( "Segoe UI", 9F, FontStyle.Bold ),
+        AutoSize = true
+      } );
       Y += 22;
 
-      _Analysis_One_Series_Radio = new RadioButton { Text     = "Single series  (summary stats only)",
-                                                     Location = new Point( Left_Col, Y ),
-                                                     AutoSize = true };
-      Analysis_Tab.Controls.Add( _Analysis_One_Series_Radio );
+      _Analysis_Show_GPU_Comparison_Check =
+        new CheckBox
+        {
+          Text = "Show GPU vs CPU comparison in analysis results",
+          Location = new Point( Left_Col, Y ),
+          AutoSize = true
+        };
+      Scroll_Panel.Controls.Add( _Analysis_Show_GPU_Comparison_Check );
+
+      if (!_Settings.Discrete_GPU_Available)
+      {
+        _Analysis_Show_GPU_Comparison_Check.Checked = false;
+        _Analysis_Show_GPU_Comparison_Check.Enabled = false;
+        Y += 25;
+        Scroll_Panel.Controls.Add( new Label
+        {
+          Text = "Not available — no discrete GPU detected",
+          Location = new Point( Left_Col + 20, Y ),
+          AutoSize = true,
+          ForeColor = Color.Orange
+        } );
+      }
+      Y += Row_H + 8;
+
+      // ── Series count ──────────────────────────────────────────────────────
+      Scroll_Panel.Controls.Add( new Label
+      {
+        Text = "Compare:",
+        Location = new Point( Left_Col, Y ),
+        Font = new Font( "Segoe UI", 9F, FontStyle.Bold ),
+        AutoSize = true
+      } );
+      Y += 22;
+
+      _Analysis_One_Series_Radio = new RadioButton
+      {
+        Text = "Single series  (summary stats only)",
+        Location = new Point( Left_Col, Y ),
+        AutoSize = true
+      };
+      Scroll_Panel.Controls.Add( _Analysis_One_Series_Radio );
       Y += Row_H;
 
-      _Analysis_Two_Series_Radio = new RadioButton { Text = "Two series  (full delta / σ / histogram " +
-                                                            "comparison)",
-                                                     Location = new Point( Left_Col, Y ),
-                                                     AutoSize = true };
-      Analysis_Tab.Controls.Add( _Analysis_Two_Series_Radio );
+      _Analysis_Two_Series_Radio = new RadioButton
+      {
+        Text = "Two series  (full delta / σ / histogram comparison)",
+        Location = new Point( Left_Col, Y ),
+        AutoSize = true
+      };
+      Scroll_Panel.Controls.Add( _Analysis_Two_Series_Radio );
       Y += Row_H + 8;
 
-      // ── Which stats ──────────────────────────────────────────────────
-      Analysis_Tab.Controls.Add( new Label { Text     = "Include in analysis:",
-                                             Location = new Point( Left_Col, Y ),
-                                             Font     = new Font( "Segoe UI", 9F, FontStyle.Bold ),
-                                             AutoSize = true } );
+      // ── Which stats ───────────────────────────────────────────────────────
+      Scroll_Panel.Controls.Add( new Label
+      {
+        Text = "Include in analysis:",
+        Location = new Point( Left_Col, Y ),
+        Font = new Font( "Segoe UI", 9F, FontStyle.Bold ),
+        AutoSize = true
+      } );
       Y += 22;
 
-      var Stat_Checks = new( string Text, Action<CheckBox> Assign )[ ] {
-        ( "Mean / Average", C => _Analysis_Mean_Check = C ),
-        ( "Std Dev (σ)", C => _Analysis_StdDev_Check = C ),
-        ( "Min / Max", C => _Analysis_MinMax_Check = C ),
-        ( "RMS", C => _Analysis_RMS_Check = C ),
-        ( "Trend direction", C => _Analysis_Trend_Check = C ),
-        ( "Sample rate", C => _Analysis_Sample_Rate_Check = C ),
-        ( "Error count", C => _Analysis_Errors_Check = C ),
+      var Stat_Checks = new (string Text, Action<CheckBox> Assign)[] {
+        ( "Mean / Average",  C => _Analysis_Mean_Check        = C ),
+        ( "Std Dev (σ)",     C => _Analysis_StdDev_Check      = C ),
+        ( "Min / Max",       C => _Analysis_MinMax_Check      = C ),
+        ( "RMS",             C => _Analysis_RMS_Check         = C ),
+        ( "Trend direction", C => _Analysis_Trend_Check       = C ),
+        ( "Sample rate",     C => _Analysis_Sample_Rate_Check = C ),
+        ( "Error count",     C => _Analysis_Errors_Check      = C ),
       };
 
-      foreach ( var ( Text, Assign ) in Stat_Checks )
+      foreach (var (Text, Assign) in Stat_Checks)
       {
         var CB = new CheckBox { Text = Text, Location = new Point( Left_Col, Y ), AutoSize = true };
         Assign( CB );
-        Analysis_Tab.Controls.Add( CB );
+        Scroll_Panel.Controls.Add( CB );
         Y += Row_H;
       }
 
       Y += 8;
-      Analysis_Tab.Controls.Add( new Label { Text = "Note: two-series comparison always shows delta, " +
-                                                    "rolling σ, and histogram tabs.",
-                                             Location  = new Point( Left_Col, Y ),
-                                             AutoSize  = true,
-                                             ForeColor = SystemColors.GrayText } );
+      Scroll_Panel.Controls.Add( new Label
+      {
+        Text = "Note: two-series comparison always shows delta, " +
+                                                          "rolling σ, and histogram tabs.",
+        Location = new Point( Left_Col, Y ),
+        AutoSize = true,
+        ForeColor = SystemColors.GrayText
+      } );
+
     }
+
+
+
 
     private void Initialize_Files_Tab()
     {
@@ -1519,6 +1486,7 @@ namespace Multimeter_Controller
 
       // Analysis tab
       _Auto_Analyze_Check.Checked         = _Settings.Auto_Analyze_After_Recording;
+      _Analysis_Show_GPU_Comparison_Check.Checked = _Settings.Analysis_Show_GPU_Comparison;
       _Analysis_Mean_Check.Checked        = _Settings.Analysis_Show_Mean;
       _Analysis_StdDev_Check.Checked      = _Settings.Analysis_Show_Std_Dev;
       _Analysis_MinMax_Check.Checked      = _Settings.Analysis_Show_Min_Max;
@@ -1642,7 +1610,10 @@ namespace Multimeter_Controller
       _Settings.Prologic_Scan_Timeout_MS        = int.Parse( _Prologic_Scan_Timeout_MS_Textbox.Text );
 
       // Analysis tab
+
       _Settings.Auto_Analyze_After_Recording = _Auto_Analyze_Check.Checked;
+      _Settings.Analysis_Show_GPU_Comparison = _Analysis_Show_GPU_Comparison_Check.Checked
+                                               && _Analysis_Show_GPU_Comparison_Check.Enabled;
       _Settings.Analysis_Series_Count        = _Analysis_Two_Series_Radio.Checked ? 2 : 1;
       _Settings.Analysis_Show_Mean           = _Analysis_Mean_Check.Checked;
       _Settings.Analysis_Show_Std_Dev        = _Analysis_StdDev_Check.Checked;
@@ -1790,5 +1761,22 @@ namespace Multimeter_Controller
         Load_Settings();
       }
     }
+
+    private void Initialize_Menu_Strip()
+    {
+      var Menu_Strip = new MenuStrip();
+
+      var Help_Item = new ToolStripMenuItem( "Help" );
+      Help_Item.Click += ( s, e ) => App_Help.Show_Settings_Form_Help( this );
+
+    
+
+      Menu_Strip.Items.Add( Help_Item );
+    
+
+      this.Controls.Add( Menu_Strip );
+      this.MainMenuStrip = Menu_Strip;
+    }
+
   }
 }

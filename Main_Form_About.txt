@@ -1,0 +1,91 @@
+═══════════════════════════════════════════════════════════════
+  MULTI-INSTRUMENT POLLER
+═══════════════════════════════════════════════════════════════
+
+  A multi-channel GPIB instrument control and data acquisition
+  application for HP / Agilent / Keysight bench instruments.
+  Designed for precision measurement, long-term stability
+  logging, and multi-instrument comparison sessions.
+
+
+═══════════════════════════════════════════════════════════════
+  VERSION
+═══════════════════════════════════════════════════════════════
+
+  Version       1.0.0
+  Released      2026
+  Framework     .NET 9.0 / Windows Forms
+  Platform      Windows 10 / 11  (64-bit)
+
+
+═══════════════════════════════════════════════════════════════
+  AUTHOR
+═══════════════════════════════════════════════════════════════
+
+  Mike Wheeler
+  W&W Co.  Since 1969
+
+
+═══════════════════════════════════════════════════════════════
+  SUPPORTED INSTRUMENTS
+═══════════════════════════════════════════════════════════════
+
+  HP / Agilent / Keysight 3458A   8.5-digit multimeter
+  HP / Agilent / Keysight 34401A  6.5-digit multimeter
+  HP / Agilent / Keysight 34411A  6.5-digit high-speed DMM
+  HP / Agilent / Keysight 34420A  7.5-digit nanovolt meter
+  HP / Agilent / Keysight 33120A  15 MHz function generator
+  HP / Agilent / Keysight 33220A  20 MHz function generator
+  HP / Agilent / Keysight 53132A  225 MHz universal counter
+  HP / Agilent / Keysight 53181A  225 MHz frequency counter
+  HP / Agilent / Keysight 4263B   LCR meter
+  HP 3456A                        6.5-digit voltmeter (legacy)
+
+
+═══════════════════════════════════════════════════════════════
+  HARDWARE INTERFACE
+═══════════════════════════════════════════════════════════════
+
+  Interface     Prologix GPIB-USB-HS or GPIB-ETHERNET
+  Protocol      IEEE-488 / GPIB via Prologix ++ command set
+  Connection    USB serial, RS-232 direct, or TCP/IP Ethernet
+
+
+═══════════════════════════════════════════════════════════════
+  KEY FEATURES
+═══════════════════════════════════════════════════════════════
+
+  - Multi-instrument simultaneous polling and data logging
+  - Per-instrument NPLC control and noise rejection tuning
+  - Real-time charting with GPU-accelerated rendering
+  - Delta and normalized measurement views
+  - Long-term stability and drift analysis
+  - Allan deviation and statistical analysis tools
+  - Searchable GPIB command dictionary per instrument
+  - Session recording and playback
+  - Automatic GPIB bus scanning and instrument detection
+  - Prologix adapter health verification
+  - Execution trace and diagnostics
+
+
+═══════════════════════════════════════════════════════════════
+  DEPENDENCIES
+═══════════════════════════════════════════════════════════════
+
+  LibreHardwareMonitor    GPU and hardware sensor access
+  SkiaSharp               GPU-accelerated chart rendering
+  System.IO.Ports         Serial port communication
+  System.Management       WMI hardware enumeration
+
+
+═══════════════════════════════════════════════════════════════
+  LICENSE
+═══════════════════════════════════════════════════════════════
+
+  Open Source — Free to use, modify, and distribute.
+  No warranty is expressed or implied. Use at your own risk.
+
+
+───────────────────────────────────────────────────────────────
+  Multi-Instrument Poller  |  Author: Mike Wheeler  |  2026
+───────────────────────────────────────────────────────────────

@@ -1,0 +1,321 @@
+═══════════════════════════════════════════════════════════════
+  RECORDED DATA VIEWER
+═══════════════════════════════════════════════════════════════
+
+  The Recorded Data Viewer is a standalone post-session
+  analysis window. It loads previously recorded CSV files
+  from polling sessions and provides charting, statistical
+  analysis, and poll timing review without requiring a
+  live instrument connection.
+
+
+═══════════════════════════════════════════════════════════════
+  GETTING STARTED
+═══════════════════════════════════════════════════════════════
+
+  1.  Press Load to open a recorded session CSV file.
+  2.  The chart displays automatically after loading.
+  3.  Use the View Mode and Graph Style controls to explore
+      the data.
+  4.  Press Analyze Instrument Data for statistical analysis.
+  5.  If a timing file is also present, press Poll Speed
+      to review the poll cycle timing chart.
+
+
+═══════════════════════════════════════════════════════════════
+  LOADING FILES
+═══════════════════════════════════════════════════════════════
+
+  Load Button
+  ───────────
+  Opens a file dialog to select a recorded CSV file. Two
+  file types are supported:
+
+    _Multi.csv       Instrument reading data recorded during
+                     a polling session. Contains one column
+                     per instrument plus a timestamp column.
+
+    _Timing.csv      Poll cycle timing data recorded alongside
+                     the instrument data. Contains five timing
+                     phase columns per cycle.
+
+  The application detects the file type from the filename
+  suffix and loads it into the appropriate view automatically.
+
+  When a file is loaded, the application searches the same
+  session folder for a companion settings snapshot file
+  (_Settings.txt). If found, the session configuration is
+  displayed automatically in a separate popup showing all
+  instrument settings, polling parameters, and theme colors
+  that were active when the session was recorded.
+
+  Session Start / Stop / Total
+  ────────────────────────────
+  After loading, the start time, stop time, and total
+  duration of the session are derived from the timestamps
+  in the data and displayed at the bottom of the form.
+
+  Add File (Overlay)
+  ──────────────────
+  When checked, the next file loaded is added to the
+  existing chart rather than replacing it. Use this to
+  overlay two sessions for direct visual comparison.
+  Each loaded file gets a unique series name and color.
+  Uncheck to replace the current data on the next load.
+
+
+═══════════════════════════════════════════════════════════════
+  CHART DISPLAY
+═══════════════════════════════════════════════════════════════
+
+  Combined / Split View
+  ─────────────────────
+  Combined view plots all instruments on a single chart
+  with a shared Y axis. Split view gives each instrument
+  its own panel with an independent Y axis. Toggle with
+  the View Mode button.
+
+  Normalize
+  ─────────
+  In combined view, scales all series to a common baseline
+  so instruments with very different absolute values can
+  be compared on the same axis. Only available in combined
+  view.
+
+  Graph Style
+  ───────────
+  Select from Line, Scatter, Histogram, or Pie chart styles.
+  Only styles appropriate for the loaded data are enabled.
+
+  Zoom
+  ────
+  Use the Zoom slider to scale the chart vertically.
+  Use the mouse wheel to zoom the rolling window in or out.
+
+  Pan
+  ───
+  Use the Pan scrollbar to scroll through the data. Pan
+  is available whenever the rolling window is active and
+  the dataset is larger than the visible window.
+
+  Rolling Window
+  ──────────────
+  Limits how many points are shown in the chart at once.
+  Useful for navigating large datasets without rendering
+  all points simultaneously.
+
+  Maximum Points
+  ──────────────
+  Sets the number of points shown in the rolling window.
+  Reduce this value if chart rendering feels slow on
+  very large files.
+
+  Tooltips
+  ────────
+  Hover over any data point to see its exact timestamp
+  and measured value. The tooltip threshold can be
+  adjusted in the application Settings.
+
+
+═══════════════════════════════════════════════════════════════
+  POLL SPEED VIEW  (Timing Chart)
+═══════════════════════════════════════════════════════════════
+
+  Poll Speed Button
+  ─────────────────
+  Switches the chart between the instrument data view and
+  the poll cycle timing view. Only available when both a
+  data file and a timing file have been loaded from the
+  same session.
+
+  The timing chart shows a stacked area graph of where
+  time was spent in each poll cycle during the session:
+
+    Gold band    — GPIB address switch time
+    Blue band    — Instrument communication time
+    Green band   — UI update time
+    Red band     — CSV record write time
+    White line   — Total cycle wall-clock time
+
+  Orange dashed vertical lines mark cycles where a
+  communication disconnect was detected. The instrument
+  name is labelled at the top of each marker.
+
+  How to Read the Timing Chart
+  ────────────────────────────
+  Green band growing    — UI thread was the bottleneck
+                          during the recorded session.
+
+  Blue band growing     — Instrument was slowing down.
+                          Check NPLC setting and signal
+                          stability at that point in time.
+
+  Spike at orange line  — A physical connection dropout
+                          occurred. The spike height shows
+                          how long the timeout wait was.
+
+  Regular periodic spikes — Auto-save or flush timer
+                            firing every 100 cycles.
+
+  Baseline drifting up  — GC pressure from accumulated
+                          short-lived drawing objects in
+                          the chart paint loop.
+
+  Press Data View to return to the instrument data chart.
+
+
+═══════════════════════════════════════════════════════════════
+  ANALYSIS
+═══════════════════════════════════════════════════════════════
+
+  Analyze Instrument Data
+  ───────────────────────
+  Opens the full Analysis window for the loaded instrument
+  data. Shows per-instrument statistics including:
+
+    Mean, standard deviation, min, max, RMS, range
+    Sample rate and total duration
+    Trend direction
+    Allan deviation
+    Delta analysis relative to a master instrument
+
+  The Analysis window opens as a separate non-blocking
+  window so the chart remains visible alongside it.
+
+  Analyze Poll Timing
+  ───────────────────
+  Opens the Poll Timing Analysis window for the loaded
+  timing data. Shows statistical summaries of each timing
+  phase across all recorded cycles, helping identify
+  which phase was responsible for any slowdown observed
+  during the session.
+
+  Stats Toggle
+  ────────────
+  Toggles a statistics panel overlaid on the chart showing
+  running summary statistics for the loaded dataset.
+
+  Post-Processing  (two-series sessions)
+  ───────────────────────────────────────
+  When exactly two instrument series are loaded from the
+  same session, the application automatically computes a
+  post-processed analysis file alongside the loaded data.
+  This file contains:
+
+    Value A and Value B per timestamp
+    Delta (A minus B) in volts
+    Delta in microvolts
+    Inter-sample interval in milliseconds
+    Rolling mean of the delta (100-point window)
+    Rolling standard deviation of the delta
+
+  The analyzed file is saved to the same session folder
+  with an _Analyzed.csv suffix. Summary statistics are
+  shown in the progress bar at the bottom of the form.
+
+
+═══════════════════════════════════════════════════════════════
+  OTHER CONTROLS
+═══════════════════════════════════════════════════════════════
+
+  Theme
+  ─────
+  Opens the theme editor to change chart colors, series
+  colors, grid, labels, and background. Theme changes
+  apply immediately to the chart.
+
+  Clear
+  ─────
+  Clears all loaded data and resets the chart to the
+  empty state. If timing data is active, the timing
+  buffer is cleared first.
+
+  Reset Errors
+  ────────────
+  Resets error counts for all series and re-enables
+  any series that were hidden due to errors.
+
+  Close
+  ─────
+  Closes the Recorded Data Viewer. Any loaded data is
+  discarded. Recorded CSV files on disk are not affected.
+
+  Measurement Combo
+  ─────────────────
+  Displays the measurement type that was active when
+  the session was recorded. This is restored automatically
+  from the file preamble when a data file is loaded.
+  The combo is read-only in the playback viewer.
+
+  Progress Bar
+  ────────────
+  Shows loading progress, analysis results, and status
+  messages at the bottom of the form.
+
+  Memory Status
+  ─────────────
+  The status bar shows current memory usage as a
+  percentage of the configured limit. Large files with
+  many instruments and long durations can consume
+  significant memory.
+
+
+═══════════════════════════════════════════════════════════════
+  TYPICAL WORKFLOW
+═══════════════════════════════════════════════════════════════
+
+  Single Session Review
+  ─────────────────────
+  1.  Press Load and select the _Multi.csv file from
+      the session folder.
+  2.  The settings snapshot opens automatically if present.
+  3.  Review the chart in Combined or Split view.
+  4.  Press Analyze Instrument Data for full statistics.
+  5.  Load the _Timing.csv file and press Poll Speed
+      to review timing performance.
+
+  Two-Session Comparison
+  ───────────────────────
+  1.  Press Load and select the first session file.
+  2.  Check Add File.
+  3.  Press Load again and select the second session file.
+  4.  Both sessions are overlaid on the same chart.
+  5.  Press Normalize to align them on a common baseline
+      if the absolute values differ significantly.
+
+  Two-Instrument Delta Analysis
+  ─────────────────────────────
+  1.  Load a session that was recorded with exactly two
+      instruments.
+  2.  The application automatically computes the delta
+      and saves an _Analyzed.csv file to the session folder.
+  3.  Press Analyze Instrument Data to view full statistics
+      including delta mean and standard deviation.
+
+
+═══════════════════════════════════════════════════════════════
+  NOTES
+═══════════════════════════════════════════════════════════════
+
+  - No instrument connection is required. All operations
+    work entirely from the recorded CSV files.
+
+  - Session files are never modified by the viewer. All
+    analysis output is written to new files with distinct
+    suffixes (_Analyzed.csv).
+
+  - Large files with millions of points may take several
+    seconds to load. A progress indicator is shown during
+    loading.
+
+  - The _Timing.csv and _Multi.csv files from the same
+    session share the same timestamp prefix and sort
+    together in the session folder.
+
+  - Post-processing analysis is only computed automatically
+    for sessions with exactly two instrument series. For
+    sessions with more instruments use the Analyze button.
+
+───────────────────────────────────────────────────────────────
+  Multi-Instrument Poller  |  Author: Mike Wheeler  |  2026
+───────────────────────────────────────────────────────────────

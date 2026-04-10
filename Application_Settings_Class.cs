@@ -324,6 +324,9 @@ namespace Multimeter_Controller
         : "CPU (GDI+)";
 
 
+    [JsonIgnore]  // runtime-detected, no need to persist
+    public bool Discrete_GPU_Available { get; set; } = false;
+
     // ===== FILE/DATA MANAGEMENT =====
 
     [JsonIgnore]
@@ -402,6 +405,9 @@ namespace Multimeter_Controller
     // ===== Analysis ======
     [JsonPropertyName ( "auto_analyze_after_recording" )]
     public bool Auto_Analyze_After_Recording { get; set; } = false;
+
+    [JsonPropertyName( "analysis_show_gpu_comparison" )]
+    public bool Analysis_Show_GPU_Comparison { get; set; } = true;
 
     [JsonPropertyName ( "analysis_series_count" )]
     public int Analysis_Series_Count { get; set; } = 2;

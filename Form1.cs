@@ -71,6 +71,7 @@ using System.Windows.Forms;
 using System.Windows.Forms.DataVisualization.Charting;
 using Trace_Execution_Namespace;
 using static System.ComponentModel.Design.ObjectSelectorEditor;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 using static Trace_Execution_Namespace.Trace_Execution;
 
 namespace Multimeter_Controller
@@ -110,10 +111,20 @@ namespace Multimeter_Controller
     private bool _Adding_Instrument  = false; // true while async add is in progress
     private bool Poll_Form_Is_Open  => _Poll_Form != null && ! _Poll_Form.IsDisposed;
 
+    private void AboutItem_Click( object sender, EventArgs e ) => App_Help.Show_About( this );
+    private void HelpItem_Click( object sender, EventArgs e ) => App_Help.Show_Launcher_Help( this );
+
+    private System.Windows.Forms.ToolTip Tool_Tip = new System.Windows.Forms.ToolTip();
+
     public Form1()
     {
       using var Block = Trace_Block.Start_If_Enabled();
       InitializeComponent();
+
+      helpToolStripMenuItem.Click += ( s, e ) => App_Help.Show_Launcher_Help( this );
+      aboutToolStripMenuItem.Click += ( s, e ) => App_Help.Show_About( this );
+      //   Initialize_Tool_Tips();
+
 
       // Populate instrument type combo first, then set selection
       _Updating_Controls = true;
@@ -152,8 +163,17 @@ namespace Multimeter_Controller
       Set_Button_State();
     }
 
+
+
+
+
+ 
+
+
     private void Load_NPLC_Combo( Meter_Type Type, decimal? Current_NPLC = null )
     {
+      using var Block = Trace_Block.Start_If_Enabled();
+
       NPLC_Combo_Box.Items.Clear();
       NPLC_Combo_Box.Items.AddRange(
         Type.Get_NPLC_Values().Select( n => n.ToString( CultureInfo.InvariantCulture ) ).ToArray<object>() );
@@ -167,6 +187,8 @@ namespace Multimeter_Controller
 
     protected override void OnFormClosing( FormClosingEventArgs e )
     {
+      using var Block = Trace_Block.Start_If_Enabled();
+
       if ( _Comm.Is_Connected && ! _Cleanup_Done )
       {
         e.Cancel = true;
@@ -179,6 +201,8 @@ namespace Multimeter_Controller
 
     private async Task Shutdown_And_Close()
     {
+      using var Block = Trace_Block.Start_If_Enabled();
+
       _Cleanup_Done = true;
       await _Comm.Disconnect_Async();    // all the USB cleanup is in here
       this.Invoke( () => this.Close() ); // re-trigger close, cleanup done
@@ -2194,7 +2218,7 @@ namespace Multimeter_Controller
         List_Box.Items.Add( IP );
       List_Box.SelectedIndex = 0;
 
-      var OK_Button          = new Button();
+      var OK_Button          = new System.Windows.Forms.Button();
       OK_Button.Text         = "Select";
       OK_Button.Dock         = DockStyle.Bottom;
       OK_Button.DialogResult = DialogResult.OK;
@@ -3232,9 +3256,13 @@ namespace Multimeter_Controller
 
     private void GPU_Info_Button_Click( object sender, EventArgs e )
     {
-      if ( _Settings.Use_GPU_Rendering )
+      if (_Settings.Use_GPU_Rendering)
       {
         Show_GPU_Info_Popup();
+      }
+      else
+      {
+        MessageBox.Show( "There is no discrete GPU on this PC.", "GPU Not Found", MessageBoxButtons.OK, MessageBoxIcon.Warning );
       }
     }
 
@@ -3478,6 +3506,22 @@ namespace Multimeter_Controller
       }
 
       return Popup;
+    }
+
+    private void Initialize_Tool_Tips()
+    {
+      MessageBox.Show( "Init called" ); // temp debug
+      Tool_Tip.Active = true;
+
+      Tool_Tip.AutoPopDelay = 5000;
+      Tool_Tip.InitialDelay = 500;
+      Tool_Tip.ReshowDelay = 200;
+
+      Tool_Tip.SetToolTip( Display_Recording_Button, "Playback Previous Recordings" );
+      Tool_Tip.SetToolTip( GPU_Info_Button, "Not available: No discrete GPU detected on this PC." );
+      Tool_Tip.SetToolTip( Meter_Info_Button, "Information on all supported meters." );
+      //  toolTip.SetToolTip( textBox1, "Tooltip for a text box" );
+
     }
   }
 }

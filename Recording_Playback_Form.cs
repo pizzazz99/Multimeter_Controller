@@ -194,8 +194,8 @@ namespace Multimeter_Controller
 
     private StreamWriter? _Recording_Writer;
 
-    private List<Instrument_Series> _Data_Series = new ( );
-    private List<Instrument_Series> _Timing_Series = new ( );
+    private List<Instrument_Series> _Data_Series = new();
+    private List<Instrument_Series> _Timing_Series = new();
 
     private Panel? _Analysis_Results_Panel;
     private Label? _Zoom_Label;
@@ -206,14 +206,14 @@ namespace Multimeter_Controller
     private ToolStripStatusLabel? _Performance_Status_Label;
 
     private CancellationTokenSource? _Cts;
-    private readonly List<DateTime> _Reading_Timestamps = new ( );
-    private List<int> _Filtered_Indices = new ( );
-    private Dictionary<string, int> _Error_Counts = new ( );
-    private Dictionary<string, DateTime> _Last_Success = new ( );
+    private readonly List<DateTime> _Reading_Timestamps = new();
+    private List<int> _Filtered_Indices = new();
+    private Dictionary<string, int> _Error_Counts = new();
+    private Dictionary<string, DateTime> _Last_Success = new();
     private Instrument_Comm? _Comm;
     private GPIB_Manager? _GPIB_Manager;
     private int _Cycle_Count;
-    private readonly Stopwatch _Cycle_Stopwatch = new ( );
+    private readonly Stopwatch _Cycle_Stopwatch = new();
 
     private static readonly (
         string Label,
@@ -221,7 +221,7 @@ namespace Multimeter_Controller
         string Cmd_34401,
         string Cmd_Generic_GPIB,
         string Unit
-    ) [ ] _Measurements =
+    )[] _Measurements =
     {
         ("DC Voltage",  "DCV",  "MEAS:VOLT:DC", "MEAS:VOLT:DC", "V"),
         ("AC Voltage",  "ACV",  "MEAS:VOLT:AC", "MEAS:VOLT:AC", "V"),
@@ -245,6 +245,9 @@ namespace Multimeter_Controller
       InitializeComponent();
 
       using var Block = Trace_Block.Start_If_Enabled();
+
+      helpToolStripMenuItem.Click += ( s, e ) => App_Help.Show_Recording_Playback_Form_Help( this );
+
 
       // ── Null guards ───────────────────────────────────────────────────
       if (Settings == null)
@@ -339,55 +342,55 @@ namespace Multimeter_Controller
     }
 
 
-    private void Chart_Panel_Mouse_Wheel ( object sender, MouseEventArgs e )
-  => Chart_Panel_Control_Mouse_Wheel ( sender, e );
+    private void Chart_Panel_Mouse_Wheel( object sender, MouseEventArgs e )
+  => Chart_Panel_Control_Mouse_Wheel( sender, e );
 
-    private void Chart_Panel_Resize ( object? sender, EventArgs e )
-        => Chart_Panel_Control_Resize ( sender, e );
+    private void Chart_Panel_Resize( object? sender, EventArgs e )
+        => Chart_Panel_Control_Resize( sender, e );
 
-    private void Pan_Scrollbar_Scroll ( object sender, ScrollEventArgs e )
-    => Pan_Scrollbar_Control_Scroll ( sender, e );
+    private void Pan_Scrollbar_Scroll( object sender, ScrollEventArgs e )
+    => Pan_Scrollbar_Control_Scroll( sender, e );
 
-    private void Pan_Scrollbar_ValueChanged ( object sender, EventArgs e )
-        => Pan_Scrollbar_Control_ValueChanged ( sender, e );
+    private void Pan_Scrollbar_ValueChanged( object sender, EventArgs e )
+        => Pan_Scrollbar_Control_ValueChanged( sender, e );
 
 
-    protected override bool _Is_Running_State ( ) => _Is_Running;
+    protected override bool _Is_Running_State() => _Is_Running;
 
     protected override string Current_Unit
     {
       get
       {
-        string Measurement = Measurement_Combo.Text.Trim ( );
-        if ( Measurement.Contains ( "Voltage" ) )
+        string Measurement = Measurement_Combo.Text.Trim();
+        if (Measurement.Contains( "Voltage" ))
           return "V";
-        if ( Measurement.Contains ( "Current" ) )
+        if (Measurement.Contains( "Current" ))
           return "A";
-        if ( Measurement.Contains ( "Resistance" ) )
+        if (Measurement.Contains( "Resistance" ))
           return "Ω";
-        if ( Measurement.Contains ( "Frequency" ) )
+        if (Measurement.Contains( "Frequency" ))
           return "Hz";
-        if ( Measurement.Contains ( "Temperature" ) )
+        if (Measurement.Contains( "Temperature" ))
           return "°C";
-        if ( Measurement.Contains ( "Capacitance" ) )
+        if (Measurement.Contains( "Capacitance" ))
           return "F";
         return "";
       }
     }
 
-    private void Poll_Speed_Button_Click ( object Sender, EventArgs E )
+    private void Poll_Speed_Button_Click( object Sender, EventArgs E )
     {
       _Show_Timing_View = !_Show_Timing_View;
       Poll_Speed_Button.Text = _Show_Timing_View ? "Data View" : "Poll Speed";
       _Series = _Show_Timing_View ? _Timing_Series : _Data_Series;
-      Chart_Panel.Invalidate ( );
+      Chart_Panel.Invalidate();
     }
-    private void Chart_Panel_Paint ( object? sender, PaintEventArgs e )
+    private void Chart_Panel_Paint( object? sender, PaintEventArgs e )
     {
-      if ( _Instrument_File_Loading || _Polling_File_Loading )
+      if (_Instrument_File_Loading || _Polling_File_Loading)
         return;
 
-      Multimeter_Common_Helpers_Class.Track_FPS (
+      Multimeter_Common_Helpers_Class.Track_FPS(
           ref _Paint_Count, ref _Actual_FPS, _FPS_Stopwatch, Update_Performance_Status );
 
       Graphics G = e.Graphics;
@@ -398,94 +401,94 @@ namespace Multimeter_Controller
       int W = Chart_Panel_Control.ClientSize.Width;
       int H = Chart_Panel_Control.ClientSize.Height;
 
-      using var Bg_Brush = new SolidBrush ( _Theme.Background );
-      G.FillRectangle ( Bg_Brush, 0, 0, W, H );
+      using var Bg_Brush = new SolidBrush( _Theme.Background );
+      G.FillRectangle( Bg_Brush, 0, 0, W, H );
 
-      if ( _Show_Timing_View )
+      if (_Show_Timing_View)
       {
-        Draw_Poll_Timing_Chart ( G, W, H );
+        Draw_Poll_Timing_Chart( G, W, H );
         return;
       }
 
-      if ( _Series.Count == 0 )
+      if (_Series.Count == 0)
       {
-        Draw_Empty_State ( G, W, H, "Press Load to load a recorded file." );
+        Draw_Empty_State( G, W, H, "Press Load to load a recorded file." );
         return;
       }
 
-      bool Has_Data = _Series.Any ( s => s.Visible && s.Points.Count > 0 );
-      if ( !Has_Data )
+      bool Has_Data = _Series.Any( s => s.Visible && s.Points.Count > 0 );
+      if (!Has_Data)
       {
-        Draw_Instrument_List ( G, H );
+        Draw_Instrument_List( G, H );
         return;
       }
 
-      if ( _Combined_View || _Current_Graph_Style == "Pie" )
-        Draw_Combined_View ( G, W, H );
+      if (_Combined_View || _Current_Graph_Style == "Pie")
+        Draw_Combined_View( G, W, H );
       else
-        Draw_Split_View ( G, W, H );
+        Draw_Split_View( G, W, H );
 
-      Draw_Position_Indicator ( e.Graphics, W, H );
+      Draw_Position_Indicator( e.Graphics, W, H );
     }
 
 
 
-    protected override void OnFormClosing ( FormClosingEventArgs E )
+    protected override void OnFormClosing( FormClosingEventArgs E )
     {
-      using var Block = Trace_Block.Start_If_Enabled ( );
+      using var Block = Trace_Block.Start_If_Enabled();
 
       // Only do cleanup here if Close_Button didn't already handle it
-      if ( _Is_Running || _Is_Recording )
+      if (_Is_Running || _Is_Recording)
       {
-        Capture_Trace.Write ( "Cleanup needed (Close_Button was not used)" );
+        Capture_Trace.Write( "Cleanup needed (Close_Button was not used)" );
         // _Poll_Timer?.Stop ( );
-        _Auto_Save_Timer?.Stop ( );
-        _Chart_Refresh_Timer?.Stop ( );
-        _Chart_Tooltip?.Dispose ( ); // ADD THIS
+        _Auto_Save_Timer?.Stop();
+        _Chart_Refresh_Timer?.Stop();
+        _Chart_Tooltip?.Dispose(); // ADD THIS
 
         // Set_Local_Mode ( );
-        base.OnFormClosing ( E );
+        base.OnFormClosing( E );
       }
       else
       {
-        Capture_Trace.Write ( "Already cleaned up, skipping" );
+        Capture_Trace.Write( "Already cleaned up, skipping" );
       }
 
-      base.OnFormClosing ( E );
+      base.OnFormClosing( E );
     }
 
 
-    private void Update_Memory_Status ( int Current, int Max )
+    private void Update_Memory_Status( int Current, int Max )
     {
-      using var Block = Trace_Block.Start_If_Enabled ( );
-      int Percent = ( Current * 100 ) / Max;
+      using var Block = Trace_Block.Start_If_Enabled();
+      int Percent = (Current * 100) / Max;
 
-      if ( _Memory_Status_Label != null )
+      if (_Memory_Status_Label != null)
       {
         _Memory_Status_Label.Text = $"Memory: {Current:N0} / {Max:N0} ({Percent}%)";
       }
     }
 
-    protected override void Update_Performance_Status ( )
+    protected override void Update_Performance_Status()
     {
-      Multimeter_Common_Helpers_Class.Update_Performance_Status (
+      Multimeter_Common_Helpers_Class.Update_Performance_Status(
           _Performance_Status_Label,
           _Memory_Status_Label,
           _Actual_FPS,
-          _Series.Sum ( s => s.Points.Count ),
-          _Series.Sum ( s => s.Points.Count ),
+          _Series.Sum( s => s.Points.Count ),
+          _Series.Sum( s => s.Points.Count ),
           _Settings.Max_Data_Points_In_Memory,
           _Settings.Warning_Threshold_Percent
       );
     }
 
 
-    private string Get_Command_For_Series (
+    private string Get_Command_For_Series(
       Instrument_Series S,
       (string Label, string Cmd_3458, string Cmd_34401, string Cmd_Generic_GPIB, string Unit) Entry
     )
     {
-      using var Block = Trace_Block.Start_If_Enabled ( );
+      using var Block = Trace_Block.Start_If_Enabled();
 
       return S.Type switch
       {
@@ -495,44 +498,44 @@ namespace Multimeter_Controller
       };
     }
 
-    private void Clear_Button_Click ( object Sender, EventArgs E )
+    private void Clear_Button_Click( object Sender, EventArgs E )
     {
-      using var Block = Trace_Block.Start_If_Enabled ( );
+      using var Block = Trace_Block.Start_If_Enabled();
 
-      if ( _Show_Timing_View )
+      if (_Show_Timing_View)
       {
         _Timing_Head = 0;
         _Timing_Count = 0;
         _Timing_View_Offset = 0;
-        _Disconnect_Events.Clear ( );
+        _Disconnect_Events.Clear();
         _Show_Timing_View = false;
       }
 
       // Clear data
-      _Series.Clear ( );
+      _Series.Clear();
       _Is_Running = false;
 
-      Set_Button_State ( );
-      SuspendLayout ( );
-      ResumeLayout ( true );
-      Invalidate ( true );
-      Update ( );
+      Set_Button_State();
+      SuspendLayout();
+      ResumeLayout( true );
+      Invalidate( true );
+      Update();
     }
 
 
 
 
-    public void Set_Button_State ( )
+    public void Set_Button_State()
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      if ( _Polling_File_Loading || _Instrument_File_Loading )
+      if (_Polling_File_Loading || _Instrument_File_Loading)
         return;
 
-      bool Has_Data = _Series != null && _Series.Any ( s => s.Points.Count > 0 );
+      bool Has_Data = _Series != null && _Series.Any( s => s.Points.Count > 0 );
       bool Has_Timing = _Timing_Count > 0;
       bool Has_Any = Has_Data || Has_Timing;
-      bool Has_Multi = _Series != null && _Series.Count ( s => s.Points.Count > 0 ) > 1;
+      bool Has_Multi = _Series != null && _Series.Count( s => s.Points.Count > 0 ) > 1;
 
       // always enabled when not loading
       Load_Button.Enabled = true;
@@ -544,11 +547,11 @@ namespace Multimeter_Controller
       Add_File_Checkbox.Enabled = Has_Any;
       Zoom_Slider.Enabled = Has_Any;
       Graph_Style_Combo.Enabled = Has_Any;
-     
+
       Legend_Toggle_Button.Enabled = Has_Any;
       Max_Points_Numeric.Enabled = Has_Any;
       Rolling_Check.Enabled = Has_Any;
-      View_Mode_Button.Enabled= Has_Any;
+      View_Mode_Button.Enabled = Has_Any;
 
 
       // Needs instrument data specifically
@@ -565,13 +568,13 @@ namespace Multimeter_Controller
     }
 
 
-    private async void Load_Button_Click ( object Sender, EventArgs E )
+    private async void Load_Button_Click( object Sender, EventArgs E )
     {
-      using var Block = Trace_Block.Start_If_Enabled ( );
+      using var Block = Trace_Block.Start_If_Enabled();
 
-      if ( _Is_Running )
+      if (_Is_Running)
       {
-        MessageBox.Show (
+        MessageBox.Show(
             "Stop the current reading before loading.",
             "Reading in Progress",
             MessageBoxButtons.OK,
@@ -580,15 +583,15 @@ namespace Multimeter_Controller
       }
 
       _Memory_Warning_Shown = false;
-      string Folder = Multimeter_Common_Helpers_Class.Get_Graph_Captures_Folder ( _Settings );
+      string Folder = Multimeter_Common_Helpers_Class.Get_Graph_Captures_Folder( _Settings );
 
-      using var Dlg = new OpenFileDialog ( );
+      using var Dlg = new OpenFileDialog();
       Dlg.Title = "Load Recorded Data";
       Dlg.Filter = "CSV files (*.csv)|*.csv";
-      if ( Directory.Exists ( Folder ) )
+      if (Directory.Exists( Folder ))
         Dlg.InitialDirectory = Folder;
 
-      if ( Dlg.ShowDialog ( ) != DialogResult.OK )
+      if (Dlg.ShowDialog() != DialogResult.OK)
         return;
 
 
@@ -637,35 +640,35 @@ namespace Multimeter_Controller
 
 
 
-    public void Refresh_Panel ( )
+    public void Refresh_Panel()
     {
       using var Block = Trace_Block.Start_If_Enabled();
-      Chart_Panel.Invalidate ( );
-      Chart_Panel.Update ( );
+      Chart_Panel.Invalidate();
+      Chart_Panel.Update();
     }
 
 
-    private async Task Load_Timing_Recorded_File ( string File_Path )
+    private async Task Load_Timing_Recorded_File( string File_Path )
     {
       try
       {
-        using var Block = Trace_Block.Start_If_Enabled ( );
+        using var Block = Trace_Block.Start_If_Enabled();
         _Polling_File_Loading = true;
         _Loaded_File_Path = File_Path;
         _View_Offset = 0;
         _Auto_Scroll = false;
 
-        Load_Timing_File ( File_Path );
+        Load_Timing_File( File_Path );
       }
-      catch ( Exception Ex )
+      catch (Exception Ex)
       {
-        MessageBox.Show ( $"Load failed: {Ex.Message}\n\n{Ex.StackTrace}",
+        MessageBox.Show( $"Load failed: {Ex.Message}\n\n{Ex.StackTrace}",
             "Load Error", MessageBoxButtons.OK, MessageBoxIcon.Error );
       }
       finally
       {
         _Polling_File_Loading = false;
-        Set_Button_State ( );
+        Set_Button_State();
 
       }
     }
@@ -766,11 +769,11 @@ namespace Multimeter_Controller
       }
     }
 
-    private async Task Load_Instrument_Recorded_File ( string File_Path )
+    private async Task Load_Instrument_Recorded_File( string File_Path )
     {
       try
       {
-        using var Block = Trace_Block.Start_If_Enabled ( );
+        using var Block = Trace_Block.Start_If_Enabled();
 
         _Instrument_File_Loading = true;
         _Loaded_File_Path = File_Path;
@@ -782,13 +785,13 @@ namespace Multimeter_Controller
         _View_Offset = 0;
         _Auto_Scroll = false;
 
-        foreach ( var S in _Series )
-          S.Reset_Stats ( );
+        foreach (var S in _Series)
+          S.Reset_Stats();
 
         _Show_Timing_View = false;
 
-        var Preamble = await Multimeter_Common_Helpers_Class.Load_CSV_Preamble ( File_Path );
-        if ( Preamble == null )
+        var Preamble = await Multimeter_Common_Helpers_Class.Load_CSV_Preamble( File_Path );
+        if (Preamble == null)
           return;
 
         // ── Restore measurement type from preamble ────────────────────
@@ -801,39 +804,39 @@ namespace Multimeter_Controller
             Capture_Trace.Write( $"NO MATCH - combo items: [{string.Join( ", ", Measurement_Combo.Items.Cast<string>() )}]" );
         }
 
-     
 
-        string [ ] Lines = Preamble.Lines;
+
+        string[] Lines = Preamble.Lines;
         int Header_Index = Preamble.Header_Index;
         var Sectioned_Stats = Preamble.Sectioned_Stats;
 
-        string [ ] Headers = Lines [ Header_Index ].Split ( ',' );
+        string[] Headers = Lines[ Header_Index ].Split( ',' );
         int Col_Count = Headers.Length - 1;
 
-        if ( Col_Count <= 0 )
+        if (Col_Count <= 0)
         {
-          MessageBox.Show ( "No instrument columns found.", "Load Error",
+          MessageBox.Show( "No instrument columns found.", "Load Error",
               MessageBoxButtons.OK, MessageBoxIcon.Warning );
           return;
         }
 
         int Data_Line_Count = Lines.Length - Header_Index - 1;
         bool Show_Progress_Bar = Data_Line_Count > 10_000;
-        int Progress_Interval = Math.Max ( 1, Data_Line_Count / 100 );
+        int Progress_Interval = Math.Max( 1, Data_Line_Count / 100 );
 
         // ── Build series from CSV headers ─────────────────────────────
-        if ( !Add_File_Checkbox.Checked )
-          _Data_Series.Clear ( );
+        if (!Add_File_Checkbox.Checked)
+          _Data_Series.Clear();
 
-        for ( int I = 0; I < Col_Count; I++ )
+        for (int I = 0; I < Col_Count; I++)
         {
-          string Header_Name = Headers [ I + 1 ].Trim ( );
+          string Header_Name = Headers[ I + 1 ].Trim();
 
-          if ( Add_File_Checkbox.Checked )
+          if (Add_File_Checkbox.Checked)
           {
             int Suffix = 2;
             string Unique = Header_Name;
-            while ( _Data_Series.Any ( S => S.Name == Unique ) )
+            while (_Data_Series.Any( S => S.Name == Unique ))
               Unique = $"{Header_Name} ({Suffix++})";
             Header_Name = Unique;
           }
@@ -851,48 +854,48 @@ namespace Multimeter_Controller
           var S = new Instrument_Series
           {
             Instrument = Instr,
-            Line_Color = _Theme.Line_Colors [ ( I + _Data_Series.Count ) % _Theme.Line_Colors.Length ],
-            Points = new List<(DateTime Time, double Value)> ( Data_Line_Count ),
-            File_Stats = Sectioned_Stats != null && Sectioned_Stats.ContainsKey ( Header_Name )
-                                   ? Sectioned_Stats [ Header_Name ]
+            Line_Color = _Theme.Line_Colors[ (I + _Data_Series.Count) % _Theme.Line_Colors.Length ],
+            Points = new List<(DateTime Time, double Value)>( Data_Line_Count ),
+            File_Stats = Sectioned_Stats != null && Sectioned_Stats.ContainsKey( Header_Name )
+                                   ? Sectioned_Stats[ Header_Name ]
                                    : null,
           };
 
-          _Data_Series.Add ( S );
+          _Data_Series.Add( S );
         }
         _Series = _Data_Series;
 
         // ── Parse data rows ───────────────────────────────────────────
-        await Task.Run ( ( ) =>
+        await Task.Run( () =>
         {
-          for ( int I = Header_Index + 1; I < Lines.Length; I++ )
+          for (int I = Header_Index + 1; I < Lines.Length; I++)
           {
-            string Line = Lines [ I ].Trim ( );
-            if ( string.IsNullOrEmpty ( Line ) || Line.StartsWith ( "#" ) )
+            string Line = Lines[ I ].Trim();
+            if (string.IsNullOrEmpty( Line ) || Line.StartsWith( "#" ))
               continue;
-            string [ ] Parts = Line.Split ( ',' );
-            if ( Parts.Length < 2 || !DateTime.TryParse ( Parts [ 0 ], out DateTime T ) )
+            string[] Parts = Line.Split( ',' );
+            if (Parts.Length < 2 || !DateTime.TryParse( Parts[ 0 ], out DateTime T ))
               continue;
-            for ( int J = 1; J < Parts.Length && J - 1 < _Series.Count; J++ )
+            for (int J = 1; J < Parts.Length && J - 1 < _Series.Count; J++)
             {
-              if ( double.TryParse ( Parts [ J ], NumberStyles.Float,
-                      CultureInfo.InvariantCulture, out double Val ) )
+              if (double.TryParse( Parts[ J ], NumberStyles.Float,
+                      CultureInfo.InvariantCulture, out double Val ))
               {
-                _Series [ J - 1 ].Points.Add ( (T, Val) );
-                _Series [ J - 1 ].Add_Point_Value ( Val );
+                _Series[ J - 1 ].Points.Add( (T, Val) );
+                _Series[ J - 1 ].Add_Point_Value( Val );
               }
             }
-            if ( Show_Progress_Bar && ( I % Progress_Interval == 0 ) )
+            if (Show_Progress_Bar && (I % Progress_Interval == 0))
             {
-              int Percent = ( ( I - Header_Index ) * 100 ) / Data_Line_Count;
-              this.Invoke ( ( ) => Show_Progress ( $"Loading... {Percent}%", _Foreground_Color ) );
+              int Percent = ((I - Header_Index) * 100) / Data_Line_Count;
+              this.Invoke( () => Show_Progress( $"Loading... {Percent}%", _Foreground_Color ) );
             }
           }
         } );
 
         // ── Post-load UI updates ──────────────────────────────────────
-        int Total = _Series.Sum ( s => s.Points.Count );
-        Show_Progress ( $"Loaded {_Series.Count} instruments, {Total} points", _Foreground_Color );
+        int Total = _Series.Sum( s => s.Points.Count );
+        Show_Progress( $"Loaded {_Series.Count} instruments, {Total} points", _Foreground_Color );
 
         // ── Derive start/stop/run from data ──────────────────────────
         var All_Points = _Series.SelectMany( s => s.Points ).ToList();
@@ -909,32 +912,32 @@ namespace Multimeter_Controller
         }
 
 
-        Update_Performance_Status ( );
-        Update_Graph_Style_Availability ( );
+        Update_Performance_Status();
+        Update_Graph_Style_Availability();
 
-        Multimeter_Common_Helpers_Class.Update_Scrollbar_Range (
+        Multimeter_Common_Helpers_Class.Update_Scrollbar_Range(
             Pan_Scrollbar,
          _Series.Count > 0 ? _Series.Max( s => s.Points.Count ) : 0,
             _Max_Display_Points,
             _Auto_Scroll,
             ref _View_Offset );
 
-        Chart_Panel.Invalidate ( );
+        Chart_Panel.Invalidate();
 
-        if ( _Series.Count == 2 )
-          await Compute_Post_Processing ( );
+        if (_Series.Count == 2)
+          await Compute_Post_Processing();
       }
-      catch ( Exception Ex )
+      catch (Exception Ex)
       {
-        MessageBox.Show ( $"Load failed: {Ex.Message}\n\n{Ex.StackTrace}",
+        MessageBox.Show( $"Load failed: {Ex.Message}\n\n{Ex.StackTrace}",
             "Load Error", MessageBoxButtons.OK, MessageBoxIcon.Error );
       }
       finally
       {
         _Instrument_File_Loading = false;
-        bool Has_Data = _Series != null && _Series.Any ( s => s.Points.Count > 0 );
-        Capture_Trace.Write ( $"After load — Has_Data: {Has_Data}, Series count: {_Series?.Count}, Points: {_Series?.Sum ( s => s.Points.Count )}" );
-        Set_Button_State ( );
+        bool Has_Data = _Series != null && _Series.Any( s => s.Points.Count > 0 );
+        Capture_Trace.Write( $"After load — Has_Data: {Has_Data}, Series count: {_Series?.Count}, Points: {_Series?.Sum( s => s.Points.Count )}" );
+        Set_Button_State();
       }
     }
 
@@ -942,81 +945,81 @@ namespace Multimeter_Controller
 
 
 
-    private void Theme_Button_Click ( object Sender, EventArgs E )
+    private void Theme_Button_Click( object Sender, EventArgs E )
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      using var Dlg = new Theme_Settings_Form ( _Theme );
-      if ( Dlg.ShowDialog ( this ) == DialogResult.OK )
+      using var Dlg = new Theme_Settings_Form( _Theme );
+      if (Dlg.ShowDialog( this ) == DialogResult.OK)
       {
-        _Theme.Copy_From ( Dlg.Result );
-        _Theme.Save ( );
+        _Theme.Copy_From( Dlg.Result );
+        _Theme.Save();
         Chart_Panel.BackColor = _Theme.Background;
 
         // Update series line colors from theme palette
-        for ( int I = 0; I < _Series.Count; I++ )
+        for (int I = 0; I < _Series.Count; I++)
         {
-          _Series [ I ].Line_Color = _Theme.Line_Colors [ I % _Theme.Line_Colors.Length ];
+          _Series[ I ].Line_Color = _Theme.Line_Colors[ I % _Theme.Line_Colors.Length ];
         }
 
-        _Settings.Set_Theme ( _Theme );
-        Chart_Panel.Invalidate ( );
+        _Settings.Set_Theme( _Theme );
+        Chart_Panel.Invalidate();
       }
     }
 
- 
 
 
-   
-    private void Initialize_Status_Panel ( )
+
+
+    private void Initialize_Status_Panel()
     {
-      using var Block = Trace_Block.Start_If_Enabled ( );
+      using var Block = Trace_Block.Start_If_Enabled();
 
       (_Memory_Status_Label, _Performance_Status_Label) =
-        Multimeter_Common_Helpers_Class.Initialize_Status_Strip ( this, _Settings, _Series.Count );
+        Multimeter_Common_Helpers_Class.Initialize_Status_Strip( this, _Settings, _Series.Count );
 
-      Update_Memory_Status ( 0, _Settings.Max_Data_Points_In_Memory );
+      Update_Memory_Status( 0, _Settings.Max_Data_Points_In_Memory );
     }
 
-  
+
 
     // Add a manual reset errors button
-    private void Reset_Errors_Button_Click ( object sender, EventArgs e )
+    private void Reset_Errors_Button_Click( object sender, EventArgs e )
     {
-      using var Block = Trace_Block.Start_If_Enabled ( );
+      using var Block = Trace_Block.Start_If_Enabled();
 
-      _Error_Counts.Clear ( );
-      foreach ( var Series in _Series )
+      _Error_Counts.Clear();
+      foreach (var Series in _Series)
       {
-        _Error_Counts [ Series.Name ] = 0;
+        _Error_Counts[ Series.Name ] = 0;
         Series.Visible = true;
       }
 
-      Show_Progress ( "Error counts reset - all instruments enabled", _Foreground_Color );
+      Show_Progress( "Error counts reset - all instruments enabled", _Foreground_Color );
 
-    //  Update_Legend ( );
+      //  Update_Legend ( );
     }
 
 
-    private void Update_Chart_Refresh_Rate ( )
-    => Update_Chart_Refresh_Rate ( _Chart_Refresh_Timer );
+    private void Update_Chart_Refresh_Rate()
+    => Update_Chart_Refresh_Rate( _Chart_Refresh_Timer );
 
-    private void Apply_Settings ( )
+    private void Apply_Settings()
     {
-      using var Block = Trace_Block.Start_If_Enabled ( );
+      using var Block = Trace_Block.Start_If_Enabled();
 
       // ===== DISPLAY SETTINGS =====
 
       // Tooltip settings
-      if ( _Chart_Tooltip != null )
+      if (_Chart_Tooltip != null)
       {
         _Chart_Tooltip.AutoPopDelay = _Settings.Tooltip_Display_Duration_Ms;
         // Tooltip distance is checked in Chart_Panel_MouseMove
       }
 
       // Chart refresh rate
-     
-      Update_Chart_Refresh_Rate ( );
+
+      Update_Chart_Refresh_Rate();
 
       // Default max display points
       _Max_Display_Points = _Settings.Max_Display_Points;
@@ -1025,7 +1028,7 @@ namespace Multimeter_Controller
                                            _Settings.Max_Display_Points ) );
 
       // View mode defaults (only apply if no data yet)
-      if ( _Series.All ( s => s.Points.Count == 0 ) )
+      if (_Series.All( s => s.Points.Count == 0 ))
       {
         _Combined_View = _Settings.Default_To_Combined_View;
         _Normalized_View = _Settings.Default_To_Normalized_View;
@@ -1035,12 +1038,12 @@ namespace Multimeter_Controller
         Normalize_Button.Visible = _Combined_View;
       }
 
-   
+
 
 
 
       // Default measurement type
-      if ( Measurement_Combo.Items.Contains ( _Settings.Default_Measurement_Type ) )
+      if (Measurement_Combo.Items.Contains( _Settings.Default_Measurement_Type ))
       {
         Measurement_Combo.SelectedItem = _Settings.Default_Measurement_Type;
       }
@@ -1048,11 +1051,11 @@ namespace Multimeter_Controller
       // ===== FILE SETTINGS =====
 
       // Save folder
-      if ( !string.IsNullOrEmpty ( _Settings.Default_Save_Folder ) )
+      if (!string.IsNullOrEmpty( _Settings.Default_Save_Folder ))
       {
         try
         {
-          Directory.CreateDirectory ( _Settings.Default_Save_Folder );
+          Directory.CreateDirectory( _Settings.Default_Save_Folder );
         }
         catch { }
       }
@@ -1069,87 +1072,87 @@ namespace Multimeter_Controller
       // ===== ZOOM SETTINGS =====
 
       // Default zoom level
-      if ( Zoom_Slider != null )
+      if (Zoom_Slider != null)
       {
         Zoom_Slider.Value = _Settings.Default_Zoom_Level;
-        Update_Zoom_From_Slider ( );
+        Update_Zoom_From_Slider();
       }
 
-  
-      Chart_Panel.Invalidate ( );
 
-      Capture_Trace.Write ( "Settings applied successfully" );
+      Chart_Panel.Invalidate();
+
+      Capture_Trace.Write( "Settings applied successfully" );
     }
 
 
-    protected override void Show_Progress ( string Message, Color Color )
+    protected override void Show_Progress( string Message, Color Color )
     {
       Progress_Text_Box.Text = Message;
       Progress_Text_Box.ForeColor = Color;
     }
 
 
-    private async Task Perform_Close_Operations ( string Context )
+    private async Task Perform_Close_Operations( string Context )
     {
-      Capture_Trace.Write ( "Beginning graceful shutdown" );
+      Capture_Trace.Write( "Beginning graceful shutdown" );
 
       // 1. Stop active polling gracefully
-      if ( _Is_Running )
+      if (_Is_Running)
       {
-        Capture_Trace.Write ( "Cancelling active polling" );
-        _Cts?.Cancel ( );
+        Capture_Trace.Write( "Cancelling active polling" );
+        _Cts?.Cancel();
 
         // Wait for the in-flight read to complete/timeout
         // rather than yanking the rug out
         int Wait_Ms = 0;
-        while ( _Is_Running && Wait_Ms < 5000 )
+        while (_Is_Running && Wait_Ms < 5000)
         {
-          await Task.Delay ( 100 );
+          await Task.Delay( 100 );
           Wait_Ms += 100;
         }
 
-        if ( _Is_Running )
+        if (_Is_Running)
         {
-          Capture_Trace.Write ( "WARNING - polling did not stop within 5s, forcing" );
+          Capture_Trace.Write( "WARNING - polling did not stop within 5s, forcing" );
         }
         else
         {
-          Capture_Trace.Write ( "Polling stopped cleanly" );
+          Capture_Trace.Write( "Polling stopped cleanly" );
         }
       }
 
 
 
       // 3. Stop timers
-      Capture_Trace.Write ( "Stopping timers" );
-      _Chart_Refresh_Timer?.Stop ( );
+      Capture_Trace.Write( "Stopping timers" );
+      _Chart_Refresh_Timer?.Stop();
 
 
 
 
       // 6. Dispose CTS
-      _Cts?.Dispose ( );
+      _Cts?.Dispose();
       _Cts = null;
     }
 
-    private async void Close_Button_Click ( object Sender, EventArgs E )
+    private async void Close_Button_Click( object Sender, EventArgs E )
     {
-      using var Block = Trace_Block.Start_If_Enabled ( );
+      using var Block = Trace_Block.Start_If_Enabled();
 
       // Disable the button immediately to prevent double-clicks
-      if ( Sender is Button Btn )
+      if (Sender is Button Btn)
         Btn.Enabled = false;
 
-      await Perform_Close_Operations ( "Closing" );
+      await Perform_Close_Operations( "Closing" );
 
-      Capture_Trace.Write ( "Shutdown complete, closing form" );
-      this.Close ( );
+      Capture_Trace.Write( "Shutdown complete, closing form" );
+      this.Close();
     }
 
 
-    private void Populate_Measurement_Combo ( )
+    private void Populate_Measurement_Combo()
     {
-      using var Block = Trace_Block.Start_If_Enabled ( );
+      using var Block = Trace_Block.Start_If_Enabled();
 
       Measurement_Combo.Enabled = false;
 
@@ -1157,64 +1160,64 @@ namespace Multimeter_Controller
       // Unsubscribe to prevent commands firing during population
       Measurement_Combo.SelectedIndexChanged -= Measurement_Combo_Changed;
 
-      Measurement_Combo.Items.Clear ( );
-      _Filtered_Indices.Clear ( );
+      Measurement_Combo.Items.Clear();
+      _Filtered_Indices.Clear();
 
-      for ( int I = 0; I < _Measurements.Length; I++ )
+      for (int I = 0; I < _Measurements.Length; I++)
       {
         string Cmd =
-          _Series.Count > 0 && _Series [ 0 ].Type == Meter_Type.HP34401
-            ? _Measurements [ I ].Cmd_34401
-            : _Measurements [ I ].Cmd_3458;
-        if ( !string.IsNullOrEmpty ( Cmd ) )
+          _Series.Count > 0 && _Series[ 0 ].Type == Meter_Type.HP34401
+            ? _Measurements[ I ].Cmd_34401
+            : _Measurements[ I ].Cmd_3458;
+        if (!string.IsNullOrEmpty( Cmd ))
         {
-          _Filtered_Indices.Add ( I );
-          Measurement_Combo.Items.Add ( _Measurements [ I ].Label );
+          _Filtered_Indices.Add( I );
+          Measurement_Combo.Items.Add( _Measurements[ I ].Label );
         }
       }
 
       // Default to DC Voltage if available, otherwise first item
-      int Dc_Index = Measurement_Combo.Items.IndexOf ( "DC Voltage" );
-      if ( Dc_Index >= 0 )
+      int Dc_Index = Measurement_Combo.Items.IndexOf( "DC Voltage" );
+      if (Dc_Index >= 0)
         Measurement_Combo.SelectedIndex = Dc_Index;
-      else if ( Measurement_Combo.Items.Count > 0 )
+      else if (Measurement_Combo.Items.Count > 0)
         Measurement_Combo.SelectedIndex = 0;
 
       // Re-subscribe now that population is complete
       Measurement_Combo.SelectedIndexChanged += Measurement_Combo_Changed;
     }
 
-    private void Measurement_Combo_Changed ( object Sender, EventArgs E )
+    private void Measurement_Combo_Changed( object Sender, EventArgs E )
     {
-      using var Block = Trace_Block.Start_If_Enabled ( );
-      if ( Measurement_Combo.SelectedItem == null )
+      using var Block = Trace_Block.Start_If_Enabled();
+      if (Measurement_Combo.SelectedItem == null)
         return;
 
-      string Selected = Measurement_Combo.SelectedItem.ToString ( );
-      Capture_Trace.Write ( $"Measurement changed to: {Selected}" );
+      string Selected = Measurement_Combo.SelectedItem.ToString();
+      Capture_Trace.Write( $"Measurement changed to: {Selected}" );
 
-      Show_Progress ( $"Measurement changed to: {Selected}", _Foreground_Color );
+      Show_Progress( $"Measurement changed to: {Selected}", _Foreground_Color );
 
 
 
-      foreach ( var S in _Series )
+      foreach (var S in _Series)
       {
         try
         {
-          int Filtered_Index = _Filtered_Indices [ Measurement_Combo.SelectedIndex ];
-          var Entry = _Measurements [ Filtered_Index ];
+          int Filtered_Index = _Filtered_Indices[ Measurement_Combo.SelectedIndex ];
+          var Entry = _Measurements[ Filtered_Index ];
 
-          string Command = Get_Command_For_Series ( S, Entry ); // ← replaces the two-type switch
+          string Command = Get_Command_For_Series( S, Entry ); // ← replaces the two-type switch
 
-          if ( string.IsNullOrEmpty ( Command ) )
+          if (string.IsNullOrEmpty( Command ))
           {
-            Capture_Trace.Write ( $"  {S.Name} has no command for {Selected}, skipping" );
+            Capture_Trace.Write( $"  {S.Name} has no command for {Selected}, skipping" );
             continue;
           }
         }
 
 
-        catch ( Exception Ex )
+        catch (Exception Ex)
         {
 
         }
@@ -1226,57 +1229,57 @@ namespace Multimeter_Controller
 
     }
 
-    private async Task Compute_Post_Processing ( string Output_Path = null )
+    private async Task Compute_Post_Processing( string Output_Path = null )
     {
-      if ( _Series.Count < 2 )
+      if (_Series.Count < 2)
       {
-        Show_Progress ( "Post-processing requires exactly 2 series.", Color.Orange );
+        Show_Progress( "Post-processing requires exactly 2 series.", Color.Orange );
         return;
       }
 
-      var S1 = _Series [ 0 ];
-      var S2 = _Series [ 1 ];
+      var S1 = _Series[ 0 ];
+      var S2 = _Series[ 1 ];
 
       // Align by point count — use the shorter series
-      int Count = Math.Min ( S1.Points.Count, S2.Points.Count );
-      if ( Count < 2 )
+      int Count = Math.Min( S1.Points.Count, S2.Points.Count );
+      if (Count < 2)
       {
-        Show_Progress ( "Not enough points for post-processing.", Color.Orange );
+        Show_Progress( "Not enough points for post-processing.", Color.Orange );
         return;
       }
 
       // ── Build output path ─────────────────────────────────────────────
-      if ( string.IsNullOrEmpty ( Output_Path ) )
+      if (string.IsNullOrEmpty( Output_Path ))
       {
         // Analyzed file goes into the same folder as the loaded file
-        string Session_Folder = Path.GetDirectoryName ( _Loaded_File_Path );
-        string Session_Name = Path.GetFileNameWithoutExtension ( _Loaded_File_Path );
-        Output_Path = Path.Combine ( Session_Folder, $"{Session_Name}_Analyzed.csv" );
+        string Session_Folder = Path.GetDirectoryName( _Loaded_File_Path );
+        string Session_Name = Path.GetFileNameWithoutExtension( _Loaded_File_Path );
+        Output_Path = Path.Combine( Session_Folder, $"{Session_Name}_Analyzed.csv" );
       }
 
-      Show_Progress ( "Computing post-processing analysis...", _Foreground_Color );
+      Show_Progress( "Computing post-processing analysis...", _Foreground_Color );
 
-      await Task.Run ( ( ) =>
+      await Task.Run( () =>
       {
-        using var Writer = new StreamWriter ( Output_Path );
+        using var Writer = new StreamWriter( Output_Path );
 
-        Writer.WriteLine ( $"# Post-processed analysis" );
-        Writer.WriteLine ( $"# Series A : {S1.Name}  GPIB {S1.Address}  NPLC {S1.NPLC}" );
-        Writer.WriteLine ( $"# Series B : {S2.Name}  GPIB {S2.Address}  NPLC {S2.NPLC}" );
-        Writer.WriteLine ( $"# Generated: {Path.GetFileNameWithoutExtension ( Output_Path )}" );
-        Writer.WriteLine ( $"# Points   : {Count}" );
-        Writer.WriteLine ( "Timestamp,Value_A,Value_B,Delta,Delta_uV,Delta_Ms,Rolling_Mean_Delta,Rolling_StdDev_Delta" );
+        Writer.WriteLine( $"# Post-processed analysis" );
+        Writer.WriteLine( $"# Series A : {S1.Name}  GPIB {S1.Address}  NPLC {S1.NPLC}" );
+        Writer.WriteLine( $"# Series B : {S2.Name}  GPIB {S2.Address}  NPLC {S2.NPLC}" );
+        Writer.WriteLine( $"# Generated: {Path.GetFileNameWithoutExtension( Output_Path )}" );
+        Writer.WriteLine( $"# Points   : {Count}" );
+        Writer.WriteLine( "Timestamp,Value_A,Value_B,Delta,Delta_uV,Delta_Ms,Rolling_Mean_Delta,Rolling_StdDev_Delta" );
 
         // ── Rolling stats accumulators ────────────────────────────────
         const int Rolling_Window = 100;
-        var Delta_Window = new Queue<double> ( Rolling_Window + 1 );
+        var Delta_Window = new Queue<double>( Rolling_Window + 1 );
         double Rolling_Sum = 0.0;
         double Rolling_Sum_Sq = 0.0;
 
-        for ( int I = 0; I < Count; I++ )
+        for (int I = 0; I < Count; I++)
         {
-          var P1 = S1.Points [ I ];
-          var P2 = S2.Points [ I ];
+          var P1 = S1.Points[ I ];
+          var P2 = S2.Points[ I ];
 
           double Delta = P1.Value - P2.Value;
           double Delta_uV = Delta * 1_000_000.0;
@@ -1284,35 +1287,35 @@ namespace Multimeter_Controller
           // Inter-sample interval (ms) — use S1 timestamp
           double Delta_Ms = I == 0
               ? 0.0
-              : ( S1.Points [ I ].Time - S1.Points [ I - 1 ].Time )
+              : (S1.Points[ I ].Time - S1.Points[ I - 1 ].Time)
                 .TotalMilliseconds;
 
           // ── Rolling window ────────────────────────────────────────
-          Delta_Window.Enqueue ( Delta );
+          Delta_Window.Enqueue( Delta );
           Rolling_Sum += Delta;
           Rolling_Sum_Sq += Delta * Delta;
 
-          if ( Delta_Window.Count > Rolling_Window )
+          if (Delta_Window.Count > Rolling_Window)
           {
-            double Old = Delta_Window.Dequeue ( );
+            double Old = Delta_Window.Dequeue();
             Rolling_Sum -= Old;
             Rolling_Sum_Sq -= Old * Old;
           }
 
           int N = Delta_Window.Count;
           double Rolling_Mean = Rolling_Sum / N;
-          double Variance = ( Rolling_Sum_Sq / N ) - ( Rolling_Mean * Rolling_Mean );
-          double Rolling_StdDev = Variance > 0 ? Math.Sqrt ( Variance ) : 0.0;
+          double Variance = (Rolling_Sum_Sq / N) - (Rolling_Mean * Rolling_Mean);
+          double Rolling_StdDev = Variance > 0 ? Math.Sqrt( Variance ) : 0.0;
 
-          Writer.WriteLine (
+          Writer.WriteLine(
               $"{P1.Time:yyyy-MM-dd HH:mm:ss.fff},"
-            + $"{P1.Value.ToString ( "G10", CultureInfo.InvariantCulture )},"
-            + $"{P2.Value.ToString ( "G10", CultureInfo.InvariantCulture )},"
-            + $"{Delta.ToString ( "G10", CultureInfo.InvariantCulture )},"
-            + $"{Delta_uV.ToString ( "F3", CultureInfo.InvariantCulture )},"
-            + $"{Delta_Ms.ToString ( "F1", CultureInfo.InvariantCulture )},"
-            + $"{Rolling_Mean.ToString ( "G8", CultureInfo.InvariantCulture )},"
-            + $"{Rolling_StdDev.ToString ( "G8", CultureInfo.InvariantCulture )}"
+            + $"{P1.Value.ToString( "G10", CultureInfo.InvariantCulture )},"
+            + $"{P2.Value.ToString( "G10", CultureInfo.InvariantCulture )},"
+            + $"{Delta.ToString( "G10", CultureInfo.InvariantCulture )},"
+            + $"{Delta_uV.ToString( "F3", CultureInfo.InvariantCulture )},"
+            + $"{Delta_Ms.ToString( "F1", CultureInfo.InvariantCulture )},"
+            + $"{Rolling_Mean.ToString( "G8", CultureInfo.InvariantCulture )},"
+            + $"{Rolling_StdDev.ToString( "G8", CultureInfo.InvariantCulture )}"
           );
         }
       } );
@@ -1321,22 +1324,22 @@ namespace Multimeter_Controller
       double Mean_Delta = 0, StdDev_Delta = 0, Min_Delta = double.MaxValue, Max_Delta = double.MinValue;
       double Sum = 0, Sum_Sq = 0;
 
-      for ( int I = 0; I < Count; I++ )
+      for (int I = 0; I < Count; I++)
       {
-        double D = S1.Points [ I ].Value - S2.Points [ I ].Value;
+        double D = S1.Points[ I ].Value - S2.Points[ I ].Value;
         Sum += D;
         Sum_Sq += D * D;
-        if ( D < Min_Delta )
+        if (D < Min_Delta)
           Min_Delta = D;
-        if ( D > Max_Delta )
+        if (D > Max_Delta)
           Max_Delta = D;
       }
       Mean_Delta = Sum / Count;
-      double Var = ( Sum_Sq / Count ) - ( Mean_Delta * Mean_Delta );
-      StdDev_Delta = Var > 0 ? Math.Sqrt ( Var ) : 0.0;
+      double Var = (Sum_Sq / Count) - (Mean_Delta * Mean_Delta);
+      StdDev_Delta = Var > 0 ? Math.Sqrt( Var ) : 0.0;
 
-      Show_Progress (
-          $"Analysis complete → {Path.GetFileName ( Output_Path )}  "
+      Show_Progress(
+          $"Analysis complete → {Path.GetFileName( Output_Path )}  "
         + $"|  Δ mean: {Mean_Delta * 1e6:F3} µV  "
         + $"|  Δ σ: {StdDev_Delta * 1e6:F3} µV  "
         + $"|  Δ min/max: {Min_Delta * 1e6:F3} / {Max_Delta * 1e6:F3} µV",
@@ -1346,43 +1349,43 @@ namespace Multimeter_Controller
 
 
 
-    private void Run_Auto_Analysis_If_Enabled ( )
+    private void Run_Auto_Analysis_If_Enabled()
     {
-      if ( !_Settings.Auto_Analyze_After_Recording )
+      if (!_Settings.Auto_Analyze_After_Recording)
         return;
-      if ( _Series == null || _Series.Count == 0 )
+      if (_Series == null || _Series.Count == 0)
         return;
 
-      if ( _Settings.Analysis_Series_Count == 2
+      if (_Settings.Analysis_Series_Count == 2
            && _Series.Count >= 2
-           && _Series [ 0 ].Points.Count > 0
-           && _Series [ 1 ].Points.Count > 0 )
+           && _Series[ 0 ].Points.Count > 0
+           && _Series[ 1 ].Points.Count > 0)
       {
         // Full two-series comparison popup
-        var Popup = new Analysis_Popup_Form (
-            _Series [ 0 ].Points,
-            _Series [ 1 ].Points,
-            _Series [ 0 ].Name,
-            _Series [ 1 ].Name,
+        var Popup = new Analysis_Popup_Form(
+            _Series[ 0 ].Points,
+            _Series[ 1 ].Points,
+            _Series[ 0 ].Name,
+            _Series[ 1 ].Name,
             _Theme
         );
-        Popup.Show ( this );
+        Popup.Show( this );
       }
-      else if ( _Series [ 0 ].Points.Count > 0 )
+      else if (_Series[ 0 ].Points.Count > 0)
       {
         // Single series — show the lightweight summary panel
-        Show_Analysis_Results ( _Series
-            .Where ( S => S.Points.Count >= 2 )
-            .ToList ( ) );
+        Show_Analysis_Results( _Series
+            .Where( S => S.Points.Count >= 2 )
+            .ToList() );
       }
     }
-    private void Show_Analysis_Results ( List<Instrument_Series> Series )
+    private void Show_Analysis_Results( List<Instrument_Series> Series )
     {
       // Remove old panel if present
-      if ( _Analysis_Results_Panel != null )
+      if (_Analysis_Results_Panel != null)
       {
-        this.Controls.Remove ( _Analysis_Results_Panel );
-        _Analysis_Results_Panel.Dispose ( );
+        this.Controls.Remove( _Analysis_Results_Panel );
+        _Analysis_Results_Panel.Dispose();
       }
 
       _Analysis_Results_Panel = new Panel
@@ -1390,13 +1393,13 @@ namespace Multimeter_Controller
         BackColor = _Theme.Background,
         ForeColor = _Theme.Foreground,
         BorderStyle = BorderStyle.FixedSingle,
-        Padding = new Padding ( 10 ),
+        Padding = new Padding( 10 ),
         AutoScroll = true,
-        Size = new Size ( 360, 280 ),
+        Size = new Size( 360, 280 ),
         Anchor = AnchorStyles.Bottom | AnchorStyles.Right
       };
 
-      _Analysis_Results_Panel.Location = new Point (
+      _Analysis_Results_Panel.Location = new Point(
           this.ClientSize.Width - _Analysis_Results_Panel.Width - 12,
           this.ClientSize.Height - _Analysis_Results_Panel.Height - 32
       );
@@ -1405,139 +1408,139 @@ namespace Multimeter_Controller
       var Title_Label = new Label
       {
         Text = "📊 Auto Analysis",
-        Font = new Font ( this.Font, FontStyle.Bold ),
+        Font = new Font( this.Font, FontStyle.Bold ),
         ForeColor = _Theme.Foreground,
         AutoSize = true,
-        Location = new Point ( 8, 8 )
+        Location = new Point( 8, 8 )
       };
 
       var Close_Button = new Button
       {
         Text = "✕",
-        Size = new Size ( 24, 24 ),
+        Size = new Size( 24, 24 ),
         FlatStyle = FlatStyle.Flat,
         ForeColor = _Theme.Foreground,
         BackColor = _Theme.Background,
-        Location = new Point ( _Analysis_Results_Panel.Width - 36, 4 ),
+        Location = new Point( _Analysis_Results_Panel.Width - 36, 4 ),
         Anchor = AnchorStyles.Top | AnchorStyles.Right,
         Cursor = Cursors.Hand
       };
       Close_Button.FlatAppearance.BorderSize = 0;
       Close_Button.Click += ( s, e ) =>
       {
-        this.Controls.Remove ( _Analysis_Results_Panel );
-        _Analysis_Results_Panel.Dispose ( );
+        this.Controls.Remove( _Analysis_Results_Panel );
+        _Analysis_Results_Panel.Dispose();
         _Analysis_Results_Panel = null;
       };
 
-      _Analysis_Results_Panel.Controls.Add ( Title_Label );
-      _Analysis_Results_Panel.Controls.Add ( Close_Button );
+      //    _Analysis_Results_Panel.Controls.Add ( Title_Label );
+      _Analysis_Results_Panel.Controls.Add( Close_Button );
 
       int Y = 38;
 
-      foreach ( var S in Series )
+      foreach (var S in Series)
       {
         // Color swatch + series name
         var Color_Swatch = new Panel
         {
           BackColor = S.Line_Color,
-          Size = new Size ( 12, 12 ),
-          Location = new Point ( 8, Y + 3 )
+          Size = new Size( 12, 12 ),
+          Location = new Point( 8, Y + 3 )
         };
 
         var Series_Label = new Label
         {
           Text = S.Name,
-          Font = new Font ( this.Font, FontStyle.Bold ),
+          Font = new Font( this.Font, FontStyle.Bold ),
           ForeColor = _Theme.Foreground,
           AutoSize = true,
-          Location = new Point ( 26, Y )
+          Location = new Point( 26, Y )
         };
 
-        _Analysis_Results_Panel.Controls.Add ( Color_Swatch );
-        _Analysis_Results_Panel.Controls.Add ( Series_Label );
+        _Analysis_Results_Panel.Controls.Add( Color_Swatch );
+        _Analysis_Results_Panel.Controls.Add( Series_Label );
         Y += 20;
 
         // Duration
         string Duration_Str = "—";
-        if ( S.Points.Count >= 2 )
+        if (S.Points.Count >= 2)
         {
-          TimeSpan Duration = S.Points [ S.Points.Count - 1 ].Time
-                            - S.Points [ 0 ].Time;
+          TimeSpan Duration = S.Points[ S.Points.Count - 1 ].Time
+                            - S.Points[ 0 ].Time;
           Duration_Str = Duration.TotalSeconds < 60
               ? $"{Duration.TotalSeconds:F1} s"
               : $"{Duration.TotalMinutes:F1} min";
         }
 
         // Build stat rows — respect settings toggles
-        var Rows = new List<(string Key, string Value)> ( );
+        var Rows = new List<(string Key, string Value)>();
 
-        if ( _Settings.Analysis_Show_Min_Max )
+        if (_Settings.Analysis_Show_Min_Max)
         {
-          Rows.Add ( ("Min", $"{S.Get_Min ( ):G6}") );
-          Rows.Add ( ("Max", $"{S.Get_Max ( ):G6}") );
+          Rows.Add( ("Min", $"{S.Get_Min():G6}") );
+          Rows.Add( ("Max", $"{S.Get_Max():G6}") );
         }
-        if ( _Settings.Analysis_Show_Mean )
-          Rows.Add ( ("Avg", $"{S.Get_Average ( ):G6}") );
-        if ( _Settings.Analysis_Show_Std_Dev )
-          Rows.Add ( ("Std Dev", $"{S.Get_StdDev ( ):G4}") );
-        if ( _Settings.Analysis_Show_RMS )
-          Rows.Add ( ("RMS", $"{S.Get_RMS ( ):G4}") );
-        if ( _Settings.Analysis_Show_Min_Max )
-          Rows.Add ( ("Range", $"{S.Get_Range ( ):G4}") );
-        if ( _Settings.Analysis_Show_Trend )
-          Rows.Add ( ("Trend", S.Get_Trend ( )) );
-        if ( _Settings.Analysis_Show_Sample_Rate )
-          Rows.Add ( ("Rate", $"{S.Get_Sample_Rate ( ):F2} S/s") );
+        if (_Settings.Analysis_Show_Mean)
+          Rows.Add( ("Avg", $"{S.Get_Average():G6}") );
+        if (_Settings.Analysis_Show_Std_Dev)
+          Rows.Add( ("Std Dev", $"{S.Get_StdDev():G4}") );
+        if (_Settings.Analysis_Show_RMS)
+          Rows.Add( ("RMS", $"{S.Get_RMS():G4}") );
+        if (_Settings.Analysis_Show_Min_Max)
+          Rows.Add( ("Range", $"{S.Get_Range():G4}") );
+        if (_Settings.Analysis_Show_Trend)
+          Rows.Add( ("Trend", S.Get_Trend()) );
+        if (_Settings.Analysis_Show_Sample_Rate)
+          Rows.Add( ("Rate", $"{S.Get_Sample_Rate():F2} S/s") );
 
-        Rows.Add ( ("Samples", $"{S.Points.Count:N0}") );
-        Rows.Add ( ("Duration", Duration_Str) );
+        Rows.Add( ("Samples", $"{S.Points.Count:N0}") );
+        Rows.Add( ("Duration", Duration_Str) );
 
-        if ( _Settings.Analysis_Show_Errors )
-          Rows.Add ( ("Errors", $"{S.Total_Errors}") );
+        if (_Settings.Analysis_Show_Errors)
+          Rows.Add( ("Errors", $"{S.Total_Errors}") );
 
-        foreach ( var (Key, Value) in Rows )
+        foreach (var (Key, Value) in Rows)
         {
           var Row = new Label
           {
             Text = $"  {Key,-10} {Value}",
             ForeColor = _Theme.Foreground,
             AutoSize = true,
-            Location = new Point ( 8, Y ),
-            Font = new Font ( "Consolas", 8.5f )
+            Location = new Point( 8, Y ),
+            Font = new Font( "Consolas", 8.5f )
           };
-          _Analysis_Results_Panel.Controls.Add ( Row );
+          _Analysis_Results_Panel.Controls.Add( Row );
           Y += 17;
         }
 
         Y += 10; // gap between series
       }
 
-      this.Controls.Add ( _Analysis_Results_Panel );
-      _Analysis_Results_Panel.BringToFront ( );
+      this.Controls.Add( _Analysis_Results_Panel );
+      _Analysis_Results_Panel.BringToFront();
     }
 
-    private void Analyze_Poll_Timing_Button_Click ( object Sender, EventArgs E )
-     => Show_Timing_Analysis_Popup ( );
+    private void Analyze_Poll_Timing_Button_Click( object Sender, EventArgs E )
+     => Show_Timing_Analysis_Popup();
 
-    private void Show_Timing_Analysis_Popup ( )
+    private void Show_Timing_Analysis_Popup()
     {
-      if ( _Timing_Count < 2 )
+      if (_Timing_Count < 2)
       {
-        Show_Progress ( "Timing analysis requires at least 2 loaded samples.", Color.Orange );
+        Show_Progress( "Timing analysis requires at least 2 loaded samples.", Color.Orange );
         return;
       }
 
       // ── Snapshot circular buffer in chronological order ───────────
-      int Count = Math.Min ( _Timing_Count, _Timing_Buffer_Size );
-      var Records = new List<Poll_Timing_Analysis> ( Count );
+      int Count = Math.Min( _Timing_Count, _Timing_Buffer_Size );
+      var Records = new List<Poll_Timing_Analysis>( Count );
 
-      for ( int I = 0; I < Count; I++ )
+      for (int I = 0; I < Count; I++)
       {
-        int Idx = ( _Timing_Head - Count + I + _Timing_Buffer_Size ) % _Timing_Buffer_Size;
-        var S = _Cycle_Timing [ Idx ];
+        int Idx = (_Timing_Head - Count + I + _Timing_Buffer_Size) % _Timing_Buffer_Size;
+        var S = _Cycle_Timing[ Idx ];
 
-        Records.Add ( new Poll_Timing_Analysis
+        Records.Add( new Poll_Timing_Analysis
         {
           Timestamp = S.Cycle_Time,
           Cycle = I,
@@ -1550,40 +1553,40 @@ namespace Multimeter_Controller
         } );
       }
 
-      var Popup = new Poll_Timing_Analysis_Form ( Records, _Theme );
-      Popup.Show ( this );   // non-modal, matches Show_Analysis_Popup behaviour
+      var Popup = new Poll_Timing_Analysis_Form( Records, _Theme );
+      Popup.Show( this );   // non-modal, matches Show_Analysis_Popup behaviour
     }
 
-    private void Analyze_Instrument_Data_Button_Click(object sender, EventArgs e)
+    private void Analyze_Instrument_Data_Button_Click( object sender, EventArgs e )
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
       if (_Series == null || !_Series.Any())
       {
-        Capture_Trace.Write("No series data loaded");
+        Capture_Trace.Write( "No series data loaded" );
         return;
       }
 
-      Capture_Trace.Write($"Series count: {_Series.Count}");
+      Capture_Trace.Write( $"Series count: {_Series.Count}" );
       foreach (var S in _Series)
-        Capture_Trace.Write($"  Series: '{S.Name}'  Points: {S.Points?.Count ?? -1}");
+        Capture_Trace.Write( $"  Series: '{S.Name}'  Points: {S.Points?.Count ?? -1}" );
 
       var Instruments = _Series
-        .Where(S => S.Points != null && S.Points.Count >= 2)
-        .Select((S, Index) => new Analysis_Popup_Form.Instrument_Series(
-            _Series.Count(X => X.Name == S.Name) > 1
+        .Where( S => S.Points != null && S.Points.Count >= 2 )
+        .Select( ( S, Index ) => new Analysis_Popup_Form.Instrument_Series(
+            _Series.Count( X => X.Name == S.Name ) > 1
               ? $"{S.Name} #{Index + 1}"
               : S.Name,
             S.Points.ToList()
-        ))
+        ) )
         .ToList();
 
-      Capture_Trace.Write($"Instruments built: {Instruments.Count}");
+      Capture_Trace.Write( $"Instruments built: {Instruments.Count}" );
 
       if (!Instruments.Any())
       {
-        MessageBox.Show("No instruments with enough data to analyse.",
-          "Analysis", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        MessageBox.Show( "No instruments with enough data to analyse.",
+          "Analysis", MessageBoxButtons.OK, MessageBoxIcon.Information );
         return;
       }
 
@@ -1592,17 +1595,12 @@ namespace Multimeter_Controller
           _Theme ?? Chart_Theme.Dark_Preset(),
           _Settings
       );
-      Popup.Show(this);
+      Popup.Show( this );
       Popup.Begin_Async_Load();
     }
 
-
-
-    // ── Call from a button (wire in designer) ────────────────────────────────
-   
+    
 
  
-
-
   }
 }

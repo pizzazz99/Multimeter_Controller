@@ -1,4 +1,3 @@
-
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -10,13 +9,13 @@ namespace Multimeter_Controller
   {
     private System.ComponentModel.IContainer components = null;
 
-    protected override void Dispose ( bool disposing )
+    protected override void Dispose( bool disposing )
     {
-      if ( disposing && ( components != null ) )
+      if (disposing && (components != null))
       {
-        components.Dispose ( );
+        components.Dispose();
       }
-      base.Dispose ( disposing );
+      base.Dispose( disposing );
     }
 
 
@@ -95,24 +94,37 @@ namespace Multimeter_Controller
       Session_Settings_Button = new Button();
       Display_Recording_Button = new Button();
       GPU_Info_Button = new Button();
+      menuStrip1 = new MenuStrip();
+      helpToolStripMenuItem = new ToolStripMenuItem();
+      aboutToolStripMenuItem = new ToolStripMenuItem();
       Connection_Group.SuspendLayout();
       ((System.ComponentModel.ISupportInitialize) GPIB_Address_Numeric).BeginInit();
       Instruments_Group.SuspendLayout();
+      menuStrip1.SuspendLayout();
       SuspendLayout();
       // 
       // Title_Label
       // 
       Title_Label.AutoSize = true;
-      Title_Label.Location = new Point( 0, 0 );
+      Title_Label.Location = new Point( -1, 18 );
       Title_Label.Name = "Title_Label";
       Title_Label.Size = new Size( 0, 15 );
       Title_Label.TabIndex = 0;
       Title_Label.Visible = false;
+      // helpToolStripMenuItem
+      helpToolStripMenuItem.Name = "helpToolStripMenuItem";
+      helpToolStripMenuItem.Size = new Size( 44, 20 );
+      helpToolStripMenuItem.Text = "Help";
+
+      // aboutToolStripMenuItem
+      aboutToolStripMenuItem.Name = "aboutToolStripMenuItem";
+      aboutToolStripMenuItem.Size = new Size( 52, 20 );
+      aboutToolStripMenuItem.Text = "About";
       // 
       // Command_List_Label
       // 
       Command_List_Label.AutoSize = true;
-      Command_List_Label.Location = new Point( 12, 12 );
+      Command_List_Label.Location = new Point( 11, 30 );
       Command_List_Label.Name = "Command_List_Label";
       Command_List_Label.Size = new Size( 72, 15 );
       Command_List_Label.TabIndex = 1;
@@ -123,28 +135,29 @@ namespace Multimeter_Controller
       Command_List.Anchor =  AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left;
       Command_List.FormattingEnabled = true;
       Command_List.HorizontalScrollbar = true;
-      Command_List.Location = new Point( 12, 32 );
+      Command_List.Location = new Point( 11, 50 );
       Command_List.Name = "Command_List";
-      Command_List.Size = new Size( 184, 244 );
+      Command_List.Size = new Size( 184, 289 );
       Command_List.TabIndex = 2;
       Command_List.SelectedIndexChanged += Command_List_Selected_Index_Changed;
       // 
       // Detail_Text_Box
       // 
+      Detail_Text_Box.Anchor =  AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
       Detail_Text_Box.BackColor = SystemColors.Window;
       Detail_Text_Box.Font = new Font( "Consolas", 9.5F );
-      Detail_Text_Box.Location = new Point( 202, 32 );
+      Detail_Text_Box.Location = new Point( 201, 50 );
       Detail_Text_Box.Multiline = true;
       Detail_Text_Box.Name = "Detail_Text_Box";
       Detail_Text_Box.ReadOnly = true;
       Detail_Text_Box.ScrollBars = ScrollBars.Vertical;
-      Detail_Text_Box.Size = new Size( 622, 200 );
+      Detail_Text_Box.Size = new Size( 608, 187 );
       Detail_Text_Box.TabIndex = 3;
       // 
       // Open_Dictionary_Button
       // 
       Open_Dictionary_Button.Anchor =  AnchorStyles.Bottom | AnchorStyles.Left;
-      Open_Dictionary_Button.Location = new Point( 65, 295 );
+      Open_Dictionary_Button.Location = new Point( 59, 350 );
       Open_Dictionary_Button.Name = "Open_Dictionary_Button";
       Open_Dictionary_Button.Size = new Size( 72, 35 );
       Open_Dictionary_Button.TabIndex = 11;
@@ -203,9 +216,9 @@ namespace Multimeter_Controller
       Connection_Group.Controls.Add( Defaults_Button );
       Connection_Group.Controls.Add( Connect_Button );
       Connection_Group.Controls.Add( Connection_Status_Label );
-      Connection_Group.Location = new Point( 1080, 12 );
+      Connection_Group.Location = new Point( 1079, 30 );
       Connection_Group.Name = "Connection_Group";
-      Connection_Group.Size = new Size( 248, 576 );
+      Connection_Group.Size = new Size( 248, 647 );
       Connection_Group.TabIndex = 15;
       Connection_Group.TabStop = false;
       Connection_Group.Text = "Connection Settings";
@@ -274,7 +287,7 @@ namespace Multimeter_Controller
       label1.AutoSize = true;
       label1.Location = new Point( 10, 325 );
       label1.Name = "label1";
-      label1.Size = new Size( 83, 15 );
+      label1.Size = new Size( 84, 15 );
       label1.TabIndex = 25;
       label1.Text = "Connected To:";
       // 
@@ -416,7 +429,7 @@ namespace Multimeter_Controller
       Read_Timeout_Label.AutoSize = true;
       Read_Timeout_Label.Location = new Point( 12, 227 );
       Read_Timeout_Label.Name = "Read_Timeout_Label";
-      Read_Timeout_Label.Size = new Size( 80, 15 );
+      Read_Timeout_Label.Size = new Size( 81, 15 );
       Read_Timeout_Label.TabIndex = 13;
       Read_Timeout_Label.Text = "Read Timeout";
       // 
@@ -469,9 +482,10 @@ namespace Multimeter_Controller
       // 
       // Send_Command_Label
       // 
+      Send_Command_Label.Anchor =  AnchorStyles.Bottom | AnchorStyles.Left;
       Send_Command_Label.AutoSize = true;
       Send_Command_Label.Font = new Font( "Segoe UI", 9F, FontStyle.Bold );
-      Send_Command_Label.Location = new Point( 204, 248 );
+      Send_Command_Label.Location = new Point( 202, 249 );
       Send_Command_Label.Name = "Send_Command_Label";
       Send_Command_Label.Size = new Size( 97, 15 );
       Send_Command_Label.TabIndex = 4;
@@ -479,15 +493,17 @@ namespace Multimeter_Controller
       // 
       // Send_Command_Text_Box
       // 
+      Send_Command_Text_Box.Anchor =  AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
       Send_Command_Text_Box.Font = new Font( "Consolas", 10F );
-      Send_Command_Text_Box.Location = new Point( 307, 244 );
+      Send_Command_Text_Box.Location = new Point( 317, 246 );
       Send_Command_Text_Box.Name = "Send_Command_Text_Box";
-      Send_Command_Text_Box.Size = new Size( 251, 23 );
+      Send_Command_Text_Box.Size = new Size( 280, 23 );
       Send_Command_Text_Box.TabIndex = 5;
       // 
       // Execute_Button
       // 
-      Execute_Button.Location = new Point( 564, 243 );
+      Execute_Button.Anchor =  AnchorStyles.Bottom | AnchorStyles.Right;
+      Execute_Button.Location = new Point( 603, 245 );
       Execute_Button.Name = "Execute_Button";
       Execute_Button.Size = new Size( 80, 26 );
       Execute_Button.TabIndex = 6;
@@ -497,7 +513,8 @@ namespace Multimeter_Controller
       // 
       // Diag_Button
       // 
-      Diag_Button.Location = new Point( 689, 243 );
+      Diag_Button.Anchor =  AnchorStyles.Bottom | AnchorStyles.Right;
+      Diag_Button.Location = new Point( 689, 245 );
       Diag_Button.Name = "Diag_Button";
       Diag_Button.Size = new Size( 120, 25 );
       Diag_Button.TabIndex = 8;
@@ -507,9 +524,10 @@ namespace Multimeter_Controller
       // 
       // Response_Label
       // 
+      Response_Label.Anchor =  AnchorStyles.Bottom | AnchorStyles.Left;
       Response_Label.AutoSize = true;
       Response_Label.Font = new Font( "Segoe UI", 9F, FontStyle.Bold );
-      Response_Label.Location = new Point( 202, 344 );
+      Response_Label.Location = new Point( 201, 349 );
       Response_Label.Name = "Response_Label";
       Response_Label.Size = new Size( 63, 15 );
       Response_Label.TabIndex = 9;
@@ -517,15 +535,15 @@ namespace Multimeter_Controller
       // 
       // Response_Text_Box
       // 
-      Response_Text_Box.Anchor =  AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left;
+      Response_Text_Box.Anchor =  AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
       Response_Text_Box.BackColor = SystemColors.Window;
       Response_Text_Box.Font = new Font( "Consolas", 9.5F );
-      Response_Text_Box.Location = new Point( 202, 362 );
+      Response_Text_Box.Location = new Point( 201, 380 );
       Response_Text_Box.Multiline = true;
       Response_Text_Box.Name = "Response_Text_Box";
       Response_Text_Box.ReadOnly = true;
       Response_Text_Box.ScrollBars = ScrollBars.Vertical;
-      Response_Text_Box.Size = new Size( 622, 220 );
+      Response_Text_Box.Size = new Size( 608, 291 );
       Response_Text_Box.TabIndex = 10;
       // 
       // Instruments_Group
@@ -552,16 +570,16 @@ namespace Multimeter_Controller
       Instruments_Group.Controls.Add( Instruments_List );
       Instruments_Group.Controls.Add( Select_Instrument_Button );
       Instruments_Group.Controls.Add( Multi_Poll_Button );
-      Instruments_Group.Location = new Point( 830, 12 );
+      Instruments_Group.Location = new Point( 829, 30 );
       Instruments_Group.Name = "Instruments_Group";
-      Instruments_Group.Size = new Size( 240, 576 );
+      Instruments_Group.Size = new Size( 240, 647 );
       Instruments_Group.TabIndex = 14;
       Instruments_Group.TabStop = false;
       Instruments_Group.Text = "GPIB Instruments";
       // 
       // About_Selections_Button
       // 
-      About_Selections_Button.Location = new Point( 154, 469 );
+      About_Selections_Button.Location = new Point( 154, 550 );
       About_Selections_Button.Name = "About_Selections_Button";
       About_Selections_Button.Size = new Size( 71, 45 );
       About_Selections_Button.TabIndex = 60;
@@ -572,7 +590,7 @@ namespace Multimeter_Controller
       // label2
       // 
       label2.AutoSize = true;
-      label2.Location = new Point( 15, 439 );
+      label2.Location = new Point( 15, 514 );
       label2.Name = "label2";
       label2.Size = new Size( 43, 15 );
       label2.TabIndex = 59;
@@ -581,7 +599,7 @@ namespace Multimeter_Controller
       // Master_Instrument_Combobox
       // 
       Master_Instrument_Combobox.FormattingEnabled = true;
-      Master_Instrument_Combobox.Location = new Point( 64, 436 );
+      Master_Instrument_Combobox.Location = new Point( 64, 511 );
       Master_Instrument_Combobox.Name = "Master_Instrument_Combobox";
       Master_Instrument_Combobox.Size = new Size( 161, 23 );
       Master_Instrument_Combobox.TabIndex = 58;
@@ -672,7 +690,7 @@ namespace Multimeter_Controller
       Instrument_Type_Label.AutoSize = true;
       Instrument_Type_Label.Location = new Point( 15, 48 );
       Instrument_Type_Label.Name = "Instrument_Type_Label";
-      Instrument_Type_Label.Size = new Size( 34, 15 );
+      Instrument_Type_Label.Size = new Size( 35, 15 );
       Instrument_Type_Label.TabIndex = 4;
       Instrument_Type_Label.Text = "Type:";
       // 
@@ -720,14 +738,14 @@ namespace Multimeter_Controller
       Instruments_List.Anchor =  AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
       Instruments_List.Location = new Point( 15, 276 );
       Instruments_List.Name = "Instruments_List";
-      Instruments_List.Size = new Size( 210, 154 );
+      Instruments_List.Size = new Size( 210, 214 );
       Instruments_List.TabIndex = 10;
       Instruments_List.DoubleClick += Select_Instrument_Button_Click;
       // 
       // Select_Instrument_Button
       // 
       Select_Instrument_Button.Anchor =  AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-      Select_Instrument_Button.Location = new Point( 39, 533 );
+      Select_Instrument_Button.Location = new Point( 39, 604 );
       Select_Instrument_Button.Name = "Select_Instrument_Button";
       Select_Instrument_Button.Size = new Size( 165, 30 );
       Select_Instrument_Button.TabIndex = 11;
@@ -737,7 +755,7 @@ namespace Multimeter_Controller
       // 
       // Multi_Poll_Button
       // 
-      Multi_Poll_Button.Location = new Point( 15, 469 );
+      Multi_Poll_Button.Location = new Point( 15, 550 );
       Multi_Poll_Button.Name = "Multi_Poll_Button";
       Multi_Poll_Button.Size = new Size( 71, 45 );
       Multi_Poll_Button.TabIndex = 13;
@@ -747,19 +765,21 @@ namespace Multimeter_Controller
       // 
       // Command_History_List_Box
       // 
+      Command_History_List_Box.Anchor =  AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
       Command_History_List_Box.FormattingEnabled = true;
       Command_History_List_Box.HorizontalScrollbar = true;
-      Command_History_List_Box.Location = new Point( 307, 288 );
+      Command_History_List_Box.Location = new Point( 317, 299 );
       Command_History_List_Box.Name = "Command_History_List_Box";
-      Command_History_List_Box.Size = new Size( 354, 49 );
+      Command_History_List_Box.Size = new Size( 451, 34 );
       Command_History_List_Box.TabIndex = 16;
       Command_History_List_Box.DoubleClick += Command_History_ListBox_DoubleClick;
       // 
       // History_Label
       // 
+      History_Label.Anchor =  AnchorStyles.Bottom | AnchorStyles.Left;
       History_Label.AutoSize = true;
       History_Label.Font = new Font( "Segoe UI", 9F, FontStyle.Bold );
-      History_Label.Location = new Point( 192, 288 );
+      History_Label.Location = new Point( 202, 307 );
       History_Label.Name = "History_Label";
       History_Label.Size = new Size( 109, 15 );
       History_Label.TabIndex = 17;
@@ -768,7 +788,7 @@ namespace Multimeter_Controller
       // Meter_Info_Button
       // 
       Meter_Info_Button.Anchor =  AnchorStyles.Bottom | AnchorStyles.Left;
-      Meter_Info_Button.Location = new Point( 25, 457 );
+      Meter_Info_Button.Location = new Point( 24, 546 );
       Meter_Info_Button.Name = "Meter_Info_Button";
       Meter_Info_Button.Size = new Size( 72, 39 );
       Meter_Info_Button.TabIndex = 18;
@@ -779,7 +799,7 @@ namespace Multimeter_Controller
       // Settings_Button
       // 
       Settings_Button.Anchor =  AnchorStyles.Bottom | AnchorStyles.Left;
-      Settings_Button.Location = new Point( 25, 501 );
+      Settings_Button.Location = new Point( 24, 590 );
       Settings_Button.Name = "Settings_Button";
       Settings_Button.Size = new Size( 72, 35 );
       Settings_Button.TabIndex = 19;
@@ -790,7 +810,7 @@ namespace Multimeter_Controller
       // Reset_Defaults_Button
       // 
       Reset_Defaults_Button.Anchor =  AnchorStyles.Bottom | AnchorStyles.Left;
-      Reset_Defaults_Button.Location = new Point( 106, 457 );
+      Reset_Defaults_Button.Location = new Point( 105, 546 );
       Reset_Defaults_Button.Name = "Reset_Defaults_Button";
       Reset_Defaults_Button.Size = new Size( 72, 38 );
       Reset_Defaults_Button.TabIndex = 20;
@@ -800,7 +820,7 @@ namespace Multimeter_Controller
       // Button_Show_Execution_Trace
       // 
       Button_Show_Execution_Trace.Anchor =  AnchorStyles.Bottom | AnchorStyles.Left;
-      Button_Show_Execution_Trace.Location = new Point( 106, 545 );
+      Button_Show_Execution_Trace.Location = new Point( 105, 634 );
       Button_Show_Execution_Trace.Name = "Button_Show_Execution_Trace";
       Button_Show_Execution_Trace.Size = new Size( 72, 38 );
       Button_Show_Execution_Trace.TabIndex = 21;
@@ -811,7 +831,7 @@ namespace Multimeter_Controller
       // Session_Settings_Button
       // 
       Session_Settings_Button.Anchor =  AnchorStyles.Bottom | AnchorStyles.Left;
-      Session_Settings_Button.Location = new Point( 106, 501 );
+      Session_Settings_Button.Location = new Point( 105, 590 );
       Session_Settings_Button.Name = "Session_Settings_Button";
       Session_Settings_Button.Size = new Size( 72, 38 );
       Session_Settings_Button.TabIndex = 22;
@@ -822,7 +842,7 @@ namespace Multimeter_Controller
       // Display_Recording_Button
       // 
       Display_Recording_Button.Anchor =  AnchorStyles.Bottom | AnchorStyles.Left;
-      Display_Recording_Button.Location = new Point( 106, 392 );
+      Display_Recording_Button.Location = new Point( 105, 481 );
       Display_Recording_Button.Name = "Display_Recording_Button";
       Display_Recording_Button.Size = new Size( 72, 56 );
       Display_Recording_Button.TabIndex = 23;
@@ -832,7 +852,8 @@ namespace Multimeter_Controller
       // 
       // GPU_Info_Button
       // 
-      GPU_Info_Button.Location = new Point( 25, 392 );
+      GPU_Info_Button.Anchor =  AnchorStyles.Bottom | AnchorStyles.Left;
+      GPU_Info_Button.Location = new Point( 24, 481 );
       GPU_Info_Button.Name = "GPU_Info_Button";
       GPU_Info_Button.Size = new Size( 75, 56 );
       GPU_Info_Button.TabIndex = 72;
@@ -840,11 +861,32 @@ namespace Multimeter_Controller
       GPU_Info_Button.UseVisualStyleBackColor = true;
       GPU_Info_Button.Click += GPU_Info_Button_Click;
       // 
+      // menuStrip1
+      // 
+      menuStrip1.Items.AddRange( new ToolStripItem[] { helpToolStripMenuItem, aboutToolStripMenuItem } );
+      menuStrip1.Location = new Point( 0, 0 );
+      menuStrip1.Name = "menuStrip1";
+      menuStrip1.Size = new Size( 1340, 24 );
+      menuStrip1.TabIndex = 73;
+      menuStrip1.Text = "menuStrip1";
+      // 
+      // helpToolStripMenuItem
+      // 
+      helpToolStripMenuItem.Name = "helpToolStripMenuItem";
+      helpToolStripMenuItem.Size = new Size( 44, 20 );
+      helpToolStripMenuItem.Text = "Help";
+      // 
+      // aboutToolStripMenuItem
+      // 
+      aboutToolStripMenuItem.Name = "aboutToolStripMenuItem";
+      aboutToolStripMenuItem.Size = new Size( 52, 20 );
+      aboutToolStripMenuItem.Text = "About";
+      // 
       // Form1
       // 
       AutoScaleDimensions = new SizeF( 7F, 15F );
       AutoScaleMode = AutoScaleMode.Font;
-      ClientSize = new Size( 1340, 603 );
+      ClientSize = new Size( 1340, 698 );
       Controls.Add( GPU_Info_Button );
       Controls.Add( Display_Recording_Button );
       Controls.Add( Session_Settings_Button );
@@ -867,14 +909,18 @@ namespace Multimeter_Controller
       Controls.Add( Open_Dictionary_Button );
       Controls.Add( Instruments_Group );
       Controls.Add( Connection_Group );
+      Controls.Add( menuStrip1 );
+      MinimumSize = new Size( 1000, 640 );
       Name = "Form1";
       StartPosition = FormStartPosition.CenterScreen;
-      Text = "Multimeter Controller";
+      Text = "Multi-Instrument Poller - Launcher";
       Connection_Group.ResumeLayout( false );
       Connection_Group.PerformLayout();
       ((System.ComponentModel.ISupportInitialize) GPIB_Address_Numeric).EndInit();
       Instruments_Group.ResumeLayout( false );
       Instruments_Group.PerformLayout();
+      menuStrip1.ResumeLayout( false );
+      menuStrip1.PerformLayout();
       ResumeLayout( false );
       PerformLayout();
     }
@@ -924,8 +970,7 @@ namespace Multimeter_Controller
     private System.Windows.Forms.Label Instrument_Name_Label;
     private System.Windows.Forms.TextBox Instrument_Name_Text;
     private System.Windows.Forms.Label GPIB_Address_Label;
-    private System.Windows.Forms.NumericUpDown
-      GPIB_Address_Numeric;
+    private System.Windows.Forms.NumericUpDown GPIB_Address_Numeric;
     private System.Windows.Forms.Label Instrument_Type_Label;
     private System.Windows.Forms.ComboBox Instrument_Type_Combo;
     private System.Windows.Forms.Button Add_Instrument_Button;
@@ -962,6 +1007,9 @@ namespace Multimeter_Controller
     private Button About_Selections_Button;
     private Button Prologix_Health_Button;
     private Button GPU_Info_Button;
+    private MenuStrip menuStrip1;
+    private ToolStripMenuItem helpToolStripMenuItem;
+    private ToolStripMenuItem aboutToolStripMenuItem;
   }
 
 }
