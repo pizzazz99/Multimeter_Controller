@@ -4,172 +4,314 @@
 // ════════════════════════════════════════════════════════════════════════════════
 //
 // PURPOSE
-//   Static utility library shared by every form and subsystem in the
+//   Static utility library shared by every polling form and helper class in the
 //   application.  Centralises logic that would otherwise be duplicated between
-//   Single_Instrument_Poll_Form and Multi_Instrument_Poll_Form, including
-//   NPLC command building, value formatting, CSV I/O, statistics, chart
-//   refresh throttling, scrollbar management, network scanning, and UI helpers.
+//   Single_Instrument_Poll_Form and Multi_Instrument_Poll_Form, and provides
+//   general-purpose services (formatting, file I/O, statistics, network
+//   scanning) used across the broader codebase.
 //
-// ── INSTRUMENT CONFIGURATION ─────────────────────────────────────────────────
+// METHOD GROUPS
 //
-//   Build_NPLC_Command(measurementLabel, nplcValue)
-//     Maps a human-readable measurement label (e.g. "DC Voltage") to the
-//     correct SCPI NPLC command string.  Returns null for functions that
-//     have no NPLC parameter (Freq, Period, Diode, Continuity).
+// ── NPLC Command Builder ──────────────────────────────────────────────────────
 //
-//   Calculate_Settle_Ms(nplcValue, safetyFactor)
-//     Converts an NPLC string to a settle delay in milliseconds
-//     (NPLC × 16.67 ms × safetyFactor), clamped to a minimum of 50 ms.
-//     Default safety factor of 2.0 accounts for autozero.
+//   Build_NPLC_Command( Measurement_Label, NPLC_Value ) → string?
+//     Maps a human-readable measurement label to the correct SCPI NPLC
+//     sub-command string, e.g. "DC Voltage" → "VOLT:DC:NPLC {value}".
+//     Returns null for measurement types that have no NPLC setting
+//     (Frequency, Period, Diode, Continuity).  Used by both polling forms
+//     during instrument configuration.
+//     Supported labels: DC Voltage, AC Voltage, DC Current, AC Current,
+//     2-Wire Ohms (RES:NPLC), 4-Wire Ohms (FRES:NPLC).
 //
-//   Get_Meter_Type(name)
-//     Substring-matches an instrument ID string to a Meter_Type enum value.
-//     Falls back to Generic_GPIB for unrecognised strings.
+// ── Time Formatting ───────────────────────────────────────────────────────────
 //
-// ── VALUE FORMATTING ─────────────────────────────────────────────────────────
+//   Format_Time_Span( TimeSpan Span ) → string
+//     Converts a TimeSpan to the most readable single-unit string:
+//       < 1 s   → "{ms}ms"
+//       < 1 min → "{s}s"  (1 decimal)
+//       < 1 h   → "{m}m"  (1 decimal)
+//       < 1 d   → "{h}h"  (1 decimal)
+//       ≥ 1 d   → "{d}d"  (1 decimal)
+//     Used in CSV headers, stats panels, and chart axis labels.
 //
-//   Format_Value(value, unit, meter, digits)
-//     Full-precision SI-prefix formatter for chart labels and stats panels.
-//     Handles: Hz (MHz/kHz/Hz), s (ns/µs/ms/s), Ohm (MOhm/kOhm/Ohm),
-//     °C, and V/A (with milli/micro/nano prefix scaling driven by Digits).
-//     Falls back to G2 scientific notation for values below 1 nV/nA.
+// ── File / Folder Helpers ─────────────────────────────────────────────────────
 //
-//   Format_Time_Span(span)
-//     Human-readable duration string: ms / s / m / h / d, one decimal place.
+//   Get_Graph_Captures_Folder( Application_Settings ) → string
+//     Resolves Default_Save_Folder to an absolute path:
+//       1. If the value is already rooted (absolute), creates and returns it.
+//       2. Otherwise walks up the directory tree from AppContext.BaseDirectory
+//          looking for an existing folder with that relative name.
+//       3. Falls back to creating the folder next to the executable.
+//     This strategy finds the project-level captures folder during development
+//     while still working correctly in installed deployments.
 //
-// ── STATISTICS ───────────────────────────────────────────────────────────────
+//   Get_Filename_From_Pattern( Pattern, Function_Name ) → string
+//     Expands the three supported tokens in a filename pattern:
+//       {date}     → "yyyy-MM-dd"
+//       {time}     → "HH-mm-ss"
+//       {function} → the supplied Function_Name string
+//     Appends ".csv" if the result does not already end with that extension.
 //
-//   Calculate_Stats(points)
-//     Single-pass O(n) computation of Min, Max, Avg, Std_Dev (population),
-//     Range, Duration, sample Rate (S/s), and Avg_Interval_Ms from a
-//     List<(DateTime, double)>.  Returns a named tuple; zero-fills on empty input.
+// ── Value Formatting ──────────────────────────────────────────────────────────
 //
-// ── CSV FILE I/O ─────────────────────────────────────────────────────────────
+//   Format_Value( Value, Unit, Meter, Digits ) → string
+//     Full-precision engineering-units formatter for display in both forms.
+//     Unit-specific behaviour:
+//       "Hz"  → MHz / kHz / Hz with 3 decimal places
+//       "s"   → ns / us / ms / s with appropriate decimals
+//       "Ohm" → MOhm / kOhm / Ohm with 3 decimal places
+//       "°C"  → "{F2} °C"
+//       "V"/"A" → Auto-ranges to m{Unit} / u{Unit} / n{Unit} / scientific
+//                 notation, scaling decimal places with the Digits parameter
+//                 (millirange loses 2 digits, microrange 3, nanorange 4).
+//     Digits defaults to 6; pass Instrument.Display_Digits for per-instrument
+//     precision.  Meter parameter accepted for future meter-specific overrides.
 //
-//   Save_Single_Series_CSV(filePath, function, unit, points, meter)
-//     Writes a commented preamble (function, unit, capture time, statistics)
-//     followed by "Timestamp,Value" rows in InvariantCulture format.
+// ── Settings Helpers ──────────────────────────────────────────────────────────
 //
-//   Save_Multi_Series_CSV(filePath, series)
-//     Writes a preamble with per-series statistics blocks, then a merged
-//     wide-format table: one column per instrument, rows aligned to the
-//     union of all timestamps.  Missing values are written as empty cells.
+//   Apply_Common_Settings( Settings, Comm, Auto_Save_Timer,
+//                          Chart_Refresh_Timer, Current_Point_Count )
+//     Applies the subset of Application_Settings that is identical for both
+//     polling forms:
+//       • Creates Default_Save_Folder if non-empty.
+//       • Sets Comm.Read_Timeout_Ms from Default_GPIB_Timeout_Ms (if Comm
+//         is non-null).
+//       • Starts or stops Auto_Save_Timer based on Enable_Auto_Save; sets
+//         interval to Auto_Save_Interval_Minutes × 60 000 ms.
+//       • Sets Chart_Refresh_Timer.Interval; doubles it when throttling is
+//         enabled and Current_Point_Count exceeds Throttle_Point_Threshold.
 //
-//   Write_Stats_Block(writer, …)
-//     Shared helper that writes a "#  Key: Value" statistics block for one
-//     series into an already-open StreamWriter.
+//   Calculate_Refresh_Rate( Settings, Total_Points ) → int
+//     Returns the correct chart refresh interval in ms using a graduated
+//     throttle scale when Throttle_When_Many_Points is enabled:
+//       > Threshold × 10  → Base × 4
+//       > Threshold × 5   → Base × 3
+//       > Threshold × 2   → Base × 2
+//       ≤ Threshold        → Base (no throttle)
 //
-//   Load_CSV_Preamble(filePath)   [async]
-//     Parses the "#" comment preamble of any application CSV into a
-//     CSV_Preamble_Result containing:
-//       Lines[]          — all raw lines
-//       Header_Index     — index of the first non-comment, non-blank line
-//       Flat_Stats       — key/value pairs from un-sectioned "# Key: Value" lines
-//       Sectioned_Stats  — per-instrument stats from "# [Name]" sections
-//     Returns null and shows a MessageBox on file-not-found or no-data.
+// ── Memory Limit Check ────────────────────────────────────────────────────────
 //
-//   Parse_Single_Column_Data(lines, headerIndex)
-//     Parses "Timestamp,Value" data rows below the preamble into parallel
-//     List<double> and List<DateTime>.  Skips blank and comment lines.
+//   Check_Memory_Limit( Settings, Get_Point_Count, Stop_Recording,
+//                       Show_Warning, ref Warning_Shown )
+//     Checks whether the current point count has reached or approached the
+//     Max_Data_Points_In_Memory ceiling:
+//       • At or above Max → calls Stop_Recording() immediately.
+//       • At or above Warning_Threshold_Percent of Max, and warning not yet
+//         shown → calls Show_Warning(current, max) and sets Warning_Shown.
+//     Accepts delegates so the same logic serves both single-series and
+//     multi-series point-count scenarios.
 //
-// ── CHART / DISPLAY HELPERS ───────────────────────────────────────────────────
+// ── CSV Statistics Block Writer ───────────────────────────────────────────────
 //
-//   Calculate_Refresh_Rate(settings, totalPoints)
-//     Returns the appropriate timer interval in ms, applying the step-wise
-//     throttle multiplier (×2/×3/×4) when totalPoints exceeds the configured
-//     threshold.
+//   Write_Stats_Block( Writer, Series_Name, Point_Count, Min, Max, Avg,
+//                      Std_Dev, Range, Duration?, Rate?, Avg_Interval_Ms? )
+//     Writes a standardised "# [Series_Name]" comment block to an open
+//     StreamWriter.  Optional fields (Duration, Rate, Avg_Interval_Ms) are
+//     only written when their Nullable values are non-null.  Format matches
+//     the preamble expected by Load_CSV_Preamble().
 //
-//   Get_Visible_Range(totalCount, enableRolling, maxDisplayPoints, viewOffset)
-//     Computes (Start_Index, Visible_Count) for the currently visible slice
-//     of a point list, respecting rolling-window mode and pan offset.
-//     Used by both forms and by Base_Chart_Form draw helpers.
+// ── Statistics Calculator ─────────────────────────────────────────────────────
 //
-//   Track_FPS(ref paintCount, ref actualFps, stopwatch, updateStatus)
-//     Increments paintCount and recalculates FPS once per second via the
-//     supplied Stopwatch.  Calls updateStatus() after each recalculation.
+//   Calculate_Stats( List<(DateTime Time, double Value)> Points )
+//     → (Min, Max, Avg, Std_Dev, Range, Duration, Rate, Avg_Interval_Ms)
+//     Single-pass computation of descriptive statistics over a timestamped
+//     point list:
+//       Min / Max / Avg / Range    Straightforward single-pass accumulation.
+//       Std_Dev                    Population standard deviation
+//                                  (√(Σ(xi − μ)² / N)).
+//       Duration                   Last.Time − First.Time; Zero for < 2 points.
+//       Rate                       (N − 1) / Duration.TotalSeconds; 0 if
+//                                  Duration is zero.
+//       Avg_Interval_Ms            Mean of consecutive time-deltas in ms;
+//                                  0 for < 2 points.
+//     Returns all-zero tuple for null or empty input.
 //
-//   Update_Performance_Status(perfLabel, memLabel, fps, …)
-//     Updates ToolStripStatusLabel text and ForeColor for the FPS/points
-//     display (orange below 5 FPS) and the memory usage display
-//     (orange ≥ warning threshold, red ≥ 90%).
+// ── Scrollbar Range Management ────────────────────────────────────────────────
 //
-//   Get_Next_Theme(current)
-//     Cycles through Dark → Light → Dark presets by name match.
+//   Update_Scrollbar_Range( Pan_Scrollbar, Total_Points, Max_Display_Points,
+//                           Auto_Scroll, ref View_Offset )
+//     Configures an HScrollBar for chart panning:
+//       • When Total_Points ≤ Max_Display_Points: disables the scrollbar
+//         (Maximum = 100, LargeChange = 101 effectively hides the thumb).
+//       • Otherwise: sets Maximum = Max_Offset + LargeChange − 1 so the
+//         thumb occupies the correct proportion of the track.
+//         SmallChange = Max_Display_Points / 100 (fine step).
+//         LargeChange = Max_Display_Points / 10  (page step).
+//       • When Auto_Scroll is true, resets Value and View_Offset to 0
+//         (newest data always visible).
+//       • When Auto_Scroll is false, clamps the existing Value to the new
+//         valid range without moving the viewport.
+//     Detailed trace output is written for each scrollbar parameter.
 //
-// ── SCROLLBAR MANAGEMENT ──────────────────────────────────────────────────────
+// ── Visible Range Calculation ─────────────────────────────────────────────────
 //
-//   Update_Scrollbar_Range(scrollbar, totalPoints, maxDisplayPoints,
-//                          autoScroll, ref viewOffset)
-//     Configures HScrollBar Minimum/Maximum/LargeChange/SmallChange for the
-//     current point count.  Disables the scrollbar when all points fit in the
-//     window.  Resets Value to 0 when autoScroll is true.
+//   Get_Visible_Range( Total_Count, Enable_Rolling, Max_Display_Points,
+//                      View_Offset ) → (Start_Index, Visible_Count)
+//     Returns the slice of the data list that should be drawn:
+//       • Total_Count ≤ Max_Display_Points → (0, Total_Count) — show all.
+//       • Enable_Rolling false → (Total − Max, Max) — show tail, no panning.
+//       • Enable_Rolling true  → honours View_Offset for scrolled panning;
+//         End_Index = Total − View_Offset, clamped to [Max, Total].
+//     Used by chart paint handlers in both polling forms.
 //
-// ── SETTINGS APPLICATION ──────────────────────────────────────────────────────
+// ── Performance Status ────────────────────────────────────────────────────────
 //
-//   Apply_Common_Settings(settings, comm, autoSaveTimer, chartTimer, pointCount)
-//     Applies settings shared by both forms: save-folder creation, GPIB
-//     read timeout, auto-save timer start/stop, and chart refresh throttling.
+//   Update_Performance_Status( Performance_Label, Memory_Label, Actual_FPS,
+//                              Total_Points, Current_Points, Max_Points,
+//                              Warning_Threshold_Percent, Is_Decimating )
+//     Updates the two status-strip labels on every chart repaint:
+//       Performance_Label  "Refresh: N.N FPS | Points: N (of N stored)"
+//                          when Total_Points ≠ Current_Points (decimation
+//                          active), otherwise omits the "(of N stored)" part.
+//                          Color: Orange when FPS < 5 AND decimation is off;
+//                          Green otherwise (low FPS during decimation is
+//                          intentional and should not be flagged).
+//       Memory_Label       "Memory: N / N (N%)"
+//                          Color: Red ≥ 90%, Orange ≥ Warning_Threshold_Percent,
+//                          Green otherwise.
 //
-// ── RECORDING UI HELPERS ──────────────────────────────────────────────────────
+// ── Recording State UI ────────────────────────────────────────────────────────
 //
-//   Start_Recording_UI(button)   Sets button to "Stop Rec" / red.
-//   Stop_Recording_UI(button)    Resets button to "Record" / system colors.
-//   Stop_Recording(…)            Stops recording, resets UI, shows "no data"
-//                                dialog if point count is zero, otherwise
-//                                calls the supplied Save_Recorded_Data action.
+//   Start_Recording_UI( Record_Button )
+//     Sets button Text = "Stop Rec", BackColor = IndianRed, ForeColor = White.
 //
-// ── MEMORY LIMIT CHECK ────────────────────────────────────────────────────────
+//   Stop_Recording_UI( Record_Button )
+//     Restores button to system default colors and Text = "Record".
 //
-//   Check_Memory_Limit(settings, getCount, stopRecording,
-//                      showWarning, ref warningShown)
-//     Calls stopRecording() if the point count reaches Max_Data_Points_In_Memory.
-//     Calls showWarning() once when the configurable warning threshold is crossed.
+//   Stop_Recording( ref Is_Recording, Record_Button, Get_Point_Count,
+//                   Save_Recorded_Data )
+//     Sets Is_Recording = false, calls Stop_Recording_UI(), then either shows
+//     a "Nothing to Save" MessageBox (if Get_Point_Count() returns 0) or
+//     calls Save_Recorded_Data().
 //
-// ── STATUS STRIP INITIALIZATION ───────────────────────────────────────────────
+// ── CSV File Writing ──────────────────────────────────────────────────────────
 //
-//   Initialize_Status_Strip(owner, settings, instrumentCount)
-//     Removes any existing StatusStrip, builds Memory and Performance labels,
-//     optionally adds an Instruments count label (multi-form only), and
-//     docks the strip to the form.  Returns the two mutable labels.
+//   Save_Single_Series_CSV( File_Path, Record_Function, Record_Unit,
+//                           Points, Meter )
+//     Writes a single-instrument CSV file:
+//       Preamble  # comment block with Function, Unit, capture time,
+//                 point count, and full statistics block.
+//       Header    "Timestamp,Value"
+//       Data      "yyyy-MM-dd HH:mm:ss.fff,{InvariantCulture value}"
+//     Avg_Δt line is omitted for single-point recordings.
 //
-// ── FILE / FOLDER HELPERS ─────────────────────────────────────────────────────
+//   Save_Multi_Series_CSV( File_Path, Series )
+//     Writes a multi-instrument CSV with one column per instrument:
+//       Preamble  Per-series statistics blocks; single-point series get a
+//                 condensed "Value:" line instead of full stats.
+//       Header    "Timestamp,Name1,Name2,..."
+//       Data      All unique timestamps merged into a SortedSet; missing
+//                 values for a given timestamp are written as empty fields.
 //
-//   Get_Graph_Captures_Folder(settings)
-//     Resolves Default_Save_Folder to an absolute path.  Absolute paths are
-//     used directly; relative paths are searched upward from BaseDirectory
-//     for an existing folder, falling back to creating one beside the executable.
+// ── CSV File Loading ──────────────────────────────────────────────────────────
 //
-//   Get_Filename_From_Pattern(pattern, functionName)
-//     Expands {date}, {time}, {function} tokens in a filename pattern and
-//     appends ".csv" if not already present.
+//   Load_CSV_Preamble( File_Path ) → Task<CSV_Preamble_Result?>
+//     Asynchronously reads all lines and parses the # comment preamble into:
+//       Flat_Stats        Key-value pairs from top-level "#   Key: Value" lines
+//                         and "# Unit:" / "# Measurement:" shorthand lines.
+//       Sectioned_Stats   Per-series dictionaries keyed by "# [SectionName]"
+//                         header lines; subsequent "#   Key: Value" lines are
+//                         added to the active section.
+//       Header_Index      Zero-based index of the first non-comment,
+//                         non-empty line (the CSV column header row).
+//       Lines             The full line array for subsequent parsing.
+//     Returns null and shows a MessageBox if the file is missing or contains
+//     no valid data rows.
 //
-// ── NETWORK SCANNING ─────────────────────────────────────────────────────────
+//   CSV_Preamble_Result  (inner class)
+//     Immutable result bag: Lines, Header_Index, Flat_Stats,
+//     Sectioned_Stats.  Passed to the per-form data parsers.
 //
-//   Scan_For_Prologix(subnet, timeoutMs, progress, trace)   [async]
-//     Scans subnet.1–254 in parallel (50 concurrent) via TCP port 1234.
-//     Confirms each responding host by sending "++ver\n" and checking that
-//     the response contains "Prologix".  Returns discovered IPs sorted by
-//     last octet.  Reports progress via IProgress<(int, int)>.
+//   Parse_Single_Column_Data( Lines, Header_Index )
+//     → (List<double> Values, List<DateTime> Timestamps)
+//     Parses data rows from a single-instrument CSV (Timestamp,Value).
+//     Skips blank lines, comment lines, and rows with fewer than 2 fields.
+//     Uses InvariantCulture for double parsing.
 //
-// AUTHOR:  [Your name]
-// CREATED: [Date]
+// ── FPS Tracking ──────────────────────────────────────────────────────────────
+//
+//   Track_FPS( ref Paint_Count, ref Actual_FPS, FPS_Stopwatch,
+//              Update_Status )
+//     Increments Paint_Count on every call.  When the stopwatch crosses 1
+//     second, computes Actual_FPS = Paint_Count / elapsed, resets both
+//     counter and stopwatch, and invokes Update_Status() so the caller can
+//     refresh the status strip.  Fields live in the calling form; only the
+//     computation logic lives here.
+//
+// ── Status Strip Initialization ───────────────────────────────────────────────
+//
+//   Initialize_Status_Strip( Owner, Settings, Instrument_Count )
+//     → (Memory_Label, Performance_Label)
+//     Removes any existing StatusStrip named "Status_Strip" from the owner,
+//     creates a new one, and adds:
+//       Memory_Label        "Memory: 0 / 0 (0%)"
+//       Performance_Label   "Refresh: N FPS | Points: 0" (rate from Settings)
+//       Instrument_Label    "Instruments: N" — added only when
+//                           Instrument_Count > 0 (multi-instrument form only)
+//       Spring label        Right-aligns subsequent items.
+//     Returns the two labels so the owner can update them on repaint.
+//
+// ── Theme Cycling ─────────────────────────────────────────────────────────────
+//
+//   Get_Next_Theme( Current ) → Chart_Theme
+//     Cycles through [Dark, Light] by name match.  Returns Dark if the
+//     current theme name is not found in the list.
+//
+// ── Prologix Network Scanner ──────────────────────────────────────────────────
+//
+//   Scan_For_Prologix( Subnet, Timeout_Ms, Progress, Trace )
+//     → Task<List<string>>
+//     Scans all 254 host addresses on the given subnet (e.g. "192.168.1")
+//     concurrently using a SemaphoreSlim(50) to cap parallelism.  For each
+//     address, Is_Prologix() attempts a TCP connection on port 1234 and sends
+//     "++ver\n"; a response containing "Prologix" (case-insensitive) confirms
+//     the device.  ICMP ping is deliberately skipped — Prologix adapters may
+//     not respond to ICMP.  Results are returned sorted by the last octet.
+//     Progress is reported via IProgress<(Current, Total)>; detailed trace
+//     output is sent to the optional Trace action.
+//
+//   Is_Prologix( IP, Port, Timeout_Ms, Trace ) → Task<bool>   [private]
+//     Opens a TcpClient with CancellationToken timeout, flushes any pending
+//     data, sends "++ver\n", and reads the response with a secondary
+//     Task.WhenAny timeout guard.  Returns false on any exception or timeout.
+//
+// ── Instrument Type Resolution ────────────────────────────────────────────────
+//
+//   Get_Meter_Type( Name ) → Meter_Type
+//     Maps a model-number substring in the instrument name to a Meter_Type
+//     enum value.  Checked in order: 34401, 33120, 34420, 53132, 3458.
+//     Returns Meter_Type.Generic_GPIB if no pattern matches.
+//
+// ── NPLC Settle Time Calculation ─────────────────────────────────────────────
+//
+//   Calculate_Settle_Ms( NPLC_Value, Safety_Factor ) → int
+//     Computes the minimum settle delay for a given NPLC setting:
+//       Measurement_Ms = NPLC × (1000 / 60)   (one 60 Hz power-line cycle)
+//       Result = max(50, (int)(Measurement_Ms × Safety_Factor))
+//     Safety_Factor defaults to 2.0.  Returns 50 ms minimum for very low
+//     NPLC values or unparseable strings.
+//
+// NOTES
+//   • All methods are static; the class is never instantiated.
+//   • CSV values are always written and parsed with InvariantCulture to
+//     prevent locale-dependent decimal separator issues.
+//   • Scan_For_Prologix does not require administrator privileges; it uses
+//     only outbound TCP connections.
+//   • Write_Stats_Block and the two Save_*_CSV methods produce preambles
+//     in the exact format consumed by Load_CSV_Preamble, so files written
+//     by one method can be round-tripped through the other.
+//
+// AUTHOR:  Mike Wheeler
+// CREATED: 04/04/2026
 // ════════════════════════════════════════════════════════════════════════════════
 
 
-using System;
+
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
-using System.IO;
-using System.Linq;
-using System.Net;
-using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
-using System.Threading.Tasks;
-using System.Windows.Forms;
-using Trace_Execution_Namespace;
 using static Trace_Execution_Namespace.Trace_Execution;
 
 namespace Multimeter_Controller
@@ -641,24 +783,29 @@ namespace Multimeter_Controller
 
       return (Start_Index, Visible_Count);
     }
-    public static void Update_Performance_Status (
-      ToolStripStatusLabel? Performance_Label,
-      ToolStripStatusLabel? Memory_Label,
-      double Actual_FPS,
-      int Total_Points,
-      int Current_Points,
-      int Max_Points,
-      int Warning_Threshold_Percent )
+    public static void Update_Performance_Status(
+     ToolStripStatusLabel? Performance_Label,
+     ToolStripStatusLabel? Memory_Label,
+     double Actual_FPS,
+     int Total_Points,
+     int Current_Points,
+     int Max_Points,
+     int Warning_Threshold_Percent,
+     bool Is_Decimating = false )        // ← add this
     {
-      if ( Performance_Label != null )
+      if (Performance_Label != null)
       {
-        Performance_Label.Text = $"Refresh: {Actual_FPS:F1} FPS | Points: {Total_Points:N0}";
-        Performance_Label.ForeColor = Actual_FPS < 5.0 ? Color.Orange : Color.Green;
+        Performance_Label.Text = Total_Points != Current_Points
+          ? $"Refresh: {Actual_FPS:F1} FPS | Points: {Total_Points:N0} (of {Current_Points:N0} stored)"
+          : $"Refresh: {Actual_FPS:F1} FPS | Points: {Total_Points:N0}";
+
+        // Don't flag low FPS as a problem when decimation is intentionally reducing repaint rate
+        Performance_Label.ForeColor = !Is_Decimating && Actual_FPS < 5.0 ? Color.Orange : Color.Green;
       }
 
-      if ( Memory_Label != null )
+      if (Memory_Label != null)
       {
-        int Percent = Max_Points > 0 ? ( Current_Points * 100 ) / Max_Points : 0;
+        int Percent = Max_Points > 0 ? (Current_Points * 100) / Max_Points : 0;
         Memory_Label.Text = $"Memory: {Current_Points:N0} / {Max_Points:N0} ({Percent}%)";
         Memory_Label.ForeColor = Percent >= 90
           ? Color.Red

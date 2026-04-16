@@ -1,11 +1,252 @@
+
+// ════════════════════════════════════════════════════════════════════════════════
+// FILE:    GPU_Helper.cs
+// PROJECT: Multimeter_Controller
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// PURPOSE
+//   Centralised GPU detection, enumeration, live sensor monitoring, and
+//   session-delta reporting.  Four cooperating types cover the full pipeline
+//   from hardware discovery through real-time data collection to formatted
+//   popup display:
+//
+//     GPU_Helper          Low-level detection and DXGI adapter enumeration.
+//     GPU_Data_Collector  One-shot snapshot of WMI, DXGI, and LHM data.
+//     GPU_Snapshot        LHM-based live sensor capture and session diffing.
+//     Sensor_Value /
+//     Snapshot /
+//     Snapshot_Delta      Plain data bags passed between the above.
+//
+// ── GPU_Helper ────────────────────────────────────────────────────────────────
+//
+//   Static helper that answers two questions: "is any usable GPU present?" and
+//   "what adapters are installed?"  All detection uses a three-pass strategy so
+//   that a failure in one subsystem does not prevent detection via another.
+//
+//   DETECTION PASSES (applied in order, short-circuits on first positive)
+//
+//     Pass 1 — LibreHardwareMonitor (LHM)
+//       Opens an LHM Computer with IsGpuEnabled = true and checks whether any
+//       hardware entry has type GpuNvidia, GpuAmd, or GpuIntel.  Most reliable
+//       on gaming/workstation hardware.  May fail on locked-down or minimal
+//       Windows installs that deny driver access.
+//
+//     Pass 2 — WMI Win32_VideoController
+//       Queries Name and AdapterCompatibility.  Excludes entries matching
+//       "Microsoft Basic", "Remote Desktop", "VirtualBox", "VMware", or whose
+//       AdapterCompatibility is "Microsoft".  Faster than DXGI but less
+//       information-rich; used as a middle-ground fallback.
+//
+//     Pass 3 — DXGI (CreateDXGIFactory / IDXGIFactory.EnumAdapters)
+//       Enumerates adapters via the native DXGI COM interface, filters out
+//       software renderers by VendorId and description string, and returns true
+//       if any real adapter remains.  Most authoritative source of VRAM and
+//       adapter identity; used last because it requires dxgi.dll p/invoke.
+//
+//   PUBLIC METHODS
+//
+//     GPU_Available() → bool
+//       Runs all three passes (LHM → WMI → DXGI) and returns true if any pass
+//       finds a non-software GPU.  Used by Application_Settings.Detect_Hardware()
+//       to set Discrete_GPU_Available.  Each pass is independently try/caught;
+//       failures are traced but do not propagate.
+//
+//     Discrete_GPU_Available() → bool
+//       Stricter variant that requires NVIDIA, AMD, or Qualcomm vendor ID in
+//       the DXGI pass and excludes Intel from the WMI pass.  Called by
+//       Application_Settings when deciding whether GPU rendering is viable.
+//
+//     Get_Adapter_Info() → List<DxgiAdapterInfo>
+//       Enumerates all non-Microsoft adapters via DXGI and returns a list of
+//       DxgiAdapterInfo records.  VendorId is mapped to a human-readable name:
+//         0x10DE → "NVIDIA", 0x1002 → "AMD", 0x8086 → "Intel",
+//         0x5143 → "Qualcomm", anything else → "Unknown (0xNNNN)".
+//       Capped at 16 adapters as a safety guard against malformed DXGI state.
+//       Used by GPU_Data_Collector.Collect() and Discrete_GPU_Available().
+//
+//     Format_Bytes( object? Raw ) → string
+//       Converts a WMI AdapterRAM object (stored as a boxed ulong string) to
+//       a human-readable "N.N GB" or "N MB" string.  Returns "N/A" for null,
+//       unparseable, or zero values.
+//
+//     Format_Bytes_Long( long Bytes ) → string
+//       Same conversion for a typed long (used with DXGI DedicatedVideoMemory /
+//       SharedSystemMemory, which are nint values cast to long).
+//
+//     Format_WMI_Date( string? Wmi_Date ) → string
+//       Converts a WMI CIM_DATETIME string (yyyyMMddHHmmss...) to MM/DD/YYYY.
+//       Returns "N/A" for null, whitespace, or strings shorter than 8 chars.
+//
+//   RECORD
+//
+//     DxgiAdapterInfo( Description, VendorName, DedicatedVideoMemory,
+//                      SharedSystemMemory )
+//       Immutable record returned by Get_Adapter_Info().  DedicatedVideoMemory
+//       and SharedSystemMemory are raw nint values cast to long (bytes).  Use
+//       Format_Bytes_Long() to display them.
+//
+//   PRIVATE METHODS
+//
+//     Is_Software_Adapter( DXGI_ADAPTER_DESC ) → bool
+//       Authoritative software-renderer filter used by Check_Via_DXGI().
+//       Checks VendorId first (0x1414 Microsoft, 0x15AD VMware, 0x80EE
+//       VirtualBox, 0x1AB8 Parallels), then falls back to description-string
+//       matching for WARP, Remote Desktop, and Hyper-V entries that may report
+//       an unexpected VendorId.
+//
+//     Check_Via_DXGI() → bool
+//       Core DXGI enumeration loop.  Creates a factory via CreateDXGIFactory,
+//       iterates adapters up to the 16-adapter cap, calls Is_Software_Adapter()
+//       on each descriptor, and returns true on the first non-software adapter.
+//       Releases COM objects via Marshal.ReleaseComObject() in finally blocks
+//       to avoid reference leaks.
+//
+//   DXGI COM INTEROP  (private, nested inside GPU_Helper)
+//
+//     IDXGIFactory  IID 7b7166ec-21c7-44ae-b21a-c9ae321ae369
+//       _VtblGap0_3()  — skips the three IUnknown vtable slots
+//       EnumAdapters( uint Index, out IDXGIAdapter ) → HRESULT [PreserveSig]
+//         Returns DXGI_ERROR_NOT_FOUND (0x887A0002) past the last adapter.
+//
+//     IDXGIAdapter  IID 2411e7e1-12ac-4ccf-bd14-9798e8534dc0
+//       _VtblGap0_3()  — same IUnknown gap pattern
+//       GetDesc( out DXGI_ADAPTER_DESC ) → HRESULT [PreserveSig]
+//
+//     DXGI_ADAPTER_DESC  Sequential / Unicode layout
+//       Description           char[128] — driver-supplied adapter name
+//       VendorId              PCI vendor (0x10DE NVIDIA, 0x1002 AMD, etc.)
+//       DeviceId / SubSysId / Revision  PCI identity fields
+//       DedicatedVideoMemory  GPU-local VRAM bytes (nint = SIZE_T)
+//       DedicatedSystemMemory System RAM reserved exclusively for adapter
+//       SharedSystemMemory    System RAM available as shared video memory
+//       AdapterLuid           Session-scoped 64-bit adapter ID; marshalled
+//                             as FILETIME for binary-layout compatibility;
+//                             not used but required for correct struct size
+//
+//     CreateDXGIFactory  [DllImport("dxgi.dll")]
+//       Entry point for factory creation.  Throws DllNotFoundException on
+//       systems without dxgi.dll; caught by all callers.
+//
+// ── GPU_Data_Collector ────────────────────────────────────────────────────────
+//
+//   Performs a single synchronous collection sweep across all three data
+//   sources (WMI, DXGI, LHM) and returns the results in a GPU_Data bag.
+//   Intended for the GPU information popup; not called on a timer.
+//
+//   DATA CLASSES
+//
+//     WMI_Controller
+//       Flattened view of one Win32_VideoController row:
+//       Name, DriverVersion, DriverDate (formatted via Format_WMI_Date),
+//       Status, VRAM (formatted via Format_Bytes), Resolution, RefreshRate,
+//       ColorDepth, VideoMode.  Software adapters are silently skipped during
+//       collection.
+//
+//     LHM_Sensor_Row
+//       One display row for the LHM section: Is_Header flag, Name, Value
+//       string, Color for RichTextBox rendering.  Header rows carry only a
+//       hardware name and no value; sensor rows carry formatted value + unit.
+//       Sensor types and their display colors:
+//         Temperature  °C    green (< 80°C) / dark-orange (≥ 80°C)
+//         Load         %     dark-yellow
+//         Fan Speed    RPM   teal-blue
+//         Clock        MHz   dark-gray
+//         Power        W     purple
+//         Memory (SmallData) MB  dark-gray
+//       Sensors whose name starts with "D3D" are skipped (per-process D3D
+//       activity entries are real but too noisy for the summary view).
+//
+//     GPU_Data
+//       Root container returned by Collect():
+//         WMI_Controllers   List<WMI_Controller>      (empty on WMI failure)
+//         WMI_Error         string?                   (null on success)
+//         DXGI_Adapters     List<DxgiAdapterInfo>     (empty on DXGI failure)
+//         DXGI_Error        string?                   (null on success)
+//         LHM_Sensors       List<LHM_Sensor_Row>      (empty on LHM failure)
+//         LHM_Error         string?                   (null on success)
+//       Each source is independently try/caught so a failure in one does not
+//       prevent data collection from the others.
+//
+//   Collect() → GPU_Data
+//     Runs WMI → DXGI → LHM in sequence, populating the relevant fields of
+//     GPU_Data.  For LHM, calls HW.Update() before reading sensors.  On an
+//     LHM access/privilege exception the error message is replaced with a
+//     user-friendly "try running as administrator" hint.
+//
+// ── Sensor_Value / Snapshot / Snapshot_Delta ─────────────────────────────────
+//
+//   Plain data bags with no logic, used as the currency between GPU_Snapshot
+//   methods.
+//
+//   Sensor_Value       Name (string) + Value (float)
+//
+//   Snapshot           Taken (DateTime) + six typed sensor lists:
+//                        Load, Temperature, Memory, Clock, Power, Fan
+//                      Each list holds Sensor_Value entries for one LHM read.
+//
+//   Snapshot_Delta     Duration (TimeSpan) + six parallel delta lists, each
+//                      entry a (Name, Start, End, Delta) value tuple.
+//                      Produced by GPU_Snapshot.Diff().
+//
+// ── GPU_Snapshot ──────────────────────────────────────────────────────────────
+//
+//   Provides LHM-based snapshot capture and session-level delta reporting.
+//   Callers take a baseline snapshot before polling starts and an end snapshot
+//   when it stops, then call Show_GPU_Session_Summary() to display the diff.
+//
+//   Capture() → Snapshot
+//     Opens an LHM Computer, iterates GPU hardware (NVIDIA / AMD / Intel),
+//     calls HW.Update(), and distributes sensor values into the appropriate
+//     Snapshot lists.  Sensors whose name starts with "D3D" are skipped.
+//     Returns an empty (but non-null) Snapshot if LHM is unavailable.
+//
+//   Diff( Snapshot Start, Snapshot End ) → Snapshot_Delta
+//     Pairs each sensor in End with the matching name in Start and computes
+//     (Start, End, Delta) tuples.  Sensors that appear in End but not Start
+//     are silently dropped; new sensors that appeared mid-session are not
+//     included in the delta.  Duration is End.Taken − Start.Taken.
+//
+//   Show_GPU_Session_Summary( Form Owner, Snapshot Baseline, Snapshot End_Snap )
+//     Calls Diff() then renders the result into a Rich_Text_Popup with
+//     per-section headings (Load, Temperature, Memory, Clock, Power, Fan).
+//     Empty sections are omitted entirely.  If all delta lists are empty
+//     (typically when LHM could not read sensors) a single warning row is
+//     shown instead.  Value formatting:
+//       Format_Delta( Start, End, Delta, Unit )
+//         Fixed-width columns: start value (10 chars) → end value (10 chars)
+//         delta arrow+magnitude (6 chars, left-padded).  Arrow: ▲ if Δ > 0.5,
+//         ▼ if Δ < −0.5, space otherwise.
+//       Delta_Color( float D ) → Color
+//         Orange for D > 10 (notable rise), green for D < −10 (notable drop),
+//         dark-gray otherwise.
+//       Temp_Color( float End ) → Color
+//         Red for End > 85°C, orange for > 70°C, green otherwise.
+//       Format_Duration( TimeSpan T )
+//         "Xh YYm ZZs" / "Xm YYs" / "Xs" depending on magnitude.
+//         Internal visibility so GPU analysis forms can reuse it.
+//
+// NOTES
+//   • All three detection/collection classes are internal static — nothing
+//     outside the Multimeter_Controller namespace references them directly.
+//   • Each public entry point is independently try/caught so a missing driver,
+//     insufficient privilege, or absent dxgi.dll never surfaces as an unhandled
+//     exception to the caller.
+//   • LHM requires that the process have sufficient driver-access privileges to
+//     read hardware sensors.  When it does not, error messages containing
+//     "access" or "privilege" are replaced with a human-readable hint.
+//   • The 16-adapter cap in Get_Adapter_Info() and Check_Via_DXGI() is a
+//     safety guard against a pathological DXGI state returning success
+//     indefinitely; normal systems have 1–3 adapters.
+//
+// AUTHOR:  Mike Wheeler
+// CREATED: 04/04/2026
+// ════════════════════════════════════════════════════════════════════════════════
+
+
+
 using Rich_Text_Popup_Namespace;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Management;
 using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading.Tasks;
 using static Trace_Execution_Namespace.Trace_Execution;
 
 namespace Multimeter_Controller
@@ -497,36 +738,42 @@ namespace Multimeter_Controller
 
     }
 
-    internal static class GPU_Snapshot
+
+
+
+  // ── Data bags ──────────────────────────────────────────────────────────────
+  public class Sensor_Value
+  {
+    public string Name = "";
+    public float Value = 0f;
+  }
+
+  public class Snapshot
+  {
+    public DateTime Taken = DateTime.Now;
+    public List<Sensor_Value> Load = new();
+    public List<Sensor_Value> Temperature = new();
+    public List<Sensor_Value> Memory = new();
+    public List<Sensor_Value> Clock = new();
+    public List<Sensor_Value> Power = new();
+    public List<Sensor_Value> Fan = new();
+  }
+
+  public class Snapshot_Delta
+  {
+    public TimeSpan Duration;
+    public List<(string Name, float Start, float End, float Delta)> Load = new();
+    public List<(string Name, float Start, float End, float Delta)> Temperature = new();
+    public List<(string Name, float Start, float End, float Delta)> Memory = new();
+    public List<(string Name, float Start, float End, float Delta)> Clock = new();
+    public List<(string Name, float Start, float End, float Delta)> Power = new();
+    public List<(string Name, float Start, float End, float Delta)> Fan = new();
+  }
+
+
+  internal static class GPU_Snapshot
     {
-      // ── Data bags ──────────────────────────────────────────────────────────────
-      public class Sensor_Value
-      {
-        public string Name = "";
-        public float Value = 0f;
-      }
-
-      public class Snapshot
-      {
-        public DateTime Taken = DateTime.Now;
-        public List<Sensor_Value> Load = new();
-        public List<Sensor_Value> Temperature = new();
-        public List<Sensor_Value> Memory = new();
-        public List<Sensor_Value> Clock = new();
-        public List<Sensor_Value> Power = new();
-        public List<Sensor_Value> Fan = new();
-      }
-
-      public class Snapshot_Delta
-      {
-        public TimeSpan Duration;
-        public List<(string Name, float Start, float End, float Delta)> Load = new();
-        public List<(string Name, float Start, float End, float Delta)> Temperature = new();
-        public List<(string Name, float Start, float End, float Delta)> Memory = new();
-        public List<(string Name, float Start, float End, float Delta)> Clock = new();
-        public List<(string Name, float Start, float End, float Delta)> Power = new();
-        public List<(string Name, float Start, float End, float Delta)> Fan = new();
-      }
+    
 
       // ── Capture ────────────────────────────────────────────────────────────────
       public static Snapshot Capture()
@@ -632,8 +879,8 @@ namespace Multimeter_Controller
 
       // ── Summary Popup ──────────────────────────────────────────────────────────
       public static void Show_GPU_Session_Summary( Form Owner,
-                                                   GPU_Snapshot.Snapshot Baseline,
-                                                   GPU_Snapshot.Snapshot End_Snap )
+                                                   Snapshot Baseline,
+                                                   Snapshot End_Snap )
       {
         var Delta = GPU_Snapshot.Diff( Baseline, End_Snap );
 

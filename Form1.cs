@@ -59,11 +59,13 @@
 // Framework:    .NET 9.0, Windows Forms
 // ============================================================================
 
+using LibreHardwareMonitor.Interop.PowerMonitor;
 using Multimeter_Controller.Properties;
 using Rich_Text_Popup_Namespace;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics.Metrics;
+using System.Formats.Asn1;
 using System.Globalization;
 using System.IO.Ports;
 using System.Management;
@@ -78,6 +80,7 @@ namespace Multimeter_Controller
 {
   public partial class Form1 : Form
   {
+
     private List<Command_Entry>      _All_Commands;
     private readonly Instrument_Comm _Comm;
     private Meter_Type               _Selected_Meter = Meter_Type_Extensions.Combo_Order[ 0 ];
@@ -96,8 +99,8 @@ namespace Multimeter_Controller
 
     private int                       _Selected_Index = -1;
 
-    private Application_Settings      _Settings = Application_Settings.Load();
-    private Chart_Theme               _Theme    = Chart_Theme.Dark_Preset();
+    private Application_Settings      _Settings = null!;
+    private Chart_Theme               _Theme    = null!;
 
     private int                       _Instrument_Count = 0;
     public bool                       Is_GPIB           = false;
@@ -112,26 +115,69 @@ namespace Multimeter_Controller
     private bool Poll_Form_Is_Open  => _Poll_Form != null && ! _Poll_Form.IsDisposed;
 
     private void AboutItem_Click( object sender, EventArgs e ) => App_Help.Show_About( this );
-    private void HelpItem_Click( object sender, EventArgs e ) => App_Help.Show_Launcher_Help( this );
+    private void HelpItem_Click( object sender, EventArgs e )  => App_Help.Show_Launcher_Help( this );
 
     private System.Windows.Forms.ToolTip Tool_Tip = new System.Windows.Forms.ToolTip();
 
     public Form1()
     {
+
       using var Block = Trace_Block.Start_If_Enabled();
+
+      Capture_Trace.Write( "Main Form Constructor Start..." );
+
+      try
+      {
+        _Settings = Application_Settings.Load();
+        Capture_Trace.Write( "Loaded Application Settings" );
+      }
+      catch ( Exception ex )
+      {
+        MessageBox.Show( $"Load crashed: {ex.Message}\n\n{ex.StackTrace}" );
+        return;
+      }
+
+      try
+      {
+        _Theme = _Settings.Panel_Theme;
+        // _Theme = Chart_Theme.Light_Preset();
+        Capture_Trace.Write( "Loaded Application Theme" );
+      }
+      catch ( Exception ex )
+      {
+        MessageBox.Show( $"Theme crashed: {ex.Message}\n\n{ex.StackTrace}" );
+        return;
+      }
+
+      Capture_Trace.Write( "Form1 Starting..." );
+
       InitializeComponent();
+      Capture_Trace.Write( "InitializeComponent Done" );
 
-      helpToolStripMenuItem.Click += ( s, e ) => App_Help.Show_Launcher_Help( this );
-      aboutToolStripMenuItem.Click += ( s, e ) => App_Help.Show_About( this );
-      //   Initialize_Tool_Tips();
+      _Settings.Validate_And_Fix();
+      Capture_Trace.Write( "Validate_And_Fix Done" );
 
+      _Settings.Detect_Hardware();
+      Capture_Trace.Write( "Detected_Hardware Done" );
+
+      // Initialize_Tool_Tips();
+      // Capture_Trace.Write( "Initialize Tool Tips Done" );
 
       // Populate instrument type combo first, then set selection
       _Updating_Controls = true;
       Instrument_Type_Combo.Items.Clear();
 
+      string Instrument_Type = "";
+
       foreach ( var Type in Meter_Type_Extensions.Combo_Order )
-        Instrument_Type_Combo.Items.Add( Type.Get_Name() );
+      {
+        Instrument_Type = Type.Get_Name();
+        Capture_Trace.Write( $"Adding Instrument type -> {Instrument_Type}" );
+        // Instrument_Type_Combo.Items.Add( Type.Get_Name() );
+        Instrument_Type_Combo.Items.Add( Instrument_Type );
+      }
+
+      Capture_Trace.Write( "" );
 
       Instrument_Type_Combo.SelectedIndex = Meter_Type.Generic_GPIB.To_Combo_Index();
       Instrument_Name_Text.Text           = Meter_Type.Generic_GPIB.Get_Name();
@@ -142,32 +188,66 @@ namespace Multimeter_Controller
       Instruments_List.DataSource    = _Instruments;
       Instruments_List.DisplayMember = "Name";
 
-      _Comm                     = new Instrument_Comm( _Settings );
-      _Comm.Connection_Changed += Comm_Connection_Changed;
-      _Comm.Error_Occurred     += Comm_Error_Occurred;
-      _Comm.Data_Received      += Comm_Data_Received;
+      _Comm = new Instrument_Comm( _Settings );
 
       Populate_Connection_Controls();
 
       Connected_Instrument_Textbox.Text = "";
 
-      if ( ! string.IsNullOrWhiteSpace( _Settings.Default_Window_Title ) )
-        this.Text = _Settings.Default_Window_Title + " - Launcher";
-
       Subnet_Textbox.Text = _Settings.Network_Scan_Subnet;
       Capture_Trace.Write( $"Subnet set to : [{_Settings.Network_Scan_Subnet}]" );
       Capture_Trace.Write( $"Control name  : [{Subnet_Textbox.Name}]" );
 
-      Instruments_List.SelectedIndexChanged += Instruments_List_SelectedIndexChanged;
+      Wire_Events();
 
       Set_Button_State();
     }
 
+    private void Wire_Events()
+    {
+      using var Block = Trace_Block.Start_If_Enabled();
 
 
 
 
- 
+
+      helpToolStripMenuItem.Click += ( s, e ) => App_Help.Show_Launcher_Help( this );
+      aboutToolStripMenuItem.Click += ( s, e ) => App_Help.Show_About( this );
+
+      _Comm.Connection_Changed += Comm_Connection_Changed;
+      _Comm.Error_Occurred     += Comm_Error_Occurred;
+      _Comm.Data_Received      += Comm_Data_Received;
+
+      if ( ! string.IsNullOrWhiteSpace( _Settings.Default_Window_Title ) )
+        this.Text = _Settings.Default_Window_Title + " - Launcher";
+
+      Instruments_List.SelectedIndexChanged += Instruments_List_SelectedIndexChanged;
+      _Settings.Theme_Changed += On_Theme_Changed;
+    }
+
+
+
+    private void On_Theme_Changed( object? Sender, EventArgs E )
+    {
+      using var Block = Trace_Block.Start_If_Enabled();
+      Apply_Panel_Theme();
+    }
+
+    private void Apply_Panel_Theme()
+    {
+      using var Block = Trace_Block.Start_If_Enabled();
+
+      var Tags_Allowed = new HashSet<string> { "Response_Text_Box",
+                                             "Instruments_List",
+                                             "Command_History",
+                                             "Command_List",
+                                             "Detail_List" };
+      foreach (var item in Get_All_Tags( this ))
+      {
+        if (item.tag != null && Tags_Allowed.Contains( item.tag ))
+          _Settings.Apply_Theme_To_Control( item.control, _Settings.Panel_Theme, item.tag );
+      }
+    }
 
 
     private void Load_NPLC_Combo( Meter_Type Type, decimal? Current_NPLC = null )
@@ -1865,9 +1945,10 @@ namespace Multimeter_Controller
     private void Connection_Mode_Combo_SelectedIndexChanged( object Sender, EventArgs E )
     {
       using var Block = Trace_Block.Start_If_Enabled();
-      Is_GPIB         = Connection_Mode_Combo.SelectedIndex == 0;
-      Is_Serial       = Connection_Mode_Combo.SelectedIndex == 1;
-      Is_Ethernet     = Connection_Mode_Combo.SelectedIndex == 2;
+
+      Is_GPIB     = Connection_Mode_Combo.SelectedIndex == 0;
+      Is_Serial   = Connection_Mode_Combo.SelectedIndex == 1;
+      Is_Ethernet = Connection_Mode_Combo.SelectedIndex == 2;
 
       // Serial controls only relevant for serial/GPIB-USB
       // COM port needed for both GPIB-USB and Direct Serial
@@ -2230,7 +2311,7 @@ namespace Multimeter_Controller
       return Dialog.ShowDialog() == DialogResult.OK ? List_Box.SelectedItem?.ToString() ?? "" : "";
     }
 
-    private void Meter_Info_Button_Click( object Sender, EventArgs E )
+    private void Meter_Info_Button_Click( object Sender, EventArgs e )
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
@@ -2521,25 +2602,25 @@ namespace Multimeter_Controller
       Popup.Show_Popup( this );
     }
 
-    public static void Show_Session_Settings( Form                 Owner,
-                                              Application_Settings Settings,
-                                              List<Instrument>     Instruments,
-                                              Chart_Theme          Theme )
+    public static void Show_Session_Settings( Form Owner,
+                                             Application_Settings Settings,
+                                             List<Instrument> Instruments,
+                                             Chart_Theme Theme )
     {
       using var Popup = new Rich_Text_Popup( "Session Settings", 660, 700, Resizable: true );
 
       // ── Instruments ───────────────────────────────────────────────
       Popup.Add_Blank().Add_Heading_Mono( "Instruments" );
 
-      if ( Instruments.Count == 0 )
+      if (Instruments.Count == 0)
       {
         Popup.Add_Row( "Status", "No instruments configured" );
       }
       else
       {
-        foreach ( var Inst in Instruments )
+        foreach (var Inst in Instruments)
         {
-          string Settle_Ms = ( (double) Inst.NPLC * ( 1000.0 / 60.0 ) * 2.0 ).ToString( "F0" );
+          string Settle_Ms = ((double) Inst.NPLC * (1000.0 / 60.0) * 2.0).ToString( "F0" );
 
           Popup.Add_Instrument_Header( Inst.Name )
             .Add_Row( "    Type", Inst.Type.ToString() )
@@ -2551,10 +2632,10 @@ namespace Multimeter_Controller
             .Add_Blank();
         }
 
-        if ( Instruments.Count > 1 )
+        if (Instruments.Count > 1)
         {
-          double Max_NPLC       = (double) Instruments.Max( I => I.NPLC );
-          int    Session_Settle = (int) ( Max_NPLC / 60.0 * 1000.0 * 2.0 );
+          double Max_NPLC = (double) Instruments.Max( I => I.NPLC );
+          int Session_Settle = (int) (Max_NPLC / 60.0 * 1000.0 * 2.0);
 
           Popup.Add_Row( "Session Bottleneck NPLC", $"{Max_NPLC}  (worst-case instrument)" )
             .Add_Row( "Session Settle Time", $"{Session_Settle} ms  (all instruments share this rate)" )
@@ -2566,6 +2647,7 @@ namespace Multimeter_Controller
       Popup.Add_Blank()
         .Add_Heading_Mono( "Polling" )
         .Add_Row( "Poll Delay", $"{Settings.Default_Poll_Delay_Ms} ms" )
+        .Add_Row( "Default NPLC", Settings.Default_NPLC )
         .Add_Row( "Continuous Mode", Settings.Default_Continuous_Poll ? "Yes" : "No" )
         .Add_Row( "Default Measurement", Settings.Default_Measurement_Type )
         .Add_Row( "Max Display Points", $"{Settings.Max_Display_Points:N0}" )
@@ -2576,22 +2658,46 @@ namespace Multimeter_Controller
         .Add_Row( "Instrument Settle", $"{Settings.Instrument_Settle_Ms} ms" )
         .Add_Blank();
 
+      // ── Error Handling ────────────────────────────────────────────
+      Popup.Add_Blank()
+        .Add_Heading_Mono( "Error Handling" )
+        .Add_Row( "Max Errors Before Disable", $"{Settings.Max_Consecutive_Errors_Before_Disable}" )
+        .Add_Row( "Auto Retry", Settings.Auto_Retry_Failed_Instruments ? "Yes" : "No" )
+        .Add_Row( "Retry Delay", $"{Settings.Retry_Delay_Seconds} s" )
+        .Add_Blank();
+
+      // ── Data Freshness ────────────────────────────────────────────
+      Popup.Add_Blank()
+        .Add_Heading_Mono( "Data Freshness" )
+        .Add_Row( "Skew Warning Threshold", $"{Settings.Skew_Warning_Threshold_Seconds:F1} s  (orange)" )
+        .Add_Row( "Stale Data Threshold", $"{Settings.Stale_Data_Threshold_Seconds:F1} s  (red)" )
+        .Add_Blank();
+
       // ── Display ───────────────────────────────────────────────────
       Popup.Add_Blank()
         .Add_Heading_Mono( "Display" )
         .Add_Row( "Chart Refresh Rate", $"{Settings.Chart_Refresh_Rate_Ms} ms" )
+        .Add_Row( "Show Grid Lines", Settings.Show_Grid_Lines ? "Yes" : "No" )
+        .Add_Row( "Show Data Dots", Settings.Show_Data_Dots ? "Yes" : "No" )
+        .Add_Row( "Data Dot Size", $"{Settings.Data_Dot_Size} px" )
+        .Add_Row( "Line Thickness", $"{Settings.Line_Thickness} px" )
         .Add_Row( "Default View", Settings.Default_To_Combined_View ? "Combined" : "Split" )
         .Add_Row( "Default Normalized", Settings.Default_To_Normalized_View ? "Yes" : "No" )
         .Add_Row( "Show Legend On Startup", Settings.Show_Legend_On_Startup ? "Yes" : "No" )
         .Add_Row( "Tooltips On Hover", Settings.Show_Tooltips_On_Hover ? "Yes" : "No" )
         .Add_Row( "Tooltip Duration", $"{Settings.Tooltip_Display_Duration_Ms} ms" )
         .Add_Row( "Tooltip Threshold", $"{Settings.Tooltip_Distance_Threshold} px" )
-        .Add_Row( "Default Zoom Level", $"{Settings.Default_Zoom_Level}" )
-        .Add_Row( "Throttle When Large", Settings.Throttle_When_Many_Points ? "Yes" : "No" )
-        .Add_Row( "Throttle Threshold", $"{Settings.Throttle_Point_Threshold:N0} points" )
         .Add_Blank();
 
-      // ── Recording ─────────────────────────────────────────────────
+      // ── Zoom ──────────────────────────────────────────────────────
+      Popup.Add_Blank()
+        .Add_Heading_Mono( "Zoom" )
+        .Add_Row( "Default Zoom Level", $"{Settings.Default_Zoom_Level}  (50 = 1.0×)" )
+        .Add_Row( "Zoom Sensitivity", $"{Settings.Zoom_Sensitivity:F1}×" )
+        .Add_Row( "Remember Zoom Level", Settings.Remember_Zoom_Level ? "Yes" : "No" )
+        .Add_Blank();
+
+      // ── Recording & Files ─────────────────────────────────────────
       Popup.Add_Blank()
         .Add_Heading_Mono( "Recording & Files" )
         .Add_Row( "Save Folder", Settings.Default_Save_Folder )
@@ -2600,15 +2706,18 @@ namespace Multimeter_Controller
                   Settings.Enable_Auto_Save ? $"Every {Settings.Auto_Save_Interval_Minutes} min"
                                             : "Disabled" )
         .Add_Row( "Auto Save On Stop", Settings.Auto_Save_On_Stop ? "Yes" : "No" )
+        .Add_Row( "Include Stats In Save", Settings.Include_Statistics_In_Save ? "Yes" : "No" )
         .Add_Row( "Prompt Before Clear", Settings.Prompt_Before_Clear ? "Yes" : "No" )
+        .Add_Row( "Auto Load Last Session", Settings.Auto_Load_Last_Session ? "Yes" : "No" )
         .Add_Row( "Export Format", Settings.Export_Format )
         .Add_Blank();
 
       // ── Memory ────────────────────────────────────────────────────
       Popup.Add_Blank()
         .Add_Heading_Mono( "Memory" )
-        .Add_Row( "Max Points In Memory", $"{Settings.Max_Data_Points_In_Memory:N0}" )
+        .Add_Row( "Max Points In Memory", $"{Settings.Max_Data_Points_In_Memory:N0} points" )
         .Add_Row( "Warning Threshold", $"{Settings.Warning_Threshold_Percent}%" )
+        .Add_Row( "Warn At Threshold", Settings.Warn_At_Threshold ? "Yes" : "No" )
         .Add_Row( "Auto Trim Old Data",
                   Settings.Auto_Trim_Old_Data ? $"Keep last {Settings.Keep_Last_N_Points:N0}" : "Disabled" )
         .Add_Blank();
@@ -2618,19 +2727,14 @@ namespace Multimeter_Controller
         .Add_Heading_Mono( "Performance" )
         .Add_Row( "Rendering Engine",
                   Settings.Use_GPU_Rendering && Settings.GPU_Rendering_Available ? "GPU (SkiaSharp/OpenGL)"
-                  : Settings.Use_GPU_Rendering && ! Settings.GPU_Rendering_Available ? "CPU (GPU requested " +
-                                                                                       "but unavailable)"
-                                                                                     : "CPU (GDI+)" )
-        .Add_Row( "Max Data In Memory", $"{Settings.Max_Data_Points_In_Memory:N0} points" )
-        .Add_Row( "Warning Threshold", $"{Settings.Warning_Threshold_Percent}%" )
-        .Add_Row( "Warn At Threshold", Settings.Warn_At_Threshold ? "Yes" : "No" )
+                  : Settings.Use_GPU_Rendering && !Settings.GPU_Rendering_Available
+                    ? "CPU (GPU requested but unavailable)"
+                    : "CPU (GDI+)" )
         .Add_Row( "Throttle Refresh",
                   Settings.Throttle_When_Many_Points
                     ? $"Yes — above {Settings.Throttle_Point_Threshold:N0} points"
                     : "No" )
         .Add_Row( "Reduce Refresh Rate", Settings.Reduce_Refresh_Rate_When_Large ? "Yes" : "No" )
-        .Add_Row( "Auto Trim",
-                  Settings.Auto_Trim_Old_Data ? $"Yes — keep last {Settings.Keep_Last_N_Points:N0}" : "No" )
         .Add_Row( "Chart Decimation", Settings.Enable_Decimation ? "Enabled" : "Disabled" )
         .Add_Row( "Decimate Above",
                   Settings.Enable_Decimation ? $"{Settings.Decimation_Threshold:N0} points" : "N/A" )
@@ -2642,38 +2746,75 @@ namespace Multimeter_Controller
       Popup.Add_Blank()
         .Add_Heading_Mono( "Analysis" )
         .Add_Row( "Auto Analyze After Rec", Settings.Auto_Analyze_After_Recording ? "Yes" : "No" )
+        .Add_Row( "GPU Comparison",
+                  Settings.Discrete_GPU_Available
+                    ? (Settings.Analysis_Show_GPU_Comparison ? "Yes" : "No")
+                    : "N/A — no discrete GPU" )
+        .Add_Row( "Series Mode", Settings.Analysis_Series_Count == 2 ? "Two series" : "Single series" )
         .Add_Row( "Show Mean", Settings.Analysis_Show_Mean ? "Yes" : "No" )
         .Add_Row( "Show Std Dev", Settings.Analysis_Show_Std_Dev ? "Yes" : "No" )
         .Add_Row( "Show Min/Max", Settings.Analysis_Show_Min_Max ? "Yes" : "No" )
         .Add_Row( "Show RMS", Settings.Analysis_Show_RMS ? "Yes" : "No" )
         .Add_Row( "Show Trend", Settings.Analysis_Show_Trend ? "Yes" : "No" )
         .Add_Row( "Show Sample Rate", Settings.Analysis_Show_Sample_Rate ? "Yes" : "No" )
+        .Add_Row( "Show Error Count", Settings.Analysis_Show_Errors ? "Yes" : "No" )
+        .Add_Blank();
+
+      // ── UI ────────────────────────────────────────────────────────
+      Popup.Add_Blank()
+        .Add_Heading_Mono( "UI" )
+        .Add_Row( "Window Title", Settings.Default_Window_Title )
+        .Add_Row( "Remember Window Size", Settings.Remember_Window_Size ? "Yes" : "No" )
+        .Add_Row( "Remember Window Position", Settings.Remember_Window_Position ? "Yes" : "No" )
+        .Add_Row( "Keyboard Panning", Settings.Enable_Keyboard_Pan ? "Yes" : "No" )
+        .Add_Row( "Ctrl+Scroll Zoom", Settings.Enable_Ctrl_Scroll_Zoom ? "Yes" : "No" )
+        .Add_Row( "Progress Messages", Settings.Show_Progress_Messages ? "Yes" : "No" )
+        .Add_Row( "Flash On Error", Settings.Flash_On_Error ? "Yes" : "No" )
+        .Add_Row( "Sound On Complete", Settings.Play_Sound_On_Complete ? "Yes" : "No" )
         .Add_Blank();
 
       // ── Connection ────────────────────────────────────────────────
       Popup.Add_Blank()
         .Add_Heading_Mono( "Connection" )
-        .Add_Row( "Default GPIB Address", $"{Settings.Default_GPIB_Instrument_Address}" )
-        .Add_Row( "Prologix MAC", Settings.Prologic_MAC_Address )
         .Add_Row( "Default IP",
                   string.IsNullOrEmpty( Settings.Default_IP_Address ) ? "Auto-detect"
-                                                                      : Settings.Default_IP_Address )
+                                                                       : Settings.Default_IP_Address )
+        .Add_Row( "Default Port", $"{Settings.Default_Prologic_Port}" )
+        .Add_Row( "Scan Subnet",
+                  string.IsNullOrEmpty( Settings.Network_Scan_Subnet ) ? "Auto-detect"
+                                                                        : Settings.Network_Scan_Subnet )
         .Add_Row( "Scan Timeout", $"{Settings.Prologic_Scan_Timeout_MS} ms" )
+        .Add_Row( "Prologix MAC",
+                  string.IsNullOrEmpty( Settings.Prologic_MAC_Address ) ? "—"
+                                                                         : Settings.Prologic_MAC_Address )
+        .Add_Row( "Default GPIB Address", $"{Settings.Default_GPIB_Instrument_Address}" )
+        .Add_Row( "Prologix Auto Read", Settings.Prologix_Auto_Read ? "Yes" : "No" )
+        .Add_Row( "Prologix Fetch Delay", $"{Settings.Prologix_Fetch_Ms} ms" )
+        .Add_Blank();
+
+      // ── HP3458A ───────────────────────────────────────────────────
+      Popup.Add_Blank()
+        .Add_Heading_Mono( "HP3458A" )
         .Add_Row( "Send Reset On Connect", Settings.Send_Reset_On_Connect_3458 ? "Yes" : "No" )
         .Add_Row( "Reset Settle Delay", $"{Settings.Reset_Settle_Delay_Ms} ms" )
-        .Add_Row( "Skew Warning Threshold", $"{Settings.Skew_Warning_Threshold_Seconds:F1} s" )
-        .Add_Row( "Stale Data Threshold", $"{Settings.Stale_Data_Threshold_Seconds:F1} s" )
+        .Add_Row( "Send END Always", Settings.Send_End_Always_3458 ? "Yes" : "No" )
+        .Add_Row( "ERR? Read Delay", $"{Settings.ERR_Read_Delay_Ms} ms" )
+        .Add_Row( "NPLC Apply Delay", $"{Settings.NPLC_Apply_Delay_Ms} ms" )
+        .Add_Row( "Default NPLC", Settings.Default_NPLC_3458 )
+        .Add_Row( "Default Trigger Mode", Settings.Default_Trig_Mode_3458 )
         .Add_Blank();
 
       // ── Theme ─────────────────────────────────────────────────────
       Popup.Add_Blank()
         .Add_Heading_Mono( "Theme" )
+        .Add_Row( "Chart Theme", Settings.Chart_Theme?.Name ?? "Dark" )
+        .Add_Row( "Panel Theme", Settings.Panel_Theme?.Name ?? "Dark" )
         .Add_Color_Row( "Background", Theme.Background )
         .Add_Color_Row( "Foreground", Theme.Foreground )
         .Add_Color_Row( "Grid", Theme.Grid )
         .Add_Color_Row( "Labels", Theme.Labels );
 
-      for ( int I = 0; I < Theme.Line_Colors.Length; I++ )
+      for (int I = 0; I < Theme.Line_Colors.Length; I++)
         Popup.Add_Color_Row( $"Series {I + 1} Color", Theme.Line_Colors[ I ] );
 
       Popup.Add_Blank();
@@ -2697,8 +2838,7 @@ namespace Multimeter_Controller
         _Settings = Dlg.Get_Settings();
         _Settings.Save();
 
-        // Apply settings immediately to this running instance
-        //     Apply_Settings ( );
+        _Settings.Detect_Hardware();
 
         MessageBox.Show( "Settings saved successfully.\n\n" + "Settings have been applied to this window.",
                          "Settings",
@@ -2728,7 +2868,7 @@ namespace Multimeter_Controller
       if ( NPLC != Default )
       {
         Capture_Trace.Write( $"NPLC overridden: {Inst.Name} default={Default} selected={NPLC}" );
-        Append_Response( $"[{Inst.Name}: NPLC set to {NPLC} (default is {Default})]" );
+        Append_Response( $"[Note: NPLC set to {NPLC} (default is {Default})]" );
       }
       else
       {
@@ -3157,7 +3297,7 @@ namespace Multimeter_Controller
         }
         catch ( Exception ex )
         {
-          Result.Passed_Checks.Add( "++read_tmo_ms not supported by this firmware (non-critical)." );
+          Result.Failed_Checks.Add( $"Could not verify ++read_tmo_ms: {ex.Message}" );
         }
 
         // --- Prologix configuration snapshot ---
@@ -3225,11 +3365,7 @@ namespace Multimeter_Controller
           {
             // Measurement bled through — device is responding on the bus but not to *IDN?
             Result.Passed_Checks.Add( "Device is responding on GPIB bus but does not support *IDN? " + "(no" +
-                                                                                                       "n-" +
-                                                                                                       "cri" +
-                                                                                                       "tic" +
-                                                                                                       "al)" +
-                                                                                                       "." );
+                                      "n-" + "cri" + "tic" + "al)" + "." );
           }
           else
           {
@@ -3256,13 +3392,16 @@ namespace Multimeter_Controller
 
     private void GPU_Info_Button_Click( object sender, EventArgs e )
     {
-      if (_Settings.Use_GPU_Rendering)
+      if ( _Settings.Use_GPU_Rendering )
       {
         Show_GPU_Info_Popup();
       }
       else
       {
-        MessageBox.Show( "There is no discrete GPU on this PC.", "GPU Not Found", MessageBoxButtons.OK, MessageBoxIcon.Warning );
+        MessageBox.Show( "There is no discrete GPU on this PC.",
+                         "GPU Not Found",
+                         MessageBoxButtons.OK,
+                         MessageBoxIcon.Warning );
       }
     }
 
@@ -3365,7 +3504,7 @@ namespace Multimeter_Controller
           }
           else
           {
-            Popup.Add_Row( $"  {S.Name}", S.Value, S.Color );
+            Popup.Add_Row( $"  {S.Name}", $"{S.Value}", S.Color );
           }
         }
       }
@@ -3379,8 +3518,8 @@ namespace Multimeter_Controller
       Popup.Add_Heading_Mono( "Windows Management (WMI)" );
       try
       {
-        using var Searcher = new System.Management.ManagementObjectSearcher( "SELECT * FROM " +
-                                                                             "Win32_VideoController" );
+        using var Searcher = new System.Management.ManagementObjectSearcher( "SELECT * FROM " + "Win32_" +
+                                                                             "VideoContr" + "oller" );
 
         int       GPU_Index = 0;
         foreach ( ManagementObject Obj in Searcher.Get() )
@@ -3515,13 +3654,80 @@ namespace Multimeter_Controller
 
       Tool_Tip.AutoPopDelay = 5000;
       Tool_Tip.InitialDelay = 500;
-      Tool_Tip.ReshowDelay = 200;
+      Tool_Tip.ReshowDelay  = 200;
 
       Tool_Tip.SetToolTip( Display_Recording_Button, "Playback Previous Recordings" );
       Tool_Tip.SetToolTip( GPU_Info_Button, "Not available: No discrete GPU detected on this PC." );
       Tool_Tip.SetToolTip( Meter_Info_Button, "Information on all supported meters." );
-      //  toolTip.SetToolTip( textBox1, "Tooltip for a text box" );
-
+      // toolTip.SetToolTip( textBox1, "Tooltip for a text box" );
     }
+    public void Theme_Button_Click( object sender, EventArgs e )
+    {
+      using var Block = Trace_Block.Start_If_Enabled();
+
+  
+
+      using var dlg = new Panel_Theme_Settings_Form( _Theme );
+
+      if ( dlg.ShowDialog( this ) != DialogResult.OK )
+        return;
+
+   
+
+      _Theme.Copy_From( dlg.Result );
+      _Theme.Save();
+
+      _Settings.Set_Theme( _Theme, "Panel_Theme" );
+
+
+      var Tags = Get_All_Tags( this );
+
+      var Tags_Allowed = new HashSet<string> { "Response_Text_Box",
+                                               "Instruments_List",
+                                               "Command_History",
+                                               "Command_List",
+                                               "Detail_List" };
+
+      foreach (var item in Tags)
+      {
+
+        if (item.tag != null && Tags_Allowed.Contains(item.tag))
+        {
+          Capture_Trace.Write( $"Processing Tag -> {item.tag}" );
+
+          // _Settings.Apply_Theme_To_Single_Control( ctrl, _Theme );
+
+          _Settings.Apply_Theme_To_Control( item.control, _Theme, item.tag );
+
+        }
+      }
+    }
+
+
+
+    public List<(Control control, string tag)> Get_All_Tags( Control root )
+    {
+      var result = new List<(Control control, string tag)>();
+
+      void Walk( Control parent )
+      {
+        foreach (Control c in parent.Controls)
+        {
+          if (c.Tag != null)
+          {
+            result.Add( (c, c.Tag.ToString()) );
+          }
+
+          if (c.HasChildren)
+            Walk( c );
+        }
+      }
+
+      Walk( root );
+
+      return result;
+    }
+
+  
   }
 }

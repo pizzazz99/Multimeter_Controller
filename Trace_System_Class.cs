@@ -1,215 +1,284 @@
-// ============================================================================
-// COMPLETE INTERNAL TRACE SYSTEM WITH VERBOSE MODE
-// ============================================================================
+// ════════════════════════════════════════════════════════════════════════════════
+// FILE:    Trace_Execution.cs
+// PROJECT: Multimeter_Controller  (namespace: Trace_Execution_Namespace)
+// ════════════════════════════════════════════════════════════════════════════════
 //
-// PURPOSE:
-//   A lightweight, hierarchical execution trace system for debugging and
-//   monitoring application flow in real-time. Displays method calls in a
-//   tree structure showing entry/exit points and custom messages.
+// PURPOSE
+//   Lightweight, always-on execution tracer for DEBUG builds.  Produces an
+//   indented call-tree log in a floating RichTextBox window and optionally
+//   writes the same output to a .txt file.  All public API is static; callers
+//   never manage lifetimes directly.  In RELEASE builds every Trace_Block
+//   allocation compiles away to a null return, so there is zero runtime cost.
 //
-// ============================================================================
-// QUICK START GUIDE
-// ============================================================================
+// ── QUICK-START ───────────────────────────────────────────────────────────────
 //
-// 1. INITIALIZATION (in Program.cs or Form1 constructor):
+//   1. Call once at application startup (typically in Program.Main):
 //
-//    Trace_System.Initialize(Start_Enabled: true);
+//        Trace_Execution.Initialize();          // shows window, enables tracing
+//        Trace_Execution.Initialize( false );   // initialises without showing
 //
-//    This creates and shows the trace window automatically.
+//   2. In every method you want to trace, add ONE line at the top:
 //
-// ----------------------------------------------------------------------------
+//        using var Block = Trace_Block.Start_If_Enabled();
+//        // or equivalently:
+//        using static Trace_Execution_Namespace.Trace_Execution;
+//        using var Block = Trace_Block.Start_If_Enabled();
 //
-// 2. BASIC USAGE - Trace method entry/exit:
+//      The [CallerMemberName] attribute captures the method name automatically;
+//      you never pass a string.  When the using block exits the method, the
+//      indent level is decremented.
 //
-//    private void My_Method()
-//    {
-//      using var Block = Trace_Block.Start();  // Auto-traces method name
+//   3. Write inline messages with Capture_Trace.Write():
 //
-//      // Your code here
-//      // Method exit is automatically traced when 'Block' is disposed
-//    }
+//        Capture_Trace.Write( $"Value = {Value}" );
+//        Capture_Trace.Write( $"Series count: {_Series.Count}" );
 //
-//    OUTPUT:
-//    12:34:56.789 - |-- My_Method
+//   4. Toggle or stop tracing at runtime:
 //
-// ----------------------------------------------------------------------------
+//        Trace_Execution.Toggle();   // flip on/off
+//        Trace_Execution.Stop();     // hide window, suppress output
+//        Trace_Execution.Start();    // re-enable and show window
 //
-// 3. VERBOSE MESSAGES - Add detailed info inside a method:
+//   5. Call at application exit:
 //
-//    private void Process_Data(string filename)
-//    {
-//      using var Block = Trace_Block.Start();
+//        Trace_Execution.Shutdown(); // completes the queue pump
 //
-//      Block.Trace($"Processing file: {filename}");
-//      Block.Trace($"File size: {size} bytes");
+// ── TYPICAL USAGE PATTERN ─────────────────────────────────────────────────────
 //
-//      // Your code
-//    }
-//
-//    OUTPUT (when Verbose Mode is ON):
-//    12:34:56.789 - |-- Process_Data
-//                 - |   Processing file: data.csv
-//                 - |   File size: 1024 bytes
-//
-// ----------------------------------------------------------------------------
-//
-// 4. NESTED CALLS - Automatic tree structure:
-//
-//    private void Parent_Method()
-//    {
-//      using var Block = Trace_Block.Start();
-//      Child_Method();
-//    }
-//
-//    private void Child_Method()
-//    {
-//      using var Block = Trace_Block.Start();
-//      // Your code
-//    }
-//
-//    OUTPUT:
-//    12:34:56.789 - |-- Parent_Method
-//    12:34:56.790 - |   |-- Child_Method
-//
-// ----------------------------------------------------------------------------
-//
-// 5. QUICK TRACES - Single-line messages without blocks:
-//
-//    Trace.Write("User clicked save button");
-//    Trace.Write($"Saving {count} records");
-//
-//    OUTPUT:
-//    12:34:56.789 - User clicked save button
-//    12:34:56.790 - Saving 42 records
-//
-// ----------------------------------------------------------------------------
-//
-// 6. VERBOSE MODE TOGGLE:
-//
-//    - Click "Verbose" button in trace window to toggle
-//    - Verbose OFF: Shows only method names (clean, high-level view)
-//    - Verbose ON:  Shows method names + all Block.Trace() messages (detailed)
-//
-//    Use verbose messages for diagnostic details you don't always need to see.
-//
-// ============================================================================
-// CONTROL BUTTONS IN TRACE WINDOW
-// ============================================================================
-//
-//   [Log → File]  - Start logging to a text file (prompts for location)
-//   [Pause UI]    - Stop updating the window (trace still runs in background)
-//   [Clear]       - Clear all current trace output
-//   [Font]        - Change trace window font
-//   [ForeColor]   - Change text color
-//   [BackColor]   - Change background color
-//   [Verbose]     - Toggle between simple (method names) and verbose (all details)
-//   [Exit]        - Hide trace window (does not stop tracing)
-//
-// ============================================================================
-// PROGRAMMATIC CONTROL
-// ============================================================================
-//
-//   Trace_System.Start();    // Show trace window and enable tracing
-//   Trace_System.Stop();     // Hide window and disable tracing
-//   Trace_System.Toggle();   // Toggle on/off
-//   Trace_System.Shutdown(); // Stop background processing (on app exit)
-//
-// ============================================================================
-// BEST PRACTICES
-// ============================================================================
-//
-// 1. Use Trace_Block for every method you want to monitor:
-//    - Automatically shows entry/exit
-//    - Maintains proper indentation hierarchy
-//    - Zero overhead when disposed
-//
-// 2. Use Block.Trace() for diagnostic details:
-//    - Variable values
-//    - Loop iterations
-//    - File paths
-//    - Error conditions
-//    These only show when Verbose Mode is ON.
-//
-// 3. Use Trace.Write() for important events:
-//    - User actions (button clicks, menu selections)
-//    - State changes
-//    - Errors
-//    These always show (even in Simple mode).
-//
-// 4. Add blank lines for readability:
-//    Block.Blank_Line();
-//
-// 5. Turn OFF verbose mode for normal use:
-//    - Reduces clutter
-//    - Shows high-level flow
-//    Turn ON verbose mode when debugging specific issues.
-//
-// ============================================================================
-// EXAMPLE: Complete usage in a real method
-// ============================================================================
-//
-//   private void Save_File(string path)
+//   // Top of every traced method:
+//   private void Apply_Settings()
 //   {
-//     using var Block = Trace_Block.Start();  // Traces "Save_File"
-//
-//     Block.Trace($"Path: {path}");           // Verbose only
-//     Block.Trace($"Records: {_Data.Count}"); // Verbose only
-//
-//     try
-//     {
-//       File.WriteAllText(path, _Data);
-//       Trace.Write("File saved successfully"); // Always visible
-//     }
-//     catch (Exception ex)
-//     {
-//       Block.Trace($"ERROR: {ex.Message}"); // Verbose only
-//       Trace.Write($"Save failed: {ex.Message}"); // Always visible
-//     }
+//     using var Block = Trace_Block.Start_If_Enabled();
+//     // ... method body ...
+//     Capture_Trace.Write( "Settings applied successfully" );
 //   }
 //
-//   OUTPUT (Verbose Mode ON):
-//   12:34:56.789 - |-- Save_File
-//                - |   Path: C:\data\output.txt
-//                - |   Records: 1000
-//   12:34:56.850 - |   File saved successfully
+//   // The trace window will show something like:
+//   //   12:34:56.789 - |-- Apply_Settings
+//   //   12:34:56.790 -     |   Settings applied successfully
+//   //   12:34:56.791 -     |-- Load_Settings         ← nested call
+//   //   12:34:56.792 -         |   Loading from disk
 //
-//   OUTPUT (Verbose Mode OFF):
-//   12:34:56.789 - |-- Save_File
-//   12:34:56.850 - |   File saved successfully
+// ── OUTPUT FORMAT ─────────────────────────────────────────────────────────────
 //
-// ============================================================================
-// PERFORMANCE NOTES
-// ============================================================================
+//   Every line is prefixed with "HH:mm:ss.fff - " then a tree-indent string:
 //
-// - Trace blocks have minimal overhead (~microseconds per call)
-// - Messages are queued and processed asynchronously (non-blocking)
-// - Safe to use in performance-critical code
-// - Can be left in production code (disable with Trace_System.Stop())
-// - No impact when tracing is disabled
+//     Root call (depth 0):   "|-- Method_Name"
+//     Nested call (depth 1): "|   |-- Nested_Method"
+//     Inline message:        "|   |   message text"
 //
-// ============================================================================
-// THREAD SAFETY
-// ============================================================================
+//   Depth is tracked per async context via AsyncLocal<int> so concurrent
+//   async chains maintain independent indent levels.
 //
-// - Fully thread-safe
-// - Each thread maintains its own indent level
-// - Messages from different threads are interleaved with timestamps
-// - Use timestamps to correlate multi-threaded execution
+// ── VERBOSE / SIMPLE MODES ────────────────────────────────────────────────────
 //
-// ============================================================================
+//   Verbose   Shows all Capture_Trace.Write() messages.  Default.
+//   Simple    Suppresses inline messages; only method entry headers appear.
+//             Toggle via the "Verbose/Simple" button in the trace window.
+//
+//   Capture_Trace.Write() respects VerboseMode by default.  To write a message
+//   that appears in both modes:
+//
+//     Capture_Trace.Write( "Always visible", Verbose_Only: false );
+//
+// ── COLOR CODING IN THE TRACE WINDOW ─────────────────────────────────────────
+//
+//   Lines containing "ERROR"   → Red    (RGB 255, 100, 100)
+//   Lines containing "WARN"    → Amber  (RGB 255, 200, 80)
+//   All other lines            → current ForeColor (user-configurable)
+//
+// ────────────────────────────────────────────────────────────────────────────────
+// TYPE REFERENCE
+// ────────────────────────────────────────────────────────────────────────────────
+//
+// ── Trace_Execution (public static) ──────────────────────────────────────────
+//
+//   IsRunning → bool
+//     True when Execution_Logger.Enabled is true.  Safe to poll at any time.
+//
+//   Initialize( bool Start_Enabled = true )
+//     Must be called once before any other method, typically in Program.Main()
+//     before Application.Run().  Creates the TraceWindow if Start_Enabled is
+//     true.  Idempotent — subsequent calls are no-ops.
+//
+//   Start()
+//     Enables logging and shows the trace window.  No-op if already running.
+//     If the window was previously created it is shown via Invoke(); otherwise
+//     the next Write() call will create it via Ensure_Started().
+//
+//   Stop()
+//     Disables logging and hides the trace window without destroying it.
+//     The window's text buffer is preserved; Start() will re-show it.
+//
+//   Toggle()
+//     Calls Stop() if running, Start() if not.  Convenient for a menu item or
+//     debug hotkey.
+//
+//   Start_If_Enabled( [CallerMemberName] string Caller = "" ) → Trace_Block?
+//     Factory method used in the "using var Block = …" pattern.  In DEBUG
+//     builds returns a new Trace_Block (which writes the method header and
+//     increments indent) if the window exists and logging is enabled; returns
+//     null otherwise.  In RELEASE builds always returns null — the entire
+//     tracing path is compiled away.
+//
+//   Shutdown()
+//     Calls Execution_Logger.Shutdown() which marks the BlockingCollection as
+//     complete so the background pump thread drains and exits cleanly.  Call
+//     this in Application.ApplicationExit or at the end of Main().
+//
+// ── Trace_Block (public sealed, IDisposable) ──────────────────────────────────
+//
+//   The primary per-method tracing handle obtained via Start_If_Enabled().
+//   Wrap in a using statement — never store and manually Dispose().
+//
+//   Construction
+//     Records the caller name and current AsyncLocal indent level, increments
+//     the level, and writes the "|-- MethodName" header line immediately.
+//
+//   Trace( string Message )
+//     Writes an indented message at the current depth, but only when
+//     VerboseMode is active.  Multi-line messages (newlines in the string)
+//     are split and each line is indented separately.  Safe to call at any
+//     point while the using block is open.
+//
+//   Blank_Line()
+//     Writes an empty indented line to visually separate groups of trace
+//     messages.  Verbose-only.
+//
+//   Start( [CallerMemberName] string Caller = "" ) → Trace_Block   [static]
+//     Unconditional factory — always creates a block regardless of enabled
+//     state.  Use only when you explicitly want tracing regardless of the
+//     global flag (rare).
+//
+//   Start_If_Enabled( [CallerMemberName] string Caller = "" ) → Trace_Block?
+//     Instance-level equivalent of Trace_Execution.Start_If_Enabled().
+//     Returns null if the window does not exist.
+//
+//   Dispose()
+//     Decrements AsyncLocal indent level.  Called automatically by the using
+//     statement when the method exits (normally or via exception).
+//
+// ── Capture_Trace (public static) ────────────────────────────────────────────
+//
+//   Write( string Message,
+//          [CallerMemberName] string Caller = "",
+//          bool Verbose_Only = true )
+//     The primary way to emit an inline diagnostic message from within a
+//     traced method.  Reads the current AsyncLocal indent level and prefixes
+//     accordingly.  When Message is null or whitespace the Caller name is
+//     used as the message text.
+//
+//     Verbose_Only = true  (default): suppressed when VerboseMode is off.
+//     Verbose_Only = false           : always written when logging is enabled.
+//
+//     Does NOT require a Trace_Block to be in scope — it can be called from
+//     any context and will simply use the ambient indent level (which may be
+//     0 if no block is open).
+//
+// ── Execution_Logger (internal static) ───────────────────────────────────────
+//
+//   The queue-based I/O engine.  Not part of the public API; described here
+//   for completeness.
+//
+//   All writes go to a BlockingCollection<string> (_Queue).  A single
+//   background Task (Process_Queue) drains the queue and dispatches each line
+//   to the TraceWindow and/or a log file.
+//
+//   Write( string )         Prepends "HH:mm:ss.fff - " then enqueues.
+//   Write_Raw( string )     Same prepend logic; semantically identical to Write
+//                           in this implementation.
+//   Enable_UI_Logging()     Toggles delivery to TraceWindow (Pause button).
+//   Enable_File_Logging()   Toggles delivery to the log file.
+//   Set_Log_File( path )    Changes the output file path (default "trace.log").
+//   Ensure_Started()        Lazily starts the pump Task and creates the
+//                           TraceWindow if needed.  Thread-safe via _Init_Lock.
+//   Shutdown()              Completes the BlockingCollection so the pump exits.
+//
+// ── TraceWindow (internal partial Form) ──────────────────────────────────────
+//
+//   The floating trace output window.  Created on the UI thread via
+//   Create_Window_If_Needed(); subsequent access through the Instance property.
+//   Closing the window hides it (OnFormClosing cancels the close) rather than
+//   disposing it — the buffer is preserved across hide/show cycles.
+//
+//   Toolbar buttons:
+//     "Log → File"   Opens SaveFileDialog, enables file logging to chosen path.
+//     "Pause UI"     Suspends delivery to the RichTextBox (queue continues).
+//                    Becomes "Resume UI" while paused.
+//     "Clear"        Clears the RichTextBox display buffer.
+//     "Font"         Opens FontDialog; persisted to trace_settings.json.
+//     "ForeColor"    Opens ColorDialog; re-applies to all existing text.
+//     "BackColor"    Opens ColorDialog.
+//     "Verbose/Simple" Toggles VerboseMode.
+//     "Exit"         Hides the window (same as close button).
+//
+//   Context menu on the log box: Copy, Select All, Clear.
+//
+//   Settings persistence:
+//     trace_settings.json alongside the executable stores font family/size/
+//     style, foreground and background colors (as ARGB ints), VerboseMode,
+//     window position, and window size.  Loaded in the constructor, saved on
+//     each settings change and on ApplicationExit.
+//
+//   Append_Text_Safe( string )
+//     Thread-safe append: BeginInvoke()s to the UI thread if called from a
+//     background thread.  Applies color coding (ERROR → red, WARN → amber,
+//     everything else → current ForeColor) and auto-scrolls to the caret.
+//
+// ── Trace_Indent (internal static) ───────────────────────────────────────────
+//
+//   Holds a single AsyncLocal<int> Level.  Each Trace_Block increments on
+//   construction and decrements on Dispose().  AsyncLocal ensures that
+//   concurrent async continuations maintain independent depth counters — a
+//   deeply-nested async chain does not corrupt the indent of an unrelated
+//   parallel operation.
+//
+// ── TraceSettings (private class, nested in TraceWindow) ─────────────────────
+//
+//   Plain JSON-serialisable settings bag.  Default values:
+//     FontFamily    "Consolas"
+//     FontSize      9.5f
+//     FontStyle     Regular
+//     ForeColorArgb Color(200, 200, 200)  — light gray
+//     BackColorArgb Color(20, 20, 20)     — near-black
+//     VerboseMode   false
+//     TraceVisible  true
+//     WindowX/Y     -1 (system default position)
+//     WindowWidth   800
+//     WindowHeight  400
+//
+// ── RELEASE BUILD BEHAVIOR ───────────────────────────────────────────────────
+//
+//   The outer Trace_Execution.Start_If_Enabled() is wrapped in #if DEBUG and
+//   returns null in RELEASE builds.  Because every caller stores the result
+//   in a nullable using variable:
+//
+//     using var Block = Trace_Block.Start_If_Enabled();
+//
+//   … and null is a valid IDisposable target that simply calls no Dispose(),
+//   the entire tracing path — including queue allocation, string formatting,
+//   and indent management — is eliminated by the JIT in release.  No
+//   performance cost in production builds.
+//
+// ── THREAD SAFETY NOTES ──────────────────────────────────────────────────────
+//
+//   • _Queue is a BlockingCollection — thread-safe for concurrent producers.
+//   • _Init_Lock guards TraceWindow creation and pump startup.
+//   • AsyncLocal<int> provides per-async-context indent isolation.
+//   • Append_Text_Safe() marshals to the UI thread via BeginInvoke().
+//   • TraceWindow creation in Ensure_Started() uses Invoke() on the first
+//     open form when a message loop is already running, ensuring the window
+//     is always created on the UI thread.
+//
+// AUTHOR:  Mike Wheeler
+// CREATED: 04/04/2026
+// ════════════════════════════════════════════════════════════════════════════════
 
-using System;
 using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Drawing;
-using System.IO;
 using System.Runtime.CompilerServices;
-using System.Text;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Windows.Forms;
 
 namespace Trace_Execution_Namespace
 {
@@ -555,8 +624,8 @@ namespace Trace_Execution_Namespace
       }
     }
 
-    [ DefaultValue( false ) ]
-    internal bool VerboseMode { get; private set; } = false;
+    [ DefaultValue( true ) ]
+    internal bool VerboseMode { get; private set; } = true;
 
     private TraceWindow()
     {

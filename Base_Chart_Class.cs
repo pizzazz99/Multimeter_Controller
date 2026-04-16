@@ -321,32 +321,41 @@ namespace Multimeter_Controller
         Initialize_Skia_Resources();
     }
 
-    protected void Initialize_Chart_Refresh_Timer ( )
+    protected void Initialize_Chart_Refresh_Timer()
     {
-      using var Block = Trace_Block.Start_If_Enabled ( );
-
-      _Chart_Refresh_Timer?.Stop ( );
-      _Chart_Refresh_Timer?.Dispose ( );
-
-      _Chart_Refresh_Timer = new System.Windows.Forms.Timer ( );
-      _Chart_Refresh_Timer.Interval = Math.Max ( 50, _Settings.Chart_Refresh_Rate_Ms );
-
+      using var Block = Trace_Block.Start_If_Enabled();
+      _Chart_Refresh_Timer?.Stop();
+      _Chart_Refresh_Timer?.Dispose();
+      _Chart_Refresh_Timer = new System.Windows.Forms.Timer();
+      _Chart_Refresh_Timer.Interval = Math.Max( 50, _Settings.Chart_Refresh_Rate_Ms );
       _Chart_Refresh_Timer.Tick += ( s, e ) =>
       {
-        if ( Chart_Panel_Control == null )
+        if (Chart_Panel_Control == null)
           return;
-        if ( _Is_Running_State ( ) )
+
+        if (_Is_Running_State())
         {
-          Chart_Panel_Control.Invalidate ( );
-          On_Chart_Refresh_Tick ( );
+          // ── Decimation gate ───────────────────────────────────────────
+          if (_Settings.Enable_Decimation)
+          {
+            int Total = _Series.Sum( s => s.Points.Count );
+            if (Total > _Settings.Decimation_Threshold &&
+                 (Total % _Settings.Decimation_Step) != 0)
+            {
+              On_Chart_Refresh_Tick();  // still call tick for status updates
+              return;                   // but skip the repaint
+            }
+          }
+
+          Chart_Panel_Control.Invalidate();
+          On_Chart_Refresh_Tick();
         }
         else
         {
-          _Chart_Refresh_Timer?.Stop ( );  // self-healing safety net
+          _Chart_Refresh_Timer?.Stop();
         }
       };
     }
-
 
     protected void Initialize_Skia_Resources()
     {
@@ -4772,8 +4781,8 @@ namespace Multimeter_Controller
         float Top_Y = H - _Chart_Margin_Bottom - Chart_H + 12f;
         float Bot_Y = H - _Chart_Margin_Bottom - 4f;
 
-        Canvas.DrawText( Top_Lbl, Label_X, Top_Y, Val_Paint );
-        Canvas.DrawText( Bot_Lbl, Label_X, Bot_Y, Val_Paint );
+        Canvas.DrawText( Top_Lbl, new SkiaSharp.SKPoint( Label_X, Top_Y ), Val_Paint );
+        Canvas.DrawText( Bot_Lbl, new SkiaSharp.SKPoint( Label_X, Bot_Y ), Val_Paint );
 
         Color_Index++;
       }

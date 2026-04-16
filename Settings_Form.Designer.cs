@@ -20,6 +20,17 @@ namespace Multimeter_Controller
 
     private void InitializeComponent ( )
     {
+
+      // Objects to make resizing easy
+      const int Form_Width = 670;
+      const int Tab_Width = Form_Width - 24;  // 12px margin each side
+      const int Tab_Page_Width = Tab_Width - 8;   // tab control border
+
+      // Button positions anchored to right edge of form
+      const int Apply_X = Form_Width - 12 - 75;         // 75 = button width
+      const int Cancel_X = Apply_X - 75 - 6;           // 6 = gap between buttons
+      const int OK_X = Cancel_X - 75 - 6;
+
       Main_Tab_Control = new TabControl ( );
       HP3458_Tab = new TabPage ( );
       Prologix_Tab = new TabPage ( );
@@ -51,7 +62,7 @@ namespace Multimeter_Controller
       Main_Tab_Control.Name = "Main_Tab_Control";
       Main_Tab_Control.SelectedIndex = 0;
       Main_Tab_Control.Location = new Point( 12, 36 );
-      Main_Tab_Control.Size = new Size( 560, 463 );
+      Main_Tab_Control.Size = new Size( Tab_Width, 463 );
       Main_Tab_Control.TabIndex = 0;
       // 
       // HP3458_Tab
@@ -59,7 +70,7 @@ namespace Multimeter_Controller
       HP3458_Tab.BackColor = SystemColors.Control;
       HP3458_Tab.Location = new Point ( 4, 24 );
       HP3458_Tab.Name = "HP3458_Tab";
-      HP3458_Tab.Size = new Size ( 552, 459 );
+      HP3458_Tab.Size = new Size( Tab_Page_Width, 459 );
       HP3458_Tab.TabIndex = 6;
       HP3458_Tab.Text = "HP3458";
       // 
@@ -68,7 +79,7 @@ namespace Multimeter_Controller
       Prologix_Tab.BackColor = SystemColors.Control;
       Prologix_Tab.Location = new Point ( 4, 24 );
       Prologix_Tab.Name = "Prologix_Tab";
-      Prologix_Tab.Size = new Size ( 552, 459 );
+      Prologix_Tab.Size = new Size( Tab_Page_Width, 459 );
       Prologix_Tab.TabIndex = 7;
       Prologix_Tab.Text = "Prologix";
       // 
@@ -77,7 +88,7 @@ namespace Multimeter_Controller
       Analysis_Tab.BackColor = SystemColors.Control;
       Analysis_Tab.Location = new Point ( 4, 24 );
       Analysis_Tab.Name = "Analysis_Tab";
-      Analysis_Tab.Size = new Size ( 552, 459 );
+      Analysis_Tab.Size = new Size( Tab_Page_Width, 459 );
       Analysis_Tab.TabIndex = 8;
       Analysis_Tab.Text = "Analysis";
       // 
@@ -87,7 +98,7 @@ namespace Multimeter_Controller
       Display_Tab.Location = new Point ( 4, 24 );
       Display_Tab.Name = "Display_Tab";
       Display_Tab.Padding = new Padding ( 3 );
-      Display_Tab.Size = new Size ( 552, 459 );
+      Display_Tab.Size = new Size( Tab_Page_Width, 459 );
       Display_Tab.TabIndex = 0;
       Display_Tab.Text = "Display";
       // 
@@ -97,7 +108,7 @@ namespace Multimeter_Controller
       Polling_Tab.Location = new Point ( 4, 24 );
       Polling_Tab.Name = "Polling_Tab";
       Polling_Tab.Padding = new Padding ( 3 );
-      Polling_Tab.Size = new Size ( 552, 459 );
+      Polling_Tab.Size = new Size( Tab_Page_Width, 459 );
       Polling_Tab.TabIndex = 1;
       Polling_Tab.Text = "Polling";
       // 
@@ -106,7 +117,7 @@ namespace Multimeter_Controller
       Files_Tab.BackColor = SystemColors.Control;
       Files_Tab.Location = new Point ( 4, 24 );
       Files_Tab.Name = "Files_Tab";
-      Files_Tab.Size = new Size ( 552, 459 );
+      Files_Tab.Size = new Size( Tab_Page_Width, 459 );
       Files_Tab.TabIndex = 2;
       Files_Tab.Text = "Files";
       // 
@@ -115,7 +126,7 @@ namespace Multimeter_Controller
       Performance_Tab.BackColor = SystemColors.Control;
       Performance_Tab.Location = new Point ( 4, 24 );
       Performance_Tab.Name = "Performance_Tab";
-      Performance_Tab.Size = new Size ( 552, 459 );
+      Performance_Tab.Size = new Size( Tab_Page_Width, 459 );
       Performance_Tab.TabIndex = 3;
       Performance_Tab.Text = "Performance";
       // 
@@ -124,7 +135,7 @@ namespace Multimeter_Controller
       UI_Tab.BackColor = SystemColors.Control;
       UI_Tab.Location = new Point ( 4, 24 );
       UI_Tab.Name = "UI_Tab";
-      UI_Tab.Size = new Size ( 552, 459 );
+      UI_Tab.Size = new Size( Tab_Page_Width, 459 );
       UI_Tab.TabIndex = 4;
       UI_Tab.Text = "UI/UX";
       // 
@@ -133,13 +144,13 @@ namespace Multimeter_Controller
       Zoom_Tab.BackColor = SystemColors.Control;
       Zoom_Tab.Location = new Point ( 4, 24 );
       Zoom_Tab.Name = "Zoom_Tab";
-      Zoom_Tab.Size = new Size ( 552, 459 );
+      Zoom_Tab.Size = new Size(   Tab_Page_Width, 459 );
       Zoom_Tab.TabIndex = 5;
       Zoom_Tab.Text = "Zoom";
       // 
       // OK_Button
       // 
-      OK_Button.Location = new Point ( 305, 505 );
+      OK_Button.Location = new Point( OK_X, 505 );
       OK_Button.Name = "OK_Button";
       OK_Button.Size = new Size ( 75, 30 );
       OK_Button.TabIndex = 1;
@@ -150,7 +161,7 @@ namespace Multimeter_Controller
       // Cancel_Button
       // 
       Cancel_Button.DialogResult = DialogResult.Cancel;
-      Cancel_Button.Location = new Point ( 386, 505 );
+      Cancel_Button.Location = new Point( Cancel_X, 505 );
       Cancel_Button.Name = "Cancel_Button";
       Cancel_Button.Size = new Size ( 75, 30 );
       Cancel_Button.TabIndex = 2;
@@ -160,7 +171,7 @@ namespace Multimeter_Controller
       // 
       // Apply_Button
       // 
-      Apply_Button.Location = new Point ( 467, 505 );
+      Apply_Button.Location = new Point( Apply_X, 505 );
       Apply_Button.Name = "Apply_Button";
       Apply_Button.Size = new Size ( 75, 30 );
       Apply_Button.TabIndex = 3;
@@ -184,7 +195,7 @@ namespace Multimeter_Controller
       AutoScaleDimensions = new SizeF ( 7F, 15F );
       AutoScaleMode = AutoScaleMode.Font;
       CancelButton = Cancel_Button;
-      ClientSize = new Size ( 584, 547 );
+      ClientSize = new Size( Form_Width, 547 );
       Controls.Add ( Reset_Button );
       Controls.Add ( Apply_Button );
       Controls.Add ( Cancel_Button );

@@ -356,7 +356,7 @@ namespace Multimeter_Controller
       Current_Values_Panel.Anchor =  AnchorStyles.Top | AnchorStyles.Right;
       Current_Values_Panel.BackColor = Color.FromArgb(   24,   27,   31 );
       Current_Values_Panel.BorderStyle = BorderStyle.FixedSingle;
-      Current_Values_Panel.Location = new Point( 634, 124 );
+      Current_Values_Panel.Location = new Point( 631, 93 );
       Current_Values_Panel.Name = "Current_Values_Panel";
       Current_Values_Panel.Size = new Size( 300, 100 );
       Current_Values_Panel.TabIndex = 38;
@@ -381,13 +381,13 @@ namespace Multimeter_Controller
       // 
       // Theme_Button
       // 
-      Theme_Button.Location = new Point( 102, 265 );
+      Theme_Button.Location = new Point( 209, 220 );
       Theme_Button.Name = "Theme_Button";
-      Theme_Button.Size = new Size( 75, 23 );
+      Theme_Button.Size = new Size( 100, 23 );
       Theme_Button.TabIndex = 43;
-      Theme_Button.Text = "Theme";
+      Theme_Button.Text = "Chart_Theme";
       Theme_Button.UseVisualStyleBackColor = true;
-      Theme_Button.Click += Theme_Button_Click;
+      Theme_Button.Click += Chart_Theme_Button_Click;
       // 
       // Poll_Speed_Button
       // 
@@ -462,7 +462,7 @@ namespace Multimeter_Controller
       // label1
       // 
       label1.AutoSize = true;
-      label1.Location = new Point( 148, 163 );
+      label1.Location = new Point( 139, 98 );
       label1.Name = "label1";
       label1.Size = new Size( 64, 15 );
       label1.TabIndex = 60;
@@ -471,7 +471,7 @@ namespace Multimeter_Controller
       // label3
       // 
       label3.AutoSize = true;
-      label3.Location = new Point( 148, 192 );
+      label3.Location = new Point( 139, 127 );
       label3.Name = "label3";
       label3.Size = new Size( 64, 15 );
       label3.TabIndex = 61;
@@ -480,7 +480,7 @@ namespace Multimeter_Controller
       // label4
       // 
       label4.AutoSize = true;
-      label4.Location = new Point( 148, 223 );
+      label4.Location = new Point( 139, 158 );
       label4.Name = "label4";
       label4.Size = new Size( 66, 15 );
       label4.TabIndex = 63;
@@ -488,28 +488,28 @@ namespace Multimeter_Controller
       // 
       // Total_Time_TextBox
       // 
-      Total_Time_TextBox.Location = new Point( 218, 220 );
+      Total_Time_TextBox.Location = new Point( 209, 155 );
       Total_Time_TextBox.Name = "Total_Time_TextBox";
       Total_Time_TextBox.Size = new Size( 100, 23 );
       Total_Time_TextBox.TabIndex = 62;
       // 
       // Start_Time_TextBox
       // 
-      Start_Time_TextBox.Location = new Point( 218, 160 );
+      Start_Time_TextBox.Location = new Point( 209, 95 );
       Start_Time_TextBox.Name = "Start_Time_TextBox";
       Start_Time_TextBox.Size = new Size( 100, 23 );
       Start_Time_TextBox.TabIndex = 66;
       // 
       // Stop_Time_TextBox
       // 
-      Stop_Time_TextBox.Location = new Point( 218, 189 );
+      Stop_Time_TextBox.Location = new Point( 209, 124 );
       Stop_Time_TextBox.Name = "Stop_Time_TextBox";
       Stop_Time_TextBox.Size = new Size( 100, 23 );
       Stop_Time_TextBox.TabIndex = 67;
       // 
       // Render_Mode_Textbox
       // 
-      Render_Mode_Textbox.Location = new Point( 404, 160 );
+      Render_Mode_Textbox.Location = new Point( 209, 184 );
       Render_Mode_Textbox.Name = "Render_Mode_Textbox";
       Render_Mode_Textbox.Size = new Size( 100, 23 );
       Render_Mode_Textbox.TabIndex = 69;
@@ -517,7 +517,7 @@ namespace Multimeter_Controller
       // Rendering_Label
       // 
       Rendering_Label.AutoSize = true;
-      Rendering_Label.Location = new Point( 334, 163 );
+      Rendering_Label.Location = new Point( 139, 187 );
       Rendering_Label.Name = "Rendering_Label";
       Rendering_Label.Size = new Size( 64, 15 );
       Rendering_Label.TabIndex = 68;
@@ -557,7 +557,12 @@ namespace Multimeter_Controller
       helpToolStripMenuItem.Name = "helpToolStripMenuItem";
       helpToolStripMenuItem.Size = new Size( 44, 20 );
       helpToolStripMenuItem.Text = "Help";
-      //
+      // 
+      // aboutToolStripMenuItem
+      // 
+      aboutToolStripMenuItem.Name = "aboutToolStripMenuItem";
+      aboutToolStripMenuItem.Size = new Size( 32, 19 );
+      // 
       // Multi_Instrument_Poll_Form
       // 
       AutoScaleDimensions = new SizeF( 7F, 15F );

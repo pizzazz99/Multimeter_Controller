@@ -101,8 +101,8 @@
 //     in Save_Settings(); no validation is performed beyond what
 //     Validate_And_Fix() enforces.
 //
-// AUTHOR:  [Your name]
-// CREATED: [Date]
+// AUTHOR:  Mike Wheeler
+// CREATED: 04/04/2026
 // ════════════════════════════════════════════════════════════════════════════════
 
 using System;
@@ -120,166 +120,119 @@ namespace Multimeter_Controller
     // ── Fields ───────────────────────────────────────────────────────────────
     private Application_Settings _Settings;
 
-    // ── DXGI P/Invoke ────────────────────────────────────────────────────────
-    [ System.Runtime.InteropServices.ComImport ]
-    [ System.Runtime.InteropServices.Guid( "7b7166ec-21c7-44ae-b21a-c9ae321ae369" ) ]
-    [ System.Runtime.InteropServices.InterfaceType(
-      System.Runtime.InteropServices.ComInterfaceType.InterfaceIsIUnknown ) ]
-    private interface IDXGIFactory
-    {
-      void _VtblGap0_3();
-      [ System.Runtime.InteropServices.PreserveSig ]
-      int EnumAdapters( uint Index, [ System.Runtime.InteropServices.Out ] out IDXGIAdapter Adapter );
-    }
-
-    [ System.Runtime.InteropServices.ComImport ]
-    [ System.Runtime.InteropServices.Guid( "2411e7e1-12ac-4ccf-bd14-9798e8534dc0" ) ]
-    [ System.Runtime.InteropServices.InterfaceType(
-      System.Runtime.InteropServices.ComInterfaceType.InterfaceIsIUnknown ) ]
-    private interface IDXGIAdapter
-    {
-      void _VtblGap0_3();
-      [ System.Runtime.InteropServices.PreserveSig ]
-      int GetDesc( out DXGI_ADAPTER_DESC Desc );
-    }
-
-    [ System.Runtime.InteropServices.StructLayout( System.Runtime.InteropServices.LayoutKind.Sequential,
-                                                   CharSet =
-                                                     System.Runtime.InteropServices.CharSet.Unicode ) ]
-    private struct DXGI_ADAPTER_DESC
-    {
-      [ System.Runtime.InteropServices.MarshalAs( System.Runtime.InteropServices.UnmanagedType.ByValTStr,
-                                                  SizeConst = 128 ) ]
-      public string                                           Description;
-      public uint                                             VendorId;
-      public uint                                             DeviceId;
-      public uint                                             SubSysId;
-      public uint                                             Revision;
-      public nint                                             DedicatedVideoMemory;
-      public nint                                             DedicatedSystemMemory;
-      public nint                                             SharedSystemMemory;
-      public System.Runtime.InteropServices.ComTypes.FILETIME AdapterLuid;
-    }
-
-    [ System.Runtime.InteropServices.DllImport( "dxgi.dll" ) ]
-    private static extern int CreateDXGIFactory( [ System.Runtime.InteropServices.In ] ref Guid Riid, [
-      System.Runtime.InteropServices.Out
-    ] out IDXGIFactory PpFactory );
-
     // Display tab controls
-    private NumericUpDown     _Tooltip_Distance_Numeric;
-    private CheckBox          _Show_Tooltips_Check;
-    private NumericUpDown     _Tooltip_Duration_Numeric;
-    private NumericUpDown     _Chart_Refresh_Numeric;
-    private CheckBox          _Show_Grid_Check;
-    private CheckBox          _Show_Dots_Check;
-    private NumericUpDown     _Dot_Size_Numeric;
-    private NumericUpDown     _Line_Thickness_Numeric;
-    private CheckBox          _Default_Combined_Check;
-    private CheckBox          _Default_Normalized_Check;
-    private CheckBox          _Show_Legend_Check;
-    private NumericUpDown     _Display_Digits_Numeric;
+    private NumericUpDown        _Tooltip_Distance_Numeric;
+    private CheckBox             _Show_Tooltips_Check;
+    private NumericUpDown        _Tooltip_Duration_Numeric;
+    private NumericUpDown        _Chart_Refresh_Numeric;
+    private CheckBox             _Show_Grid_Check;
+    private CheckBox             _Show_Dots_Check;
+    private NumericUpDown        _Dot_Size_Numeric;
+    private NumericUpDown        _Line_Thickness_Numeric;
+    private CheckBox             _Default_Combined_Check;
+    private CheckBox             _Default_Normalized_Check;
+    private CheckBox             _Show_Legend_Check;
+    private NumericUpDown        _Display_Digits_Numeric;
 
     // Polling tab controls
-    private NumericUpDown     _Poll_Delay_Numeric;
-    private ComboBox          _NPLC_Combo;
-    private ComboBox          _Measurement_Type_Combo;
-    private CheckBox          _Continuous_Poll_Check;
-    private NumericUpDown     _GPIB_Timeout_Numeric;
-    private NumericUpDown     _Max_Retry_Attempts_Numeric;
-    private NumericUpDown     _Max_Errors_Numeric;
-    private CheckBox          _Auto_Retry_Check;
-    private NumericUpDown     _Retry_Delay_Numeric;
-    private NumericUpDown     _Skew_Warning_Numeric;
-    private NumericUpDown     _Stale_Data_Numeric;
-    private NumericUpDown     _Max_Display_Points_Numeric;
-    private CheckBox          _Stop_At_Max_Check;
+    private NumericUpDown        _Poll_Delay_Numeric;
+    private ComboBox             _NPLC_Combo;
+    private ComboBox             _Measurement_Type_Combo;
+    private CheckBox             _Continuous_Poll_Check;
+    private NumericUpDown        _GPIB_Timeout_Numeric;
+    private NumericUpDown        _Max_Retry_Attempts_Numeric;
+    private NumericUpDown        _Max_Errors_Numeric;
+    private CheckBox             _Auto_Retry_Check;
+    private NumericUpDown        _Retry_Delay_Numeric;
+    private NumericUpDown        _Skew_Warning_Numeric;
+    private NumericUpDown        _Stale_Data_Numeric;
+    private NumericUpDown        _Max_Display_Points_Numeric;
+    private CheckBox             _Stop_At_Max_Check;
 
     // ===== In Build_Prologix_Tab ( ) =====
 
-    private TextBox           _Prologix_IP_Textbox;
-    private NumericUpDown     _Prologix_Port_Numeric;
-    private TextBox           _Prologix_MAC_Textbox;
-    private TextBox           _Prologic_Scan_Timeout_MS_Textbox;
+    private TextBox              _Prologix_IP_Textbox;
+    private NumericUpDown        _Prologix_Port_Numeric;
+    private TextBox              _Prologix_MAC_Textbox;
+    private TextBox              _Prologic_Scan_Timeout_MS_Textbox;
 
-    private NumericUpDown     _Prologix_GPIB_Address_Numeric;
-    private CheckBox          _Prologix_Auto_Read_Check;
-    private NumericUpDown     _Prologix_Read_Tmo_Numeric;
-    private NumericUpDown     _Prologix_Fetch_Numeric;
-    private TextBox           _Prologix_Subnet_Textbox;
+    private NumericUpDown        _Prologix_GPIB_Address_Numeric;
+    private CheckBox             _Prologix_Auto_Read_Check;
+    private NumericUpDown        _Prologix_Read_Tmo_Numeric;
+    private NumericUpDown        _Prologix_Fetch_Numeric;
+    private TextBox              _Prologix_Subnet_Textbox;
 
     // Files tab controls
-    private TextBox           _Save_Folder_Text;
-    private Button            _Browse_Folder_Button;
-    private TextBox           _Filename_Pattern_Text;
-    private CheckBox          _Enable_Auto_Save_Check;
-    private NumericUpDown     _Auto_Save_Interval_Numeric;
-    private CheckBox          _Auto_Save_On_Stop_Check;
-    private CheckBox          _Include_Stats_Check;
-    private CheckBox          _Prompt_Before_Clear_Check;
-    private CheckBox          _Auto_Load_Last_Check;
-    private ComboBox          _Export_Format_Combo;
+    private TextBox              _Save_Folder_Text;
+    private Button               _Browse_Folder_Button;
+    private TextBox              _Filename_Pattern_Text;
+    private CheckBox             _Enable_Auto_Save_Check;
+    private NumericUpDown        _Auto_Save_Interval_Numeric;
+    private CheckBox             _Auto_Save_On_Stop_Check;
+    private CheckBox             _Include_Stats_Check;
+    private CheckBox             _Prompt_Before_Clear_Check;
+    private CheckBox             _Auto_Load_Last_Check;
+    private ComboBox             _Export_Format_Combo;
 
     // Performance tab controls
-    private NumericUpDown     _Max_Points_Memory_Numeric;
-    private NumericUpDown     _Warning_Threshold_Numeric;
-    private CheckBox          _Warn_At_Threshold_Check;
-    private CheckBox          _Throttle_When_Many_Check;
-    private NumericUpDown     _Throttle_Threshold_Numeric;
-    private CheckBox          _Auto_Trim_Check;
-    private NumericUpDown     _Keep_Last_N_Numeric;
-    private CheckBox          _Reduce_Refresh_Check;
-    private CheckBox          _Use_GPU_Check;
-    private Label             _Rendering_Mode_Label;
+    private NumericUpDown        _Max_Points_Memory_Numeric;
+    private NumericUpDown        _Warning_Threshold_Numeric;
+    private CheckBox             _Warn_At_Threshold_Check;
+    private CheckBox             _Throttle_When_Many_Check;
+    private NumericUpDown        _Throttle_Threshold_Numeric;
+    private CheckBox             _Auto_Trim_Check;
+    private NumericUpDown        _Keep_Last_N_Numeric;
+    private CheckBox             _Reduce_Refresh_Check;
+    private CheckBox             _Use_GPU_Check;
+    private Label                _Rendering_Mode_Label;
 
     // Decimation controls
-    // Decimation controls
-    private CheckBox          _Enable_Decimation_Check;
-    private NumericUpDown     _Decimation_Threshold_Numeric;
-    private NumericUpDown     _Decimation_Step_Numeric;
+    private CheckBox             _Enable_Decimation_Check;
+    private NumericUpDown        _Decimation_Threshold_Numeric;
+    private NumericUpDown        _Decimation_Step_Numeric;
 
     // Analysis tab controls
-    private CheckBox _Analysis_Show_GPU_Comparison_Check;
-    private RadioButton       _Analysis_One_Series_Radio;
-    private RadioButton       _Analysis_Two_Series_Radio;
-    private CheckBox          _Analysis_Mean_Check;
-    private CheckBox          _Analysis_StdDev_Check;
-    private CheckBox          _Analysis_MinMax_Check;
-    private CheckBox          _Analysis_RMS_Check;
-    private CheckBox          _Analysis_Trend_Check;
-    private CheckBox          _Analysis_Sample_Rate_Check;
-    private CheckBox          _Analysis_Errors_Check;
+    private CheckBox             _Analysis_Show_GPU_Comparison_Check;
+    private RadioButton          _Analysis_One_Series_Radio;
+    private RadioButton          _Analysis_Two_Series_Radio;
+    private CheckBox             _Analysis_Mean_Check;
+    private CheckBox             _Analysis_StdDev_Check;
+    private CheckBox             _Analysis_MinMax_Check;
+    private CheckBox             _Analysis_RMS_Check;
+    private CheckBox             _Analysis_Trend_Check;
+    private CheckBox             _Analysis_Sample_Rate_Check;
+    private CheckBox             _Analysis_Errors_Check;
 
     // UI tab controls
-    private TextBox           _Window_Title_Text;
-    private CheckBox          _Remember_Size_Check;
-    private CheckBox          _Remember_Position_Check;
-    private CheckBox          _Enable_Keyboard_Pan_Check;
-    private CheckBox          _Enable_Ctrl_Zoom_Check;
-    private CheckBox          _Show_Progress_Check;
-    private CheckBox          _Flash_On_Error_Check;
-    private CheckBox          _Play_Sound_Check;
-    private ComboBox          _Theme_Combo;
+    private TextBox              _Window_Title_Text;
+    private CheckBox             _Remember_Size_Check;
+    private CheckBox             _Remember_Position_Check;
+    private CheckBox             _Enable_Keyboard_Pan_Check;
+    private CheckBox             _Enable_Ctrl_Zoom_Check;
+    private CheckBox             _Show_Progress_Check;
+    private CheckBox             _Flash_On_Error_Check;
+    private CheckBox             _Play_Sound_Check;
+    private ComboBox             _Chart_Theme_Combo;
+    private ComboBox             _Panel_Theme_Combo;
 
     // Zoom tab controls
-    private NumericUpDown     _Default_Zoom_Numeric;
-    private TrackBar          _Zoom_Sensitivity_Slider;
-    private Label             _Zoom_Sensitivity_Label;
-    private CheckBox          _Remember_Zoom_Check;
+    private NumericUpDown        _Default_Zoom_Numeric;
+    private TrackBar             _Zoom_Sensitivity_Slider;
+    private Label                _Zoom_Sensitivity_Label;
+    private CheckBox             _Remember_Zoom_Check;
 
     // HP tab controls
+    private TextBox              _Default_IP_Text;
+    private NumericUpDown        _Default_Port_Numeric;
+    private NumericUpDown        _Reset_Delay_Numeric;
+    private NumericUpDown        _Instrument_Settle_Numeric;
 
-    private TextBox           _Default_IP_Text;
-    private NumericUpDown     _Default_Port_Numeric;
-    private NumericUpDown     _Reset_Delay_Numeric;
-    private NumericUpDown     _Instrument_Settle_Numeric;
-
-    private NumericUpDown     _ERR_Read_Delay_Numeric;
-    private ComboBox          _Default_NPLC_3458_Combo;
-    private ComboBox          _Default_Trig_Mode_Combo;
-    private CheckBox          _Send_Reset_On_Connect_Check;
-    private CheckBox          _Send_End_Always_Check;
-    private NumericUpDown     _NPLC_Apply_Delay_Numeric;
+    private NumericUpDown        _ERR_Read_Delay_Numeric;
+    private ComboBox             _Default_NPLC_3458_Combo;
+    private ComboBox             _Default_Trig_Mode_Combo;
+    private CheckBox             _Send_Reset_On_Connect_Check;
+    private CheckBox             _Send_End_Always_Check;
+    private NumericUpDown        _NPLC_Apply_Delay_Numeric;
 
     public Settings_Form( Application_Settings Settings )
     {
@@ -295,44 +248,41 @@ namespace Multimeter_Controller
       Initialize_HP_Tab();
       Build_Prologix_Tab();
       Initialize_Analysis_Tab();
-      Load_Settings();
+     
 
       // ── GPU availability check ────────────────────────────────────────
       Check_GPU_Availability();
       Initialize_Menu_Strip();
+
+      Load_Settings();
     }
-
- 
-
 
     private void Check_GPU_Availability()
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      bool GPU_Found = _Settings.Discrete_GPU_Available;
+      bool      GPU_Found = _Settings.Discrete_GPU_Available;
 
       Capture_Trace.Write( $"Discrete GPU found: {GPU_Found}" );
 
-      if (GPU_Found)
+      if ( GPU_Found )
       {
-        _Use_GPU_Check.Enabled = true;
+        _Use_GPU_Check.Enabled     = true;
         _Rendering_Mode_Label.Text = _Settings.GPU_Rendering_Available ? "GPU detected and active"
                                                                        : "GPU detected — enable above to use";
-        _Rendering_Mode_Label.ForeColor = _Settings.GPU_Rendering_Available ? Color.LimeGreen
-                                                                            : SystemColors.GrayText;
+        _Rendering_Mode_Label.ForeColor =
+          _Settings.GPU_Rendering_Available ? Color.LimeGreen : SystemColors.GrayText;
       }
       else
       {
-        _Use_GPU_Check.Checked = false;
-        _Use_GPU_Check.Enabled = false;
-        _Rendering_Mode_Label.Text = "No GPU detected — CPU rendering only";
-        _Rendering_Mode_Label.ForeColor = Color.Orange;
-        _Settings.Use_GPU_Rendering = false;
+        _Use_GPU_Check.Checked            = false;
+        _Use_GPU_Check.Enabled            = false;
+        _Rendering_Mode_Label.Text        = "No GPU detected — CPU rendering only";
+        _Rendering_Mode_Label.ForeColor   = Color.Orange;
+        _Settings.Use_GPU_Rendering       = false;
         _Settings.GPU_Rendering_Available = false;
       }
     }
-
-
 
     public Application_Settings Get_Settings()
     {
@@ -571,11 +521,14 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      int       Y = 15;
+      var       Scroll_Panel = new Panel { AutoScroll = true, Dock = DockStyle.Fill };
+      Polling_Tab.Controls.Add( Scroll_Panel );
 
-      var       Max_Points_Label =
+      int Y = 15;
+
+      var Max_Points_Label =
         new Label { Text = "Max Display Points:", Location = new Point( 15, Y ), AutoSize = true };
-      Polling_Tab.Controls.Add( Max_Points_Label );   // ← was missing
+      Scroll_Panel.Controls.Add( Max_Points_Label );  // ← was missing
 
       _Max_Display_Points_Numeric = new NumericUpDown // ← assign to field, not local
         { Minimum   = 5,
@@ -584,20 +537,20 @@ namespace Multimeter_Controller
           Value     = 5,
           Location  = new Point( 250, Y - 3 ),
           Size      = new Size( 90, 22 ) };
-      Polling_Tab.Controls.Add( _Max_Display_Points_Numeric ); // ← was missing
+      Scroll_Panel.Controls.Add( _Max_Display_Points_Numeric ); // ← was missing
       Y += 30;
 
-      _Stop_At_Max_Check = new CheckBox { Text = "Stop polling when max display points reached (default: " +
-                                                 "roll/warn)",
-                                          Location = new Point( 15, Y ),
-                                          AutoSize = true };
-      Polling_Tab.Controls.Add( _Stop_At_Max_Check );
+      _Stop_At_Max_Check =
+        new CheckBox { Text     = "Stop polling when max display points reached (default: " + "roll/warn)",
+                       Location = new Point( 15, Y ),
+                       AutoSize = true };
+      Scroll_Panel.Controls.Add( _Stop_At_Max_Check );
       Y += 30;
 
       // Poll Delay
       var Poll_Delay_Label =
         new Label { Text = "Default Poll Delay (ms):", Location = new Point( 15, Y ), AutoSize = true };
-      Polling_Tab.Controls.Add( Poll_Delay_Label );
+      Scroll_Panel.Controls.Add( Poll_Delay_Label );
 
       _Poll_Delay_Numeric = new NumericUpDown { Location  = new Point( 250, Y - 3 ),
                                                 Size      = new Size( 80, 23 ),
@@ -605,24 +558,24 @@ namespace Multimeter_Controller
                                                 Maximum   = 60000,
                                                 Increment = 50,
                                                 Value     = 1000 };
-      Polling_Tab.Controls.Add( _Poll_Delay_Numeric );
+      Scroll_Panel.Controls.Add( _Poll_Delay_Numeric );
       Y += 30;
 
       // NPLC
       var NPLC_Label = new Label { Text = "Default NPLC:", Location = new Point( 15, Y ), AutoSize = true };
-      Polling_Tab.Controls.Add( NPLC_Label );
+      Scroll_Panel.Controls.Add( NPLC_Label );
 
       _NPLC_Combo = new ComboBox { Location      = new Point( 250, Y - 3 ),
                                    Size          = new Size( 100, 23 ),
                                    DropDownStyle = ComboBoxStyle.DropDownList };
       _NPLC_Combo.Items.AddRange( new object[ ] { "0.02", "0.2", "1", "10", "100" } );
-      Polling_Tab.Controls.Add( _NPLC_Combo );
+      Scroll_Panel.Controls.Add( _NPLC_Combo );
       Y += 30;
 
       // Measurement Type
       var Measurement_Label =
         new Label { Text = "Default Measurement:", Location = new Point( 15, Y ), AutoSize = true };
-      Polling_Tab.Controls.Add( Measurement_Label );
+      Scroll_Panel.Controls.Add( Measurement_Label );
 
       _Measurement_Type_Combo = new ComboBox { Location      = new Point( 250, Y - 3 ),
                                                Size          = new Size( 150, 23 ),
@@ -635,20 +588,20 @@ namespace Multimeter_Controller
                                                               "4-Wire Ohms",
                                                               "Frequency",
                                                               "Period" } );
-      Polling_Tab.Controls.Add( _Measurement_Type_Combo );
+      Scroll_Panel.Controls.Add( _Measurement_Type_Combo );
       Y += 30;
 
       // Continuous Poll
       _Continuous_Poll_Check = new CheckBox { Text     = "Default to continuous polling",
                                               Location = new Point( 15, Y ),
                                               AutoSize = true };
-      Polling_Tab.Controls.Add( _Continuous_Poll_Check );
+      Scroll_Panel.Controls.Add( _Continuous_Poll_Check );
       Y += 30;
 
       // GPIB Timeout
       var Timeout_Label =
         new Label { Text = "GPIB Timeout (ms):", Location = new Point( 15, Y ), AutoSize = true };
-      Polling_Tab.Controls.Add( Timeout_Label );
+      Scroll_Panel.Controls.Add( Timeout_Label );
 
       _GPIB_Timeout_Numeric = new NumericUpDown { Location  = new Point( 250, Y - 3 ),
                                                   Size      = new Size( 80, 23 ),
@@ -656,20 +609,20 @@ namespace Multimeter_Controller
                                                   Maximum   = 60000,
                                                   Increment = 1000,
                                                   Value     = 5000 };
-      Polling_Tab.Controls.Add( _GPIB_Timeout_Numeric );
+      Scroll_Panel.Controls.Add( _GPIB_Timeout_Numeric );
       Y += 30;
 
       // Max Retry Attempts
       var Retry_Attempts_Label =
         new Label { Text = "Max Retry Attempts:", Location = new Point( 15, Y ), AutoSize = true };
-      Polling_Tab.Controls.Add( Retry_Attempts_Label );
+      Scroll_Panel.Controls.Add( Retry_Attempts_Label );
 
       _Max_Retry_Attempts_Numeric = new NumericUpDown { Location = new Point( 250, Y - 3 ),
                                                         Size     = new Size( 80, 23 ),
                                                         Minimum  = 0,
                                                         Maximum  = 10,
                                                         Value    = 3 };
-      Polling_Tab.Controls.Add( _Max_Retry_Attempts_Numeric );
+      Scroll_Panel.Controls.Add( _Max_Retry_Attempts_Numeric );
       Y += 35;
 
       // Error Handling separator
@@ -677,50 +630,50 @@ namespace Multimeter_Controller
                                    Location = new Point( 15, Y ),
                                    Font     = new Font( "Segoe UI", 9F, FontStyle.Bold ),
                                    AutoSize = true };
-      Polling_Tab.Controls.Add( Separator1 );
+      Scroll_Panel.Controls.Add( Separator1 );
       Y += 25;
 
       // Max Errors
       var Max_Errors_Label =
         new Label { Text = "Max Errors Before Disable:", Location = new Point( 15, Y ), AutoSize = true };
-      Polling_Tab.Controls.Add( Max_Errors_Label );
+      Scroll_Panel.Controls.Add( Max_Errors_Label );
 
       _Max_Errors_Numeric = new NumericUpDown { Location = new Point( 250, Y - 3 ),
                                                 Size     = new Size( 80, 23 ),
                                                 Minimum  = 1,
                                                 Maximum  = 100,
                                                 Value    = 10 };
-      Polling_Tab.Controls.Add( _Max_Errors_Numeric );
+      Scroll_Panel.Controls.Add( _Max_Errors_Numeric );
       Y += 30;
 
       // Auto Retry
       _Auto_Retry_Check = new CheckBox { Text     = "Auto-retry failed instruments",
                                          Location = new Point( 15, Y ),
                                          AutoSize = true };
-      Polling_Tab.Controls.Add( _Auto_Retry_Check );
+      Scroll_Panel.Controls.Add( _Auto_Retry_Check );
       Y += 30;
 
       // Retry Delay
       var Retry_Delay_Label =
         new Label { Text = "Retry Delay (seconds):", Location = new Point( 15, Y ), AutoSize = true };
-      Polling_Tab.Controls.Add( Retry_Delay_Label );
+      Scroll_Panel.Controls.Add( Retry_Delay_Label );
 
       _Retry_Delay_Numeric = new NumericUpDown { Location = new Point( 250, Y - 3 ),
                                                  Size     = new Size( 80, 23 ),
                                                  Minimum  = 1,
                                                  Maximum  = 300,
                                                  Value    = 5 };
-      Polling_Tab.Controls.Add( _Retry_Delay_Numeric );
+      Scroll_Panel.Controls.Add( _Retry_Delay_Numeric );
 
       Y += 35;
 
-      Polling_Tab.Controls.Add( new Label { Text     = "Data Freshness:",
-                                            Location = new Point( 15, Y ),
-                                            Font     = new Font( "Segoe UI", 9F, FontStyle.Bold ),
-                                            AutoSize = true } );
+      Scroll_Panel.Controls.Add( new Label { Text     = "Data Freshness:",
+                                             Location = new Point( 15, Y ),
+                                             Font     = new Font( "Segoe UI", 9F, FontStyle.Bold ),
+                                             AutoSize = true } );
       Y += 25;
 
-      Polling_Tab.Controls.Add(
+      Scroll_Panel.Controls.Add(
         new Label { Text = "Skew Warning (seconds):", Location = new Point( 15, Y ), AutoSize = true } );
       _Skew_Warning_Numeric = new NumericUpDown { Location      = new Point( 250, Y - 3 ),
                                                   Size          = new Size( 80, 23 ),
@@ -729,14 +682,14 @@ namespace Multimeter_Controller
                                                   Increment     = 0.1M,
                                                   DecimalPlaces = 1,
                                                   Value         = 1.0M };
-      Polling_Tab.Controls.Add( _Skew_Warning_Numeric );
-      Polling_Tab.Controls.Add( new Label { Text      = "(orange)",
-                                            Location  = new Point( 340, Y ),
-                                            AutoSize  = true,
-                                            ForeColor = Color.Orange } );
+      Scroll_Panel.Controls.Add( _Skew_Warning_Numeric );
+      Scroll_Panel.Controls.Add( new Label { Text      = "(orange)",
+                                             Location  = new Point( 340, Y ),
+                                             AutoSize  = true,
+                                             ForeColor = Color.Orange } );
       Y += 30;
 
-      Polling_Tab.Controls.Add(
+      Scroll_Panel.Controls.Add(
         new Label { Text = "Stale Data (seconds):", Location = new Point( 15, Y ), AutoSize = true } );
       _Stale_Data_Numeric = new NumericUpDown { Location      = new Point( 250, Y - 3 ),
                                                 Size          = new Size( 80, 23 ),
@@ -745,11 +698,11 @@ namespace Multimeter_Controller
                                                 Increment     = 0.5M,
                                                 DecimalPlaces = 1,
                                                 Value         = 3.0M };
-      Polling_Tab.Controls.Add( _Stale_Data_Numeric );
-      Polling_Tab.Controls.Add( new Label { Text      = "(red)",
-                                            Location  = new Point( 340, Y ),
-                                            AutoSize  = true,
-                                            ForeColor = Color.Red } );
+      Scroll_Panel.Controls.Add( _Stale_Data_Numeric );
+      Scroll_Panel.Controls.Add( new Label { Text      = "(red)",
+                                             Location  = new Point( 340, Y ),
+                                             AutoSize  = true,
+                                             ForeColor = Color.Red } );
       Y += 30;
     }
 
@@ -757,116 +710,90 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      var Scroll_Panel = new Panel { AutoScroll = true, Dock = DockStyle.Fill };
+      var       Scroll_Panel = new Panel { AutoScroll = true, Dock = DockStyle.Fill };
       Analysis_Tab.Controls.Add( Scroll_Panel );
 
-
-      int       Left_Col = 15;
-      int       Y        = 15;
-      int       Row_H    = 28;
+      int Left_Col = 15;
+      int Y        = 15;
+      int Row_H    = 28;
 
       // ── Trigger ───────────────────────────────────────────────────────────
-      Scroll_Panel.Controls.Add( new Label
-      {
-        Text = "Trigger:",
-        Location = new Point( Left_Col, Y ),
-        Font = new Font( "Segoe UI", 9F, FontStyle.Bold ),
-        AutoSize = true
-      } );
+      Scroll_Panel.Controls.Add( new Label { Text     = "Trigger:",
+                                             Location = new Point( Left_Col, Y ),
+                                             Font     = new Font( "Segoe UI", 9F, FontStyle.Bold ),
+                                             AutoSize = true } );
       Y += 22;
 
-      _Auto_Analyze_Check = new CheckBox
-      {
-        Text = "Automatically show analysis popup when recording stops",
-        Location = new Point( Left_Col, Y ),
-        AutoSize = true
-      };
+      _Auto_Analyze_Check = new CheckBox { Text = "Automatically show analysis popup when recording stops",
+                                           Location = new Point( Left_Col, Y ),
+                                           AutoSize = true };
       Scroll_Panel.Controls.Add( _Auto_Analyze_Check );
       Y += Row_H + 8;
 
       // ── GPU Comparison ────────────────────────────────────────────────────
-      Scroll_Panel.Controls.Add( new Label
-      {
-        Text = "GPU Comparison:",
-        Location = new Point( Left_Col, Y ),
-        Font = new Font( "Segoe UI", 9F, FontStyle.Bold ),
-        AutoSize = true
-      } );
+      Scroll_Panel.Controls.Add( new Label { Text     = "GPU Comparison:",
+                                             Location = new Point( Left_Col, Y ),
+                                             Font     = new Font( "Segoe UI", 9F, FontStyle.Bold ),
+                                             AutoSize = true } );
       Y += 22;
 
       _Analysis_Show_GPU_Comparison_Check =
-        new CheckBox
-        {
-          Text = "Show GPU vs CPU comparison in analysis results",
-          Location = new Point( Left_Col, Y ),
-          AutoSize = true
-        };
+        new CheckBox { Text     = "Show GPU vs CPU comparison in analysis " + "results",
+                       Location = new Point( Left_Col, Y ),
+                       AutoSize = true };
       Scroll_Panel.Controls.Add( _Analysis_Show_GPU_Comparison_Check );
 
-      if (!_Settings.Discrete_GPU_Available)
+      if ( ! _Settings.Discrete_GPU_Available )
       {
-        _Analysis_Show_GPU_Comparison_Check.Checked = false;
-        _Analysis_Show_GPU_Comparison_Check.Enabled = false;
-        Y += 25;
-        Scroll_Panel.Controls.Add( new Label
-        {
-          Text = "Not available — no discrete GPU detected",
-          Location = new Point( Left_Col + 20, Y ),
-          AutoSize = true,
-          ForeColor = Color.Orange
-        } );
+        _Analysis_Show_GPU_Comparison_Check.Checked  = false;
+        _Analysis_Show_GPU_Comparison_Check.Enabled  = false;
+        Y                                           += 25;
+        Scroll_Panel.Controls.Add( new Label { Text      = "Not available — no discrete GPU detected",
+                                               Location  = new Point( Left_Col + 20, Y ),
+                                               AutoSize  = true,
+                                               ForeColor = Color.Orange } );
       }
       Y += Row_H + 8;
 
       // ── Series count ──────────────────────────────────────────────────────
-      Scroll_Panel.Controls.Add( new Label
-      {
-        Text = "Compare:",
-        Location = new Point( Left_Col, Y ),
-        Font = new Font( "Segoe UI", 9F, FontStyle.Bold ),
-        AutoSize = true
-      } );
+      Scroll_Panel.Controls.Add( new Label { Text     = "Compare:",
+                                             Location = new Point( Left_Col, Y ),
+                                             Font     = new Font( "Segoe UI", 9F, FontStyle.Bold ),
+                                             AutoSize = true } );
       Y += 22;
 
-      _Analysis_One_Series_Radio = new RadioButton
-      {
-        Text = "Single series  (summary stats only)",
-        Location = new Point( Left_Col, Y ),
-        AutoSize = true
-      };
+      _Analysis_One_Series_Radio = new RadioButton { Text     = "Single series  (summary stats only)",
+                                                     Location = new Point( Left_Col, Y ),
+                                                     AutoSize = true };
       Scroll_Panel.Controls.Add( _Analysis_One_Series_Radio );
       Y += Row_H;
 
-      _Analysis_Two_Series_Radio = new RadioButton
-      {
-        Text = "Two series  (full delta / σ / histogram comparison)",
-        Location = new Point( Left_Col, Y ),
-        AutoSize = true
-      };
+      _Analysis_Two_Series_Radio =
+        new RadioButton { Text = "Two series  (full delta / σ / histogram " + "c" + "o" + "m" + "p" + "a" +
+                                 "r" + "i" + "s" + "o" + "n)",
+                          Location = new Point( Left_Col, Y ),
+                          AutoSize = true };
       Scroll_Panel.Controls.Add( _Analysis_Two_Series_Radio );
       Y += Row_H + 8;
 
       // ── Which stats ───────────────────────────────────────────────────────
-      Scroll_Panel.Controls.Add( new Label
-      {
-        Text = "Include in analysis:",
-        Location = new Point( Left_Col, Y ),
-        Font = new Font( "Segoe UI", 9F, FontStyle.Bold ),
-        AutoSize = true
-      } );
+      Scroll_Panel.Controls.Add( new Label { Text     = "Include in analysis:",
+                                             Location = new Point( Left_Col, Y ),
+                                             Font     = new Font( "Segoe UI", 9F, FontStyle.Bold ),
+                                             AutoSize = true } );
       Y += 22;
 
-      var Stat_Checks = new (string Text, Action<CheckBox> Assign)[] {
-        ( "Mean / Average",  C => _Analysis_Mean_Check        = C ),
-        ( "Std Dev (σ)",     C => _Analysis_StdDev_Check      = C ),
-        ( "Min / Max",       C => _Analysis_MinMax_Check      = C ),
-        ( "RMS",             C => _Analysis_RMS_Check         = C ),
-        ( "Trend direction", C => _Analysis_Trend_Check       = C ),
-        ( "Sample rate",     C => _Analysis_Sample_Rate_Check = C ),
-        ( "Error count",     C => _Analysis_Errors_Check      = C ),
+      var Stat_Checks = new( string Text, Action<CheckBox> Assign )[ ] {
+        ( "Mean / Average", C => _Analysis_Mean_Check = C ),
+        ( "Std Dev (σ)", C => _Analysis_StdDev_Check = C ),
+        ( "Min / Max", C => _Analysis_MinMax_Check = C ),
+        ( "RMS", C => _Analysis_RMS_Check = C ),
+        ( "Trend direction", C => _Analysis_Trend_Check = C ),
+        ( "Sample rate", C => _Analysis_Sample_Rate_Check = C ),
+        ( "Error count", C => _Analysis_Errors_Check = C ),
       };
 
-      foreach (var (Text, Assign) in Stat_Checks)
+      foreach ( var ( Text, Assign ) in Stat_Checks )
       {
         var CB = new CheckBox { Text = Text, Location = new Point( Left_Col, Y ), AutoSize = true };
         Assign( CB );
@@ -875,19 +802,14 @@ namespace Multimeter_Controller
       }
 
       Y += 8;
-      Scroll_Panel.Controls.Add( new Label
-      {
-        Text = "Note: two-series comparison always shows delta, " +
-                                                          "rolling σ, and histogram tabs.",
-        Location = new Point( Left_Col, Y ),
-        AutoSize = true,
-        ForeColor = SystemColors.GrayText
-      } );
-
+      Scroll_Panel.Controls.Add(
+        new Label { Text = "Note: two-series comparison always shows delta, " + "r" + "o" + "l" + "l" + "i" +
+                           "n" + "g" + " " + "σ" + "," + " " + "a" + "n" + "d" + " " + "h" + "i" + "s" + "t" +
+                           "o" + "g" + "r" + "a" + "m" + " " + "t" + "a" + "b" + "s.",
+                    Location  = new Point( Left_Col, Y ),
+                    AutoSize  = true,
+                    ForeColor = SystemColors.GrayText } );
     }
-
-
-
 
     private void Initialize_Files_Tab()
     {
@@ -988,47 +910,51 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      int       Y = 15;
+      var       Scroll_Panel = new Panel { AutoScroll = true, Dock = DockStyle.Fill };
+      Performance_Tab.Controls.Add( Scroll_Panel );
+
+      int Y = 15;
 
       // ── Rendering section ─────────────────────────────────────────────────────
-      Performance_Tab.Controls.Add( new Label { Text     = "Rendering Engine:",
-                                                Location = new Point( 15, Y ),
-                                                Font     = new Font( "Segoe UI", 9F, FontStyle.Bold ),
-                                                AutoSize = true } );
+      Scroll_Panel.Controls.Add( new Label { Text     = "Rendering Engine:",
+                                             Location = new Point( 15, Y ),
+                                             Font     = new Font( "Segoe UI", 9F, FontStyle.Bold ),
+                                             AutoSize = true } );
       Y += 22;
 
-      _Use_GPU_Check = new CheckBox { Text = "Use GPU rendering (SkiaSharp/OpenGL — recommended for large " +
-                                             "datasets)",
-                                      Location = new Point( 15, Y ),
-                                      AutoSize = true };
-      Performance_Tab.Controls.Add( _Use_GPU_Check );
+      _Use_GPU_Check =
+        new CheckBox { Text = "Use GPU rendering (SkiaSharp/OpenGL — recommended for large " + "datasets)",
+                       Location = new Point( 15, Y ),
+                       AutoSize = true };
+      Scroll_Panel.Controls.Add( _Use_GPU_Check );
       Y += 25;
 
       _Rendering_Mode_Label = new Label { Text      = "", // populated in Load_Settings
                                           Location  = new Point( 15, Y ),
                                           AutoSize  = true,
                                           ForeColor = SystemColors.GrayText };
-      Performance_Tab.Controls.Add( _Rendering_Mode_Label );
+      Scroll_Panel.Controls.Add( _Rendering_Mode_Label );
       Y += 25;
 
-      Performance_Tab.Controls.Add( new Label { Text = "Note: changing the rendering engine requires a " +
-                                                       "restart to take effect.",
-                                                Location  = new Point( 15, Y ),
-                                                AutoSize  = true,
-                                                ForeColor = Color.Orange } );
+      Scroll_Panel.Controls.Add( new Label { Text = "Note: changing the rendering engine requires a " + "re" +
+                                                    "st" + "ar" + "t " + "to" + " t" + "ak" + "e " + "ef" +
+                                                    "fe" + "ct.",
+                                             Location  = new Point( 15, Y ),
+                                             AutoSize  = true,
+                                             ForeColor = Color.Orange } );
       Y += 35;
 
       // separator before existing memory controls
-      Performance_Tab.Controls.Add( new Label { Text     = "Memory:",
-                                                Location = new Point( 15, Y ),
-                                                Font     = new Font( "Segoe UI", 9F, FontStyle.Bold ),
-                                                AutoSize = true } );
+      Scroll_Panel.Controls.Add( new Label { Text     = "Memory:",
+                                             Location = new Point( 15, Y ),
+                                             Font     = new Font( "Segoe UI", 9F, FontStyle.Bold ),
+                                             AutoSize = true } );
       Y += 25;
 
       // Max Points in Memory
       var Max_Points_Label =
         new Label { Text = "Max Data Points in Memory:", Location = new Point( 15, Y ), AutoSize = true };
-      Performance_Tab.Controls.Add( Max_Points_Label );
+      Scroll_Panel.Controls.Add( Max_Points_Label );
 
       _Max_Points_Memory_Numeric = new NumericUpDown { Location  = new Point( 250, Y - 3 ),
                                                        Size      = new Size( 100, 23 ),
@@ -1036,27 +962,27 @@ namespace Multimeter_Controller
                                                        Maximum   = 10000000,
                                                        Increment = 10000,
                                                        Value     = 100000 };
-      Performance_Tab.Controls.Add( _Max_Points_Memory_Numeric );
+      Scroll_Panel.Controls.Add( _Max_Points_Memory_Numeric );
       Y += 30;
 
       // Warning Threshold
       var Warning_Label =
         new Label { Text = "Warning Threshold (%):", Location = new Point( 15, Y ), AutoSize = true };
-      Performance_Tab.Controls.Add( Warning_Label );
+      Scroll_Panel.Controls.Add( Warning_Label );
 
       _Warning_Threshold_Numeric = new NumericUpDown { Location = new Point( 250, Y - 3 ),
                                                        Size     = new Size( 80, 23 ),
                                                        Minimum  = 50,
                                                        Maximum  = 99,
                                                        Value    = 80 };
-      Performance_Tab.Controls.Add( _Warning_Threshold_Numeric );
+      Scroll_Panel.Controls.Add( _Warning_Threshold_Numeric );
       Y += 30;
 
       // Warn at Threshold
       _Warn_At_Threshold_Check = new CheckBox { Text     = "Warn when reaching threshold",
                                                 Location = new Point( 15, Y ),
                                                 AutoSize = true };
-      Performance_Tab.Controls.Add( _Warn_At_Threshold_Check );
+      Scroll_Panel.Controls.Add( _Warn_At_Threshold_Check );
       Y += 35;
 
       // Separator
@@ -1064,20 +990,20 @@ namespace Multimeter_Controller
                                   Location = new Point( 15, Y ),
                                   Font     = new Font( "Segoe UI", 9F, FontStyle.Bold ),
                                   AutoSize = true };
-      Performance_Tab.Controls.Add( Separator );
+      Scroll_Panel.Controls.Add( Separator );
       Y += 25;
 
       // Throttle When Many Points
       _Throttle_When_Many_Check = new CheckBox { Text     = "Throttle refresh when many points",
                                                  Location = new Point( 15, Y ),
                                                  AutoSize = true };
-      Performance_Tab.Controls.Add( _Throttle_When_Many_Check );
+      Scroll_Panel.Controls.Add( _Throttle_When_Many_Check );
       Y += 30;
 
       // Throttle Threshold
       var Throttle_Label =
         new Label { Text = "Throttle Point Threshold:", Location = new Point( 15, Y ), AutoSize = true };
-      Performance_Tab.Controls.Add( Throttle_Label );
+      Scroll_Panel.Controls.Add( Throttle_Label );
 
       _Throttle_Threshold_Numeric = new NumericUpDown { Location  = new Point( 250, Y - 3 ),
                                                         Size      = new Size( 100, 23 ),
@@ -1085,19 +1011,19 @@ namespace Multimeter_Controller
                                                         Maximum   = 1000000,
                                                         Increment = 1000,
                                                         Value     = 10000 };
-      Performance_Tab.Controls.Add( _Throttle_Threshold_Numeric );
+      Scroll_Panel.Controls.Add( _Throttle_Threshold_Numeric );
       Y += 30;
 
       // Auto Trim Old Data
       _Auto_Trim_Check =
         new CheckBox { Text = "Auto-trim old data", Location = new Point( 15, Y ), AutoSize = true };
-      Performance_Tab.Controls.Add( _Auto_Trim_Check );
+      Scroll_Panel.Controls.Add( _Auto_Trim_Check );
       Y += 30;
 
       // Keep Last N Points
       var Keep_Last_Label =
         new Label { Text = "Keep Last N Points:", Location = new Point( 15, Y ), AutoSize = true };
-      Performance_Tab.Controls.Add( Keep_Last_Label );
+      Scroll_Panel.Controls.Add( Keep_Last_Label );
 
       _Keep_Last_N_Numeric = new NumericUpDown { Location  = new Point( 250, Y - 3 ),
                                                  Size      = new Size( 100, 23 ),
@@ -1105,84 +1031,78 @@ namespace Multimeter_Controller
                                                  Maximum   = 1000000,
                                                  Increment = 1000,
                                                  Value     = 10000 };
-      Performance_Tab.Controls.Add( _Keep_Last_N_Numeric );
+      Scroll_Panel.Controls.Add( _Keep_Last_N_Numeric );
       Y += 30;
 
       // Reduce Refresh Rate
       _Reduce_Refresh_Check = new CheckBox { Text     = "Reduce refresh rate when large dataset",
                                              Location = new Point( 15, Y ),
                                              AutoSize = true };
-      Performance_Tab.Controls.Add( _Reduce_Refresh_Check );
+      Scroll_Panel.Controls.Add( _Reduce_Refresh_Check );
 
       Y += 35;
 
       // ── Decimation separator ──────────────────────────────────────────────
-      Performance_Tab.Controls.Add( new Label { Text     = "Chart Decimation:",
-                                                Location = new Point( 15, Y ),
-                                                Font     = new Font( "Segoe UI", 9F, FontStyle.Bold ),
-                                                AutoSize = true } );
+      Scroll_Panel.Controls.Add( new Label { Text     = "Chart Decimation:",
+                                             Location = new Point( 15, Y ),
+                                             Font     = new Font( "Segoe UI", 9F, FontStyle.Bold ),
+                                             AutoSize = true } );
       Y += 22;
 
-      Performance_Tab.Controls.Add(
-        new Label { Text = "When point count is very high, decimation draws every Nth point\n" + "keeping " +
-                                                                                                 "the " +
-                                                                                                 "chart " +
-                                                                                                 "fast " +
-                                                                                                 "without " +
-                                                                                                 "losing " +
-                                                                                                 "stored " +
-                                                                                                 "data or " +
-                                                                                                 "CSV " +
-                                                                                                 "accuracy.",
-                    Location  = new Point( 15, Y ),
-                    AutoSize  = true,
-                    ForeColor = SystemColors.GrayText } );
+      Scroll_Panel.Controls.Add( new Label { Text = "When point count is very high, decimation draws every " +
+                                                    "Nth point\n" + "keeping " + "the " + "chart " + "fast " +
+                                                    "without " + "losing " + "stored " + "data or " + "CSV " +
+                                                    "accuracy.",
+                                             Location  = new Point( 15, Y ),
+                                             AutoSize  = true,
+                                             ForeColor = SystemColors.GrayText } );
       Y += 40;
 
-      _Enable_Decimation_Check = new CheckBox { Text = "Enable chart decimation (recommended for long " +
-                                                       "sessions)",
-                                                Location = new Point( 15, Y ),
-                                                AutoSize = true };
-      Performance_Tab.Controls.Add( _Enable_Decimation_Check );
+      _Enable_Decimation_Check =
+        new CheckBox { Text     = "Enable chart decimation (recommended for long " + "sessions)",
+                       Location = new Point( 15, Y ),
+                       AutoSize = true };
+      Scroll_Panel.Controls.Add( _Enable_Decimation_Check );
       Y += 30;
 
-      Performance_Tab.Controls.Add(
+      Scroll_Panel.Controls.Add(
         new Label { Text = "Decimate above (points):", Location = new Point( 15, Y ), AutoSize = true } );
       _Decimation_Threshold_Numeric = new NumericUpDown { Location           = new Point( 250, Y - 3 ),
                                                           Size               = new Size( 100, 23 ),
-                                                          Minimum            = 1_000,
+                                                          Minimum            = 10,
                                                           Maximum            = 1_000_000,
-                                                          Increment          = 1_000,
-                                                          Value              = 10_000,
+                                                          Increment          = 100,
+                                                          Value              = 1_000,
                                                           ThousandsSeparator = true };
-      Performance_Tab.Controls.Add( _Decimation_Threshold_Numeric );
-      Performance_Tab.Controls.Add( new Label { Text      = "(start decimating above this count)",
-                                                Location  = new Point( 360, Y ),
-                                                AutoSize  = true,
-                                                ForeColor = SystemColors.GrayText } );
+      Scroll_Panel.Controls.Add( _Decimation_Threshold_Numeric );
+      Scroll_Panel.Controls.Add( new Label { Text      = "(start decimating above this count)",
+                                             Location  = new Point( 360, Y ),
+                                             AutoSize  = true,
+                                             ForeColor = SystemColors.GrayText } );
       Y += 30;
 
-      Performance_Tab.Controls.Add(
+      Scroll_Panel.Controls.Add(
         new Label { Text = "Sample every N points:", Location = new Point( 15, Y ), AutoSize = true } );
       _Decimation_Step_Numeric = new NumericUpDown {
         Location  = new Point( 250, Y - 3 ),
         Size      = new Size( 80, 23 ),
         Minimum   = 2,
-        Maximum   = 100,
-        Increment = 1,
+        Maximum   = 1000,
+        Increment = 50,
         Value     = 10,
       };
-      Performance_Tab.Controls.Add( _Decimation_Step_Numeric );
-      Performance_Tab.Controls.Add( new Label { Text = "(e.g. 10 = draw every 10th point above threshold)",
-                                                Location  = new Point( 340, Y ),
-                                                AutoSize  = true,
-                                                ForeColor = SystemColors.GrayText } );
+
+      Scroll_Panel.Controls.Add( _Decimation_Step_Numeric );
+      Scroll_Panel.Controls.Add( new Label { Text      = "(e.g. 10 = draw every 10th point above threshold)",
+                                             Location  = new Point( 340, Y ),
+                                             AutoSize  = true,
+                                             ForeColor = SystemColors.GrayText } );
     }
 
     private void Initialize_UI_Tab()
     {
       using var Block = Trace_Block.Start_If_Enabled();
-
+      bool _Initializing = true;
       int       Y = 15;
 
       // Window Title
@@ -1255,6 +1175,8 @@ namespace Multimeter_Controller
                                          AutoSize = true };
       UI_Tab.Controls.Add( _Play_Sound_Check );
 
+
+
       Y                   += 35;
       // Separator
       var Theme_Separator  = new Label { Text     = "Appearance:",
@@ -1264,32 +1186,73 @@ namespace Multimeter_Controller
       UI_Tab.Controls.Add( Theme_Separator );
       Y += 25;
 
-      // Theme selector
-      var Theme_Label = new Label { Text = "Chart Theme:", Location = new Point( 15, Y ), AutoSize = true };
-      UI_Tab.Controls.Add( Theme_Label );
 
-      _Theme_Combo = new ComboBox { Location      = new Point( 120, Y - 3 ),
-                                    Size          = new Size( 150, 23 ),
-                                    DropDownStyle = ComboBoxStyle.DropDownList };
-      _Theme_Combo.Items.Add( "Dark" );
-      _Theme_Combo.Items.Add( "Light" );
-      _Theme_Combo.Items.Add( "Brown" );
-      _Theme_Combo.Items.Add( "Grey" );
-      _Theme_Combo.Items.Add( "Golden" );
-      _Theme_Combo.Items.Add( "Light Yellow" );
-      _Theme_Combo.SelectedItem          = _Settings.Current_Theme.Name;
-      _Theme_Combo.SelectedIndexChanged += ( s, e ) =>
+      // Theme selector
+      var Chart_Theme_Label =
+          new Label { Text = "Chart Theme:", Location = new Point( 15, Y ), AutoSize = true };
+      UI_Tab.Controls.Add( Chart_Theme_Label );
+
+      _Chart_Theme_Combo = new ComboBox
       {
-        string      Selected  = _Theme_Combo.SelectedItem?.ToString() ?? "Dark";
-        Chart_Theme New_Theme = Selected switch { "Light"        => Chart_Theme.Light_Preset(),
-                                                  "Brown"        => Chart_Theme.Brown_Preset(),
-                                                  "Grey"         => Chart_Theme.Grey_Preset(),
-                                                  "Golden"       => Chart_Theme.Golden_Preset(),
-                                                  "Light Yellow" => Chart_Theme.Light_Yellow_Preset(),
-                                                  _              => Chart_Theme.Dark_Preset() };
-        _Settings.Set_Theme( New_Theme );
+        Location = new Point( 120, Y - 3 ),  // ← missing!
+        Size = new Size( 150, 23 ),
+        DropDownStyle = ComboBoxStyle.DropDownList
       };
-      UI_Tab.Controls.Add( _Theme_Combo );
+      _Chart_Theme_Combo.Items.Add( "Dark" );
+      _Chart_Theme_Combo.Items.Add( "Light" );
+      _Chart_Theme_Combo.Items.Add( "Brown" );
+      _Chart_Theme_Combo.Items.Add( "Grey" );
+      _Chart_Theme_Combo.Items.Add( "Golden" );
+      _Chart_Theme_Combo.Items.Add( "Light Yellow" );
+      _Chart_Theme_Combo.SelectedItem = _Settings.Chart_Theme?.Name ?? "Dark";
+
+      _Chart_Theme_Combo.SelectedIndexChanged += ( s, e ) =>   // ← now safe to wire
+      {
+        if (_Initializing)
+          return;
+        // ... handler code
+      };
+      UI_Tab.Controls.Add( _Chart_Theme_Combo );
+
+      Y += 25;
+
+      var Panel_Theme_Label =
+        new Label { Text = "Panel Theme:", Location = new Point( 15, Y ), AutoSize = true };
+      UI_Tab.Controls.Add( Panel_Theme_Label );
+
+      _Panel_Theme_Combo = new ComboBox { Location      = new Point( 120, Y - 3 ),
+                                          Size          = new Size( 150, 23 ),
+                                          DropDownStyle = ComboBoxStyle.DropDownList };
+      _Panel_Theme_Combo.Items.Add( "Dark" );
+      _Panel_Theme_Combo.Items.Add( "Light" );
+      _Panel_Theme_Combo.Items.Add( "Brown" );
+      _Panel_Theme_Combo.Items.Add( "Grey" );
+      _Panel_Theme_Combo.Items.Add( "Golden" );
+      _Panel_Theme_Combo.Items.Add( "Light Yellow" );
+      _Panel_Theme_Combo.SelectedItem          = _Settings.Panel_Theme.Name;
+      _Panel_Theme_Combo.SelectedIndexChanged += ( s, e ) =>
+      {
+        try
+        {
+          string Selected = _Panel_Theme_Combo.SelectedItem?.ToString() ?? "Dark";
+          Chart_Theme New_Theme = Selected switch
+          {
+            "Light" => Chart_Theme.Light_Preset(),
+            "Brown" => Chart_Theme.Brown_Preset(),
+            "Grey" => Chart_Theme.Grey_Preset(),
+            "Golden" => Chart_Theme.Golden_Preset(),
+            "Light Yellow" => Chart_Theme.Light_Yellow_Preset(),
+            _ => Chart_Theme.Dark_Preset()
+          };
+          New_Theme.Set_File_Path( Chart_Theme.Panel_Theme_Path );
+          _Settings.Set_Theme( New_Theme, "Panel_Theme" );
+        }
+        catch (Exception Ex)
+        {
+          MessageBox.Show( $"Panel theme error:\n{Ex.Message}\n\n{Ex.StackTrace}" );
+        }
+      };
+      UI_Tab.Controls.Add( _Panel_Theme_Combo );
     }
 
     private void Initialize_Zoom_Tab()
@@ -1485,15 +1448,16 @@ namespace Multimeter_Controller
       _Prologic_Scan_Timeout_MS_Textbox.Text = _Settings.Prologic_Scan_Timeout_MS.ToString();
 
       // Analysis tab
-      _Auto_Analyze_Check.Checked         = _Settings.Auto_Analyze_After_Recording;
+      _Auto_Analyze_Check.Checked                 = _Settings.Auto_Analyze_After_Recording;
       _Analysis_Show_GPU_Comparison_Check.Checked = _Settings.Analysis_Show_GPU_Comparison;
-      _Analysis_Mean_Check.Checked        = _Settings.Analysis_Show_Mean;
-      _Analysis_StdDev_Check.Checked      = _Settings.Analysis_Show_Std_Dev;
-      _Analysis_MinMax_Check.Checked      = _Settings.Analysis_Show_Min_Max;
-      _Analysis_RMS_Check.Checked         = _Settings.Analysis_Show_RMS;
-      _Analysis_Trend_Check.Checked       = _Settings.Analysis_Show_Trend;
-      _Analysis_Sample_Rate_Check.Checked = _Settings.Analysis_Show_Sample_Rate;
-      _Analysis_Errors_Check.Checked      = _Settings.Analysis_Show_Errors;
+      _Analysis_Mean_Check.Checked                = _Settings.Analysis_Show_Mean;
+      _Analysis_StdDev_Check.Checked              = _Settings.Analysis_Show_Std_Dev;
+      _Analysis_MinMax_Check.Checked              = _Settings.Analysis_Show_Min_Max;
+      _Analysis_RMS_Check.Checked                 = _Settings.Analysis_Show_RMS;
+      _Analysis_Trend_Check.Checked               = _Settings.Analysis_Show_Trend;
+      _Analysis_Sample_Rate_Check.Checked         = _Settings.Analysis_Show_Sample_Rate;
+      _Analysis_Errors_Check.Checked              = _Settings.Analysis_Show_Errors;
+
       if ( _Settings.Analysis_Series_Count == 1 )
         _Analysis_One_Series_Radio.Checked = true;
       else
@@ -1524,9 +1488,9 @@ namespace Multimeter_Controller
       _Retry_Delay_Numeric.Value           = _Settings.Retry_Delay_Seconds;
       _Skew_Warning_Numeric.Value          = (decimal) _Settings.Skew_Warning_Threshold_Seconds;
       _Stale_Data_Numeric.Value            = (decimal) _Settings.Stale_Data_Threshold_Seconds;
-      _Max_Display_Points_Numeric.Value = Math.Clamp( _Settings.Max_Display_Points,
-                                                (int) _Max_Display_Points_Numeric.Minimum,
-                                                (int) _Max_Display_Points_Numeric.Maximum );
+      _Max_Display_Points_Numeric.Value    = Math.Clamp( _Settings.Max_Display_Points,
+                                                         (int) _Max_Display_Points_Numeric.Minimum,
+                                                         (int) _Max_Display_Points_Numeric.Maximum );
       _Stop_At_Max_Check.Checked           = _Settings.Stop_Polling_At_Max_Display_Points;
 
       // Files tab
@@ -1550,13 +1514,14 @@ namespace Multimeter_Controller
       _Keep_Last_N_Numeric.Value        = _Settings.Keep_Last_N_Points;
       _Reduce_Refresh_Check.Checked     = _Settings.Reduce_Refresh_Rate_When_Large;
 
-      // Decimation      _Enable_Decimation_Check.Checked = _Settings.Enable_Decimation;
+      _Enable_Decimation_Check.Checked = _Settings.Enable_Decimation;
       _Decimation_Threshold_Numeric.Value =
         Math.Max( _Decimation_Threshold_Numeric.Minimum,
                   Math.Min( _Decimation_Threshold_Numeric.Maximum, _Settings.Decimation_Threshold ) );
       _Decimation_Step_Numeric.Value =
         Math.Max( _Decimation_Step_Numeric.Minimum,
                   Math.Min( _Decimation_Step_Numeric.Maximum, _Settings.Decimation_Step ) );
+
       // Rendering
       _Use_GPU_Check.Checked     = _Settings.Use_GPU_Rendering;
       _Rendering_Mode_Label.Text = $"Current mode: {_Settings.Rendering_Mode_Display}";
@@ -1612,16 +1577,16 @@ namespace Multimeter_Controller
       // Analysis tab
 
       _Settings.Auto_Analyze_After_Recording = _Auto_Analyze_Check.Checked;
-      _Settings.Analysis_Show_GPU_Comparison = _Analysis_Show_GPU_Comparison_Check.Checked
-                                               && _Analysis_Show_GPU_Comparison_Check.Enabled;
-      _Settings.Analysis_Series_Count        = _Analysis_Two_Series_Radio.Checked ? 2 : 1;
-      _Settings.Analysis_Show_Mean           = _Analysis_Mean_Check.Checked;
-      _Settings.Analysis_Show_Std_Dev        = _Analysis_StdDev_Check.Checked;
-      _Settings.Analysis_Show_Min_Max        = _Analysis_MinMax_Check.Checked;
-      _Settings.Analysis_Show_RMS            = _Analysis_RMS_Check.Checked;
-      _Settings.Analysis_Show_Trend          = _Analysis_Trend_Check.Checked;
-      _Settings.Analysis_Show_Sample_Rate    = _Analysis_Sample_Rate_Check.Checked;
-      _Settings.Analysis_Show_Errors         = _Analysis_Errors_Check.Checked;
+      _Settings.Analysis_Show_GPU_Comparison =
+        _Analysis_Show_GPU_Comparison_Check.Checked && _Analysis_Show_GPU_Comparison_Check.Enabled;
+      _Settings.Analysis_Series_Count     = _Analysis_Two_Series_Radio.Checked ? 2 : 1;
+      _Settings.Analysis_Show_Mean        = _Analysis_Mean_Check.Checked;
+      _Settings.Analysis_Show_Std_Dev     = _Analysis_StdDev_Check.Checked;
+      _Settings.Analysis_Show_Min_Max     = _Analysis_MinMax_Check.Checked;
+      _Settings.Analysis_Show_RMS         = _Analysis_RMS_Check.Checked;
+      _Settings.Analysis_Show_Trend       = _Analysis_Trend_Check.Checked;
+      _Settings.Analysis_Show_Sample_Rate = _Analysis_Sample_Rate_Check.Checked;
+      _Settings.Analysis_Show_Errors      = _Analysis_Errors_Check.Checked;
 
       // Display tab
       _Settings.Tooltip_Distance_Threshold  = (int) _Tooltip_Distance_Numeric.Value;
@@ -1693,9 +1658,15 @@ namespace Multimeter_Controller
       _Settings.Zoom_Sensitivity    = _Zoom_Sensitivity_Slider.Value / 10.0;
       _Settings.Remember_Zoom_Level = _Remember_Zoom_Check.Checked;
 
+      // Save both themes to their own files
+      _Settings.Panel_Theme.Save();
+      _Settings.Chart_Theme.Save();
+
       // Validate and save
       _Settings.Validate_And_Fix();
       _Settings.Save();
+      _Settings.Set_Theme( _Settings.Panel_Theme, "Panel_Theme" ); // force Theme_Changed
+      // _Settings.Set_Theme( _Settings.Chart_Theme, "Chart_Theme" );  // force Theme_Changed
     }
 
     private void Browse_Folder_Button_Click( object Sender, EventArgs E )
@@ -1758,6 +1729,7 @@ namespace Multimeter_Controller
       {
         _Settings = new Application_Settings();
         _Settings.Initialize_Default_Save_Folder();
+        _Settings.Detect_Hardware();
         Load_Settings();
       }
     }
@@ -1766,17 +1738,13 @@ namespace Multimeter_Controller
     {
       var Menu_Strip = new MenuStrip();
 
-      var Help_Item = new ToolStripMenuItem( "Help" );
+      var Help_Item    = new ToolStripMenuItem( "Help" );
       Help_Item.Click += ( s, e ) => App_Help.Show_Settings_Form_Help( this );
 
-    
-
       Menu_Strip.Items.Add( Help_Item );
-    
 
       this.Controls.Add( Menu_Strip );
       this.MainMenuStrip = Menu_Strip;
     }
-
   }
 }

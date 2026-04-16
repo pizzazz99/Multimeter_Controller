@@ -87,6 +87,35 @@ namespace Multimeter_Controller
   public class Chart_Theme
   {
 
+
+    // ── File paths ────────────────────────────────────────────────────────
+    private static string Get_Theme_Folder()
+    {
+      string App_Data = Environment.GetFolderPath( Environment.SpecialFolder.ApplicationData );
+      string App_Folder = Path.Combine( App_Data, "Multimeter_Controller" );
+      Directory.CreateDirectory( App_Folder );
+      return App_Folder;
+    }
+
+    private static readonly string _Panel_Theme_Path =
+        Path.Combine( Get_Theme_Folder(), "panel_theme.json" );
+
+    private static readonly string _Chart_Theme_Path =
+        Path.Combine( Get_Theme_Folder(), "chart_theme.json" );
+
+
+    public void Set_File_Path( string File_Path )
+    {
+      _My_File_Path = File_Path;
+    }
+
+
+    public static string Panel_Theme_Path => _Panel_Theme_Path;
+    public static string Chart_Theme_Path => _Chart_Theme_Path;
+
+    private string _My_File_Path = _Chart_Theme_Path;
+
+
     public string Background_Name { get; set; } = "";
     public string Foreground_Name { get; set; } = "";
     public string Grid_Name { get; set; } = "";
@@ -162,23 +191,24 @@ namespace Multimeter_Controller
 
 
 
-    public static Chart_Theme Brown_Preset ( )
+    public static Chart_Theme Brown_Preset()
     {
       return new Chart_Theme
       {
-        Background = Color.FromArgb ( 45, 35, 25 ),
-        Foreground = Color.FromArgb ( 30, 30, 30 ),
-        Grid = Color.FromArgb ( 90, 70, 50 ),
+        Background = Color.FromArgb( 80, 60, 45 ),       // was (45, 35, 25) — lighter brown
+        Foreground = Color.FromArgb( 240, 220, 200 ),    // was (30, 30, 30) — warm cream
+        Grid = Color.FromArgb( 130, 100, 75 ),     // was (90, 70, 50) — lighter
         Labels = Color.BurlyWood,
         Separator = Color.SaddleBrown,
         Accent = Color.Gold,
-        Line_Colors = new [ ]
-        {
-      Color.Peru,
-      Color.Chocolate,
-      Color.Tan,
-      Color.SandyBrown
-    }
+        Name = "Brown",
+        Line_Colors = new[]
+          {
+            Color.Peru,
+            Color.Chocolate,
+            Color.Tan,
+            Color.SandyBrown
+        }
       };
     }
 
@@ -192,6 +222,7 @@ namespace Multimeter_Controller
         Labels = Color.Gainsboro,
         Separator = Color.Gray,
         Accent = Color.Gold,
+        Name = "Grey",
         Line_Colors = new [ ]
         {
       Color.LightGray,
@@ -202,23 +233,24 @@ namespace Multimeter_Controller
       };
     }
 
-    public static Chart_Theme Golden_Preset ( )
+    public static Chart_Theme Golden_Preset()
     {
       return new Chart_Theme
       {
-        Background = Color.FromArgb ( 30, 25, 10 ),
-        Foreground = Color.FromArgb ( 30, 30, 30 ),
+        Background = Color.FromArgb( 65, 55, 25 ),       // was (30, 25, 10) — lighter warm gold
+        Foreground = Color.FromArgb( 255, 245, 200 ),    // was (30, 30, 30) — pale gold/cream
         Grid = Color.Goldenrod,
         Labels = Color.Khaki,
         Separator = Color.DarkGoldenrod,
         Accent = Color.Gold,
-        Line_Colors = new [ ]
-        {
-      Color.Gold,
-      Color.Orange,
-      Color.Yellow,
-      Color.Khaki
-    }
+        Name = "Golden",
+        Line_Colors = new[]
+          {
+            Color.Gold,
+            Color.Orange,
+            Color.Yellow,
+            Color.Khaki
+        }
       };
     }
 
@@ -232,6 +264,7 @@ namespace Multimeter_Controller
         Labels = Color.Black,
         Separator = Color.DarkKhaki,
         Accent = Color.DarkGoldenrod,
+        Name = "Light Yellow",
         Line_Colors = new [ ]
         {
       Color.Orange,
@@ -307,86 +340,77 @@ namespace Multimeter_Controller
     }
 
 
-    public void Save ( )
+    public void Save()
     {
-      using var Block = Trace_Block.Start_If_Enabled ( );
-
-      Capture_Trace.Write ( $"File path -> {_File_Path}" );
-
+      using var Block = Trace_Block.Start_If_Enabled();
+      Capture_Trace.Write( $"File path -> {_My_File_Path}" );   // ✅
       try
       {
         var Data = new Theme_Data
         {
           Name = Name,
-          Background = To_Color_String  ( Background ),
-          Foreground = To_Color_String  ( Foreground ),
-          Grid = To_Color_String  ( Grid ),
-          Labels = To_Color_String  ( Labels ),
-          Separator = To_Color_String  ( Separator ),
-          Accent = To_Color_String  ( Accent ),
-          Line_1 = To_Color_String  ( Line_Colors [ 0 ] ),
-          Line_2 = To_Color_String  ( Line_Colors [ 1 ] ),
-          Line_3 = To_Color_String  ( Line_Colors [ 2 ] ),
-          Line_4 = To_Color_String  ( Line_Colors [ 3 ] ),
+          Background = To_Color_String( Background ),
+          Foreground = To_Color_String( Foreground ),
+          Grid = To_Color_String( Grid ),
+          Labels = To_Color_String( Labels ),
+          Separator = To_Color_String( Separator ),
+          Accent = To_Color_String( Accent ),
+          Line_1 = To_Color_String( Line_Colors[ 0 ] ),
+          Line_2 = To_Color_String( Line_Colors[ 1 ] ),
+          Line_3 = To_Color_String( Line_Colors[ 2 ] ),
+          Line_4 = To_Color_String( Line_Colors[ 3 ] ),
         };
 
-        var Options = new JsonSerializerOptions
-        {
-          WriteIndented = true
-        };
-
-        string Json = JsonSerializer.Serialize (
-          Data, Options );
-        File.WriteAllText ( _File_Path, Json );
+        var Options = new JsonSerializerOptions { WriteIndented = true };
+        string Json = JsonSerializer.Serialize( Data, Options );
+        File.WriteAllText( _My_File_Path, Json );              // ✅
       }
       catch
       {
         // Silently ignore save failures
       }
     }
-
-    public static Chart_Theme Load ( )
+    public static Chart_Theme Load( string File_Path )
     {
       try
       {
-        if ( !File.Exists ( _File_Path ) )
+        if (!File.Exists( File_Path ))
         {
-          return Dark_Preset ( );
+          return Dark_Preset();
         }
 
-        string Json = File.ReadAllText ( _File_Path );
-        var Data = JsonSerializer.Deserialize<Theme_Data> (
-          Json );
+        string Json = File.ReadAllText( File_Path );
+        var Data = JsonSerializer.Deserialize<Theme_Data>( Json );
 
-        if ( Data == null )
+        if (Data == null)
         {
-          return Dark_Preset ( );
+          return Dark_Preset();
         }
 
         return new Chart_Theme
         {
+          _My_File_Path = File_Path,          // ← remember which file this came from
           Name = Data.Name,
-          Background = From_Color_String  ( Data.Background ),
-          Foreground = From_Color_String  ( Data.Foreground ),  // ← add
-          Grid = From_Color_String  ( Data.Grid ),
-          Labels = From_Color_String  ( Data.Labels ),
-          Separator = From_Color_String  ( Data.Separator ),
-          Accent = From_Color_String  ( Data.Accent ),
-          Line_Colors = new [ ]
-     {
-            From_Color_String  ( Data.Line_1 ),
-            From_Color_String  ( Data.Line_2 ),
-            From_Color_String  ( Data.Line_3 ),
-            From_Color_String  ( Data.Line_4 ),
-          }
+          Background = From_Color_String( Data.Background ),
+          Foreground = From_Color_String( Data.Foreground ),
+          Grid = From_Color_String( Data.Grid ),
+          Labels = From_Color_String( Data.Labels ),
+          Separator = From_Color_String( Data.Separator ),
+          Accent = From_Color_String( Data.Accent ),
+          Line_Colors = new[]
+            {
+                From_Color_String( Data.Line_1 ),
+                From_Color_String( Data.Line_2 ),
+                From_Color_String( Data.Line_3 ),
+                From_Color_String( Data.Line_4 ),
+            }
         };
       }
       catch
       {
-        return Dark_Preset ( );
+        return Dark_Preset();
       }
     }
-
 
 
     private static string To_Color_String ( Color C )

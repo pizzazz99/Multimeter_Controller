@@ -103,8 +103,8 @@
 //   • Error markers in Draw_Timeline() iterate the full record list so marker
 //     X positions match the corresponding line-chart points exactly.
 //
-// AUTHOR:  [Your name]
-// CREATED: [Date]
+// AUTHOR:  Mike Wheeler
+// CREATED: 04/04/2026
 // ════════════════════════════════════════════════════════════════════════════════
 
 

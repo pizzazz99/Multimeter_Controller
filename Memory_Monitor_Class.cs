@@ -1,9 +1,140 @@
-using System;
-using System.Collections.Generic;
+// ════════════════════════════════════════════════════════════════════════════════
+// FILE:    Memory_Monitor.cs
+// PROJECT: Multimeter_Controller
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// PURPOSE
+//   Self-contained floating memory monitor that displays live process memory
+//   statistics for the running application, refreshed every second via a
+//   WinForms Timer.  The monitor owns its Form, RichTextBox, and Timer
+//   internally and cleans them up when the window is closed.  The owner form
+//   interacts only through Show(), Close(), and Is_Open.
+//
+// WINDOW CHARACTERISTICS
+//   Style       Sizable, no control box (ControlBox = false — no title-bar
+//               buttons; the window can only be closed programmatically via
+//               Close() or by the OS)
+//   Size        480 × 520 px, minimum 320 × 300 px
+//   Position    CenterParent on first show
+//   Content     Single RichTextBox docked Fill, black background, Consolas 9pt,
+//               vertical scroll bar, read-only
+//   Singleton   Show() brings the existing window to front if it is already
+//               open rather than creating a second instance
+//
+// METRICS DISPLAYED  (refreshed every 1000 ms)
+//
+//   Working Set         Process.WorkingSet64 / 1 048 576 → MB
+//                       Physical RAM currently committed to this process.
+//                       Displayed large (14pt bold) as the primary indicator.
+//
+//   Peak Working Set    Process.PeakWorkingSet64 / 1 048 576 → MB
+//                       Highest working set seen since process start.
+//
+//   Managed Heap (GC)   GC.GetTotalMemory(false) / 1 048 576 → MB
+//                       Bytes allocated on the managed heap.  forceFullCollection
+//                       is false so the call is non-blocking.
+//
+//   GC Collections      GC.CollectionCount(0/1/2) for Gen0, Gen1, Gen2.
+//                       Cumulative counts since process start.
+//
+//   Trend               Derived from the last 5 history samples:
+//                         Delta > 20 MB  "▲▲ Rising Fast"  Red
+//                         Delta > 5 MB   "▲  Rising"       Goldenrod
+//                         Delta < −5 MB  "▼  Falling"      LimeGreen
+//                         otherwise      "─  Stable"       DodgerBlue
+//                       Shows "...Sampling" in Gray until 5 samples exist.
+//
+//   Last 60s Spark Line Unicode block-element spark line (▁▂▃▄▅▆▇█) showing
+//                       working-set trend over the rolling 60-second window.
+//                       Each character maps one history sample to one of 8
+//                       height levels via linear interpolation between the
+//                       window's min and max values.  A flat window (all values
+//                       equal) renders as a solid mid-height line of ▄.
+//
+// HISTORY BUFFER
+//   _History    Queue<(DateTime Time, long MB)>, capped at Max_History = 60.
+//               One entry is enqueued per Refresh() tick (every 1 s), giving
+//               a 60-second rolling window.  The queue is cleared on form close
+//               so a re-opened window starts fresh.
+//
+// REFRESH FLOW
+//   1. Timer.Tick fires Refresh() on the UI thread (WinForms Timer).
+//   2. Refresh() reads Process and GC metrics, enqueues the current MB value,
+//      trims the history queue to Max_History, computes trend and spark line,
+//      clears the RichTextBox, then re-renders the full display in one pass
+//      using the Append() helper.
+//   3. Refresh() is also called once immediately after Show() so the display
+//      is populated before the first timer tick.
+//   4. Refresh() guards against a null or disposed RichTextBox at entry so
+//      late-firing ticks after form close are silently ignored.
+//
+// SPARK LINE ALGORITHM  (Build_Spark_Line)
+//   Input   List<long> of MB values from the history queue.
+//   Output  String of Unicode block characters, one per sample.
+//   Steps:
+//     1. Find Min and Max across all values.
+//     2. If Range == 0, return a solid string of ▄ (index 3 of 8).
+//     3. For each value V, compute index = (V − Min) / Range × 7, clamped
+//        to [0, 7], and map to the corresponding block character.
+//   Returns "..." if fewer than 2 values are present.
+//
+// LIFETIME / CLEANUP
+//   Show( Form Owner )
+//     Creates the Form, RichTextBox, and Timer.  Registers On_Form_Closed
+//     on FormClosed.  Calls Refresh() immediately after Form.Show().
+//
+//   On_Form_Closed( sender, e )
+//     Stops and disposes the Timer, nulls _Timer / _Form / _Rtb, and clears
+//     _History.  Called on any close reason (user Alt+F4, owner calling
+//     Close(), application exit).
+//
+//   Close()
+//     Public method for the owner to programmatically close the window.
+//     Safe to call when the window is not open (_Form?.Close() no-ops on null).
+//
+//   Is_Open → bool
+//     Returns true only when _Form is non-null and not disposed.  Safe to
+//     poll from the owner at any time.
+//
+// RENDERING HELPERS
+//   Append( string Text, Font Fnt, Color Clr )
+//     Sets SelectionFont and SelectionColor then calls AppendText() on the
+//     RichTextBox.  All text is appended in a single left-to-right pass per
+//     Refresh() cycle; no Selection manipulation of previously written text
+//     is performed.  Guards against null/disposed RichTextBox.
+//
+// FONT USAGE
+//   Section headers   Consolas 9pt Bold, Silver
+//   Primary value     Consolas 14pt Bold, White  (working set)
+//   Secondary values  Consolas 11pt Regular, LightGray
+//   Trend value       Consolas 11pt Bold, trend-specific color
+//   Spark line        Consolas 11pt Regular, DodgerBlue
+//   Timestamp         Consolas 9pt Regular, DarkGray
+//   Title             Consolas 11pt Bold, White
+//
+// NOTES
+//   • All fields are nullable and null-guarded; the class is safe to
+//     instantiate once and reuse across multiple Show/Close cycles.
+//   • The Timer is a System.Windows.Forms.Timer (UI-thread affine) so no
+//     cross-thread marshalling is needed in Refresh().
+//   • WorkingSet64 reflects physical RAM pressure including shared pages;
+//     GC.GetTotalMemory reports only managed allocations.  Both are useful
+//     but measure different things — the display shows both without conflating
+//     them.
+//   • GC collection counts are cumulative since process start, not since the
+//     monitor was opened.  They are most useful for spotting unexpected Gen2
+//     collections during a polling session.
+//
+// AUTHOR:  Mike Wheeler
+// CREATED: 04/04/2026
+// ════════════════════════════════════════════════════════════════════════════════
+
+
+
+
+
 using System.Diagnostics;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+
 
 namespace Multimeter_Controller
 {
@@ -42,6 +173,7 @@ namespace Multimeter_Controller
         FormBorderStyle = FormBorderStyle.Sizable,
         MinimumSize = new Size(320, 300),
         Owner = Owner,
+        ControlBox = false,
       };
 
       _Rtb = new RichTextBox

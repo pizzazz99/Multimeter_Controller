@@ -97,6 +97,7 @@ namespace Multimeter_Controller
       menuStrip1 = new MenuStrip();
       helpToolStripMenuItem = new ToolStripMenuItem();
       aboutToolStripMenuItem = new ToolStripMenuItem();
+      Theme_Button = new Button();
       Connection_Group.SuspendLayout();
       ((System.ComponentModel.ISupportInitialize) GPIB_Address_Numeric).BeginInit();
       Instruments_Group.SuspendLayout();
@@ -111,15 +112,6 @@ namespace Multimeter_Controller
       Title_Label.Size = new Size( 0, 15 );
       Title_Label.TabIndex = 0;
       Title_Label.Visible = false;
-      // helpToolStripMenuItem
-      helpToolStripMenuItem.Name = "helpToolStripMenuItem";
-      helpToolStripMenuItem.Size = new Size( 44, 20 );
-      helpToolStripMenuItem.Text = "Help";
-
-      // aboutToolStripMenuItem
-      aboutToolStripMenuItem.Name = "aboutToolStripMenuItem";
-      aboutToolStripMenuItem.Size = new Size( 52, 20 );
-      aboutToolStripMenuItem.Text = "About";
       // 
       // Command_List_Label
       // 
@@ -139,6 +131,7 @@ namespace Multimeter_Controller
       Command_List.Name = "Command_List";
       Command_List.Size = new Size( 184, 289 );
       Command_List.TabIndex = 2;
+      Command_List.Tag = "Command_List";
       Command_List.SelectedIndexChanged += Command_List_Selected_Index_Changed;
       // 
       // Detail_Text_Box
@@ -153,6 +146,7 @@ namespace Multimeter_Controller
       Detail_Text_Box.ScrollBars = ScrollBars.Vertical;
       Detail_Text_Box.Size = new Size( 608, 187 );
       Detail_Text_Box.TabIndex = 3;
+      Detail_Text_Box.Tag = "Detail_List";
       // 
       // Open_Dictionary_Button
       // 
@@ -545,6 +539,7 @@ namespace Multimeter_Controller
       Response_Text_Box.ScrollBars = ScrollBars.Vertical;
       Response_Text_Box.Size = new Size( 608, 291 );
       Response_Text_Box.TabIndex = 10;
+      Response_Text_Box.Tag = "Response_Text_Box";
       // 
       // Instruments_Group
       // 
@@ -740,6 +735,7 @@ namespace Multimeter_Controller
       Instruments_List.Name = "Instruments_List";
       Instruments_List.Size = new Size( 210, 214 );
       Instruments_List.TabIndex = 10;
+      Instruments_List.Tag = "Instruments_List";
       Instruments_List.DoubleClick += Select_Instrument_Button_Click;
       // 
       // Select_Instrument_Button
@@ -767,11 +763,12 @@ namespace Multimeter_Controller
       // 
       Command_History_List_Box.Anchor =  AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
       Command_History_List_Box.FormattingEnabled = true;
-      Command_History_List_Box.HorizontalScrollbar = true;
       Command_History_List_Box.Location = new Point( 317, 299 );
       Command_History_List_Box.Name = "Command_History_List_Box";
+      Command_History_List_Box.ScrollAlwaysVisible = true;
       Command_History_List_Box.Size = new Size( 451, 34 );
       Command_History_List_Box.TabIndex = 16;
+      Command_History_List_Box.Tag = "Command_History";
       Command_History_List_Box.DoubleClick += Command_History_ListBox_DoubleClick;
       // 
       // History_Label
@@ -882,11 +879,22 @@ namespace Multimeter_Controller
       aboutToolStripMenuItem.Size = new Size( 52, 20 );
       aboutToolStripMenuItem.Text = "About";
       // 
+      // Theme_Button
+      // 
+      Theme_Button.Location = new Point( 24, 452 );
+      Theme_Button.Name = "Theme_Button";
+      Theme_Button.Size = new Size( 75, 23 );
+      Theme_Button.TabIndex = 74;
+      Theme_Button.Text = "Theme";
+      Theme_Button.UseVisualStyleBackColor = true;
+      Theme_Button.Click += Theme_Button_Click;
+      // 
       // Form1
       // 
       AutoScaleDimensions = new SizeF( 7F, 15F );
       AutoScaleMode = AutoScaleMode.Font;
       ClientSize = new Size( 1340, 698 );
+      Controls.Add( Theme_Button );
       Controls.Add( GPU_Info_Button );
       Controls.Add( Display_Recording_Button );
       Controls.Add( Session_Settings_Button );
@@ -1010,6 +1018,7 @@ namespace Multimeter_Controller
     private MenuStrip menuStrip1;
     private ToolStripMenuItem helpToolStripMenuItem;
     private ToolStripMenuItem aboutToolStripMenuItem;
+    private Button Theme_Button;
   }
 
 }
