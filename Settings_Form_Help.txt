@@ -1,167 +1,167 @@
 ═══════════════════════════════════════════════════════════════
   APPLICATION SETTINGS
 ═══════════════════════════════════════════════════════════════
-
+ 
   The Settings dialog configures all application-wide
   defaults and preferences. Changes take effect immediately
   when Apply or OK is clicked. Cancel discards all changes.
   Reset restores every setting to its factory default.
-
+ 
   Settings are organized across nine tabs. Each tab covers
   a distinct area of the application.
-
-
+ 
+ 
 ═══════════════════════════════════════════════════════════════
   BUTTONS
 ═══════════════════════════════════════════════════════════════
-
+ 
   OK        Saves all settings and closes the dialog.
   Apply     Saves all settings and keeps the dialog open.
   Cancel    Closes the dialog without saving any changes.
   Reset     Replaces all settings with factory defaults
             after a confirmation prompt. This cannot be
             undone.
-
-
+ 
+ 
 ═══════════════════════════════════════════════════════════════
   TAB: DISPLAY
 ═══════════════════════════════════════════════════════════════
-
+ 
   Tooltip Distance (pixels)
   ─────────────────────────
   The maximum pixel distance between the mouse cursor and
   a data point before a tooltip is shown. Lower values
   require more precise hovering. Higher values make
   tooltips easier to trigger on sparse data.
-
+ 
   Show Tooltips on Hover
   ──────────────────────
   Enables or disables data point tooltips entirely. When
   disabled, hovering over the chart shows no tooltip
   regardless of the distance setting.
-
+ 
   Tooltip Duration (ms)
   ─────────────────────
   How long a tooltip remains visible after appearing.
   Range: 500 ms to 10,000 ms.
-
+ 
   Chart Refresh Rate (ms)
   ───────────────────────
   How often the chart redraws during live polling.
   Lower values give a smoother live display but increase
   CPU usage. Higher values reduce CPU load at the cost
   of less frequent updates. Range: 16 ms to 1,000 ms.
-
+ 
   Show Grid Lines
   ───────────────
   Toggles horizontal and vertical grid lines on the chart.
-
+ 
   Show Data Point Dots
   ────────────────────
   Draws a filled circle at each data point on the chart
   line. Useful for sparse data where individual readings
   need to be clearly visible.
-
+ 
   Data Dot Size (pixels)
   ──────────────────────
   The diameter of each data point dot when dots are
   enabled. Range: 1 to 10 pixels.
-
+ 
   Line Thickness (pixels)
   ───────────────────────
   The width of the chart lines. Range: 1 to 10 pixels.
   Thicker lines are easier to read but may obscure fine
   detail on dense datasets.
-
+ 
   Default to Combined View
   ────────────────────────
   When checked, new sessions open in combined view with
   all instruments on a single shared chart. When unchecked,
   sessions open in split view with one panel per instrument.
-
+ 
   Default to Normalized View
   ──────────────────────────
   When checked, combined view starts in normalized mode
   so all series share a common baseline. Only applies
   when combined view is the default.
-
+ 
   Show Legend on Startup
   ──────────────────────
   When checked, the statistics legend panel is visible
   when a polling session opens.
-
-
+ 
+ 
 ═══════════════════════════════════════════════════════════════
   TAB: POLLING
 ═══════════════════════════════════════════════════════════════
-
+ 
   Max Display Points
   ──────────────────
   The maximum number of data points shown in the rolling
   window during live polling. This controls the visible
   window size, not the total data stored in memory. All
   points are still written to CSV regardless of this limit.
-
+ 
   Stop Polling at Max Display Points
   ───────────────────────────────────
   When checked, polling stops automatically when the number
   of stored points reaches the Max Display Points limit.
   When unchecked (default), polling continues and the
   rolling window simply advances.
-
+ 
   Default Poll Delay (ms)
   ───────────────────────
   The minimum time between poll cycles. The actual cycle
   time may be longer if instrument reads take more time
   than the delay allows. This value is used as the initial
   delay when opening a new polling session.
-
+ 
   Default NPLC
   ────────────
   The default integration time setting applied to new
   instruments. Can be overridden per instrument in the
   Launcher. Options: 0.02, 0.2, 1, 10, 100.
-
+ 
   Default Measurement
   ───────────────────
   The measurement type pre-selected when a new polling
   session opens. Options: DC Voltage, AC Voltage, DC
   Current, AC Current, 2-Wire Ohms, 4-Wire Ohms,
   Frequency, Period.
-
+ 
   Default to Continuous Polling
   ──────────────────────────────
   When checked, the Continuous checkbox in the polling
   form is checked by default when a new session opens.
-
+ 
   GPIB Timeout (ms)
   ─────────────────
   The read timeout used for GPIB instrument communication.
   Increase for instruments with slow response times or
   high NPLC settings. Range: 1,000 ms to 60,000 ms.
-
+ 
   Max Retry Attempts
   ──────────────────
   The number of times the application retries a failed
   instrument read before recording an error. Range: 0
   to 10.
-
+ 
   Error Handling
   ──────────────
   Max Errors Before Disable
     The number of consecutive errors on a single instrument
     before it is disabled for the remainder of the session.
     Range: 1 to 100.
-
+ 
   Auto-Retry Failed Instruments
     When checked, instruments that have been disabled due
     to errors are automatically retried after the retry
     delay elapses.
-
+ 
   Retry Delay (seconds)
     How long to wait before retrying a disabled instrument
     when auto-retry is enabled. Range: 1 to 300 seconds.
-
+ 
   Data Freshness
   ──────────────
   Skew Warning (seconds)
@@ -170,78 +170,78 @@
     current values panel turns orange. Indicates that
     one instrument is falling behind the others.
     Range: 0.2 to 10 seconds.
-
+ 
   Stale Data (seconds)
     When the most recent reading is older than this
     threshold, the timestamp turns red. Indicates the
     instrument has stopped responding. Range: 0.2 to
     60 seconds.
-
-
+ 
+ 
 ═══════════════════════════════════════════════════════════════
   TAB: FILES
 ═══════════════════════════════════════════════════════════════
-
+ 
   Default Save Folder
   ───────────────────
   The folder where all recorded session files are saved.
   Click Browse to select a folder using the system dialog.
   The folder is created automatically if it does not exist.
-
+ 
   Filename Pattern
   ────────────────
   The template used to generate default filenames for
   saved recordings. Supported tokens:
-
+ 
     {date}      Current date  (yyyy-MM-dd)
     {time}      Current time  (HH-mm-ss)
     {function}  Measurement type (e.g. Multi)
-
+ 
   Example: {date}_{time}_{function} produces a filename
   like 2026-04-10_14-30-00_Multi.csv
-
+ 
   Enable Auto Save
   ────────────────
   When checked, the application automatically saves the
   current session data at regular intervals during polling.
-
+ 
   Auto Save Interval (min)
   ────────────────────────
   How often auto-save runs when enabled. Range: 1 to
   1,440 minutes (24 hours).
-
+ 
   Auto Save on Stop
   ─────────────────
   When checked, the session data is automatically saved
   when polling stops, regardless of whether auto-save
   is enabled.
-
+ 
   Include Statistics in Save
   ──────────────────────────
   When checked, summary statistics (mean, std dev, min,
   max, sample rate) are included as comment lines at the
   top of each saved CSV file.
-
+ 
   Prompt Before Clear
   ───────────────────
   When checked, a confirmation dialog appears before data
   is cleared. Prevents accidental loss of unsaved data.
-
+ 
   Auto Load Last Session
   ──────────────────────
   When checked, the most recently recorded session file
   is loaded automatically when the application starts.
-
+ 
   Export Format
   ─────────────
   The file format used when exporting data. Options:
   CSV, Excel, JSON.
-
-
+ 
+ 
 ═══════════════════════════════════════════════════════════════
   TAB: PERFORMANCE
 ═══════════════════════════════════════════════════════════════
-
+ 
   Rendering Engine
   ────────────────
   Use GPU Rendering (SkiaSharp / OpenGL)
@@ -250,13 +250,13 @@
     rendering. GPU rendering is significantly faster
     than CPU rendering at high point counts and is
     recommended for long sessions.
-
+ 
     Changing the rendering engine requires restarting
     the application to take effect.
-
+ 
     If no discrete GPU is detected on this PC, this
     option is disabled and CPU rendering is used.
-
+ 
   Memory
   ──────
   Max Data Points in Memory
@@ -264,82 +264,243 @@
     that can be held in memory simultaneously. When this
     limit is reached, a warning is shown and recording
     may stop. Range: 1,000 to 10,000,000.
-
+ 
   Warning Threshold (%)
     When memory usage reaches this percentage of the
     maximum, a warning indicator appears in the status
     bar. Range: 50% to 99%.
-
+ 
   Warn at Threshold
     When checked, a dialog is shown when the warning
     threshold is reached during a live session.
-
+ 
   Performance Optimization
   ────────────────────────
   Throttle Refresh When Many Points
     When checked, the chart refresh rate is automatically
     reduced when the point count exceeds the throttle
     threshold. Reduces CPU load during long sessions.
-
+ 
   Throttle Point Threshold
     The point count above which refresh throttling
     activates. Range: 1,000 to 1,000,000 points.
-
+ 
   Auto Trim Old Data
     When checked, the oldest data points are automatically
     removed from memory when the total count exceeds the
     Keep Last N Points limit. No data is lost from CSV.
-
+ 
   Keep Last N Points
     When auto-trim is enabled, this is the number of
     most recent points retained per instrument.
     Range: 100 to 1,000,000.
-
+ 
   Reduce Refresh Rate When Large Dataset
     When checked, the chart refresh interval is increased
     automatically when the dataset grows large, reducing
     UI thread overhead.
-
-  Chart Decimation
-  ────────────────
-  Decimation is a display-only optimization that draws
-  every Nth stored point instead of every point when the
-  dataset exceeds the threshold. No stored data is lost
-  and CSV output is always complete.
-
+ 
+ 
+═══════════════════════════════════════════════════════════════
+  CHART DECIMATION  (Performance Tab)
+═══════════════════════════════════════════════════════════════
+ 
+  Overview
+  ────────
+  Chart decimation is a display-only performance
+  optimization that draws every Nth stored point on
+  the chart instead of every point, once the total
+  stored count crosses a threshold.
+ 
+  Decimation affects rendering only. It does NOT
+  modify, move, or discard stored data. Every reading
+  that was captured is:
+ 
+    - Still held in the in-memory ring buffer
+    - Still written to CSV at full resolution
+    - Still included in statistics, analysis, and
+      export output
+    - Still available for tooltips, zoom, and cursor
+      readout
+ 
+  Decimation only changes which points are handed to
+  the chart's Build_Point_Array() step. The data layer
+  is untouched.
+ 
+ 
+  Why It Exists
+  ─────────────
+  A long polling session can easily accumulate tens
+  or hundreds of thousands of points per instrument.
+  Drawing every point on every refresh becomes the
+  bottleneck long before memory or CSV I/O do. The
+  chart refresh rate collapses, pan and zoom become
+  sluggish, and the UI thread backs up.
+ 
+  Decimation fixes this by giving the rendering path
+  a reduced point array while leaving the full dataset
+  intact. A user can always re-examine the full
+  resolution data through analysis, CSV export, or
+  by zooming in on a narrow time range.
+ 
+ 
+  Sample Scenario — 24-hour dual instrument session
+  ──────────────────────────────────────────────────
+  A typical long-duration run polling two instruments
+  at roughly one reading per second demonstrates the
+  scale of the problem and the benefit of decimation.
+ 
+    Time        Stored points     Drawn @ Step 17     Render saving
+    ──────────────────────────────────────────────────────────────
+    1 hour       ~  7,200              7,200                0%
+    4 hours      ~ 28,800              1,694              94%
+    8 hours      ~ 57,600              3,388              94%
+   12 hours      ~ 86,400              5,082              94%
+   24 hours      ~172,800             10,164              94%
+ 
+  At Step = 17 the chart paints roughly one out of
+  every seventeen stored points, so a 24-hour session
+  is rendered with about ten thousand drawn points
+  per instrument instead of one hundred seventy
+  thousand. The visible line shape is indistinguishable
+  at the full-zoom scale, and redraw latency stays
+  under the refresh interval.
+ 
+ 
+  User Tuning Guidance
+  ─────────────────────
+  The sample-every-N step is chosen by the user. It
+  is not derived automatically from point count, so
+  the operator stays in control of the detail vs
+  speed tradeoff.
+ 
+    Step  =  5    High detail, moderate speedup.
+                  Good for short sessions or when
+                  examining fine structure.
+ 
+    Step  = 17    Balanced default for day-length
+                  runs. ~94% render saving while
+                  keeping the overall line shape
+                  faithful.
+ 
+    Step  = 50    Maximum rendering speed. Useful
+                  for week-long background sessions
+                  where only trend is of interest.
+ 
+  Step values from 2 through 100 are valid. A value
+  of 1 would mean "draw every point" and is not
+  permitted; use the Enable checkbox to disable
+  decimation instead.
+ 
+ 
+  What Is NOT Lost
+  ─────────────────
+  Decimation is safe to leave on by default because
+  the following are unaffected by the step value:
+ 
+    - CSV output           always written at full
+                           resolution, 1:1 with the
+                           polled readings
+    - Statistics           mean, std dev, min, max,
+                           RMS, trend, sample rate
+                           all computed from the
+                           full stored dataset
+    - Analysis window      reads the full ring
+                           buffer, not the drawn
+                           array
+    - Tooltips             resolve against the
+                           underlying stored point
+                           nearest the cursor, not
+                           the drawn line
+    - Zoom                 the chart re-builds its
+                           drawn array from the
+                           stored data on every
+                           view change, so zooming
+                           in reveals the points
+                           that were skipped at
+                           the wider zoom level
+ 
+ 
+  Chart Warning Label
+  ────────────────────
+  When decimation is actively thinning the drawn
+  array, a small orange status label is shown at
+  the bottom-right of the chart area:
+ 
+    ⚠ Decimated — drawing every N points
+      | Showing ~X of Y stored
+ 
+  where:
+ 
+    N   is the current sample-every-N step
+    X   is the approximate drawn point count
+    Y   is the total stored point count
+ 
+  The label only appears while decimation is active
+  (stored points above the threshold and Enable is
+  checked). It disappears automatically as soon as
+  the chart is rendering the full dataset, for
+  example after a Clear or after zooming into a
+  narrow range where every point fits on screen.
+ 
+ 
+  Implementation Notes
+  ────────────────────
+  Decimation is applied inside Build_Point_Array()
+  in the chart rendering path. For each instrument,
+  the stored ring buffer is walked with an index
+  stride equal to the step value and every Nth
+  point is appended to a scratch array that is then
+  handed to the chart control.
+ 
+  The first and last stored points are always
+  included in the drawn array so the chart extents
+  remain correct regardless of step value.
+ 
+  Decimation runs per instrument, so a split-view
+  session with mixed-rate instruments stays in
+  sync because each series is thinned independently
+  against the same step.
+ 
+ 
+  Settings
+  ────────
   Enable Chart Decimation
-    Enables or disables decimation. Recommended for
-    sessions longer than one hour.
-
+    Master on/off switch. Default: enabled.
+    Strongly recommended for sessions longer than
+    one hour or when using CPU rendering on large
+    datasets.
+ 
   Decimate Above (points)
-    The total point count above which decimation
-    activates. Range: 1,000 to 1,000,000.
-
+    The total stored point count per instrument
+    above which decimation activates. Below this
+    threshold every point is drawn. Range: 1,000
+    to 1,000,000. Default: 10,000.
+ 
   Sample Every N Points
-    How many points are skipped between drawn points
-    when decimation is active. A value of 10 means
-    every 10th point is drawn. Range: 2 to 100.
-
-    Lower step  — more chart detail, slightly slower
-    Higher step — less chart detail, faster rendering
-
-  When decimation is active, an orange warning label
-  appears at the bottom of the chart:
-
-    ⚠ Decimated — drawing every N points | Showing ~X of Y stored
-
-
+    The stride used when building the drawn array.
+    A value of 10 means every 10th stored point
+    is drawn; the nine points between each pair
+    are skipped for rendering only. Range: 2 to
+    100. Default: 10.
+ 
+    Lower step  — more chart detail, slightly
+                   slower rendering.
+    Higher step — less chart detail, faster
+                   rendering.
+ 
+ 
 ═══════════════════════════════════════════════════════════════
   TAB: ANALYSIS
 ═══════════════════════════════════════════════════════════════
-
+ 
   Trigger
   ───────
   Automatically Show Analysis After Recording Stops
     When checked, the Analysis window opens automatically
     each time a polling session ends. Useful for immediate
     post-session review without manually clicking Analyze.
-
+ 
   GPU Comparison
   ──────────────
   Show GPU vs CPU Comparison in Analysis Results
@@ -347,29 +508,29 @@
     of GPU sensor state between the start and end of the
     recording session. Shows load, temperature, memory,
     clock, power, and fan delta values.
-
+ 
     Only available when a discrete GPU is detected. The
     option is disabled and grayed out on systems without
     a discrete GPU.
-
+ 
   Compare
   ───────
   Single Series
     Analysis shows summary statistics only: mean, std dev,
     min, max, RMS, trend, sample rate, and error count
     for each instrument independently.
-
+ 
   Two Series
     Analysis shows a full comparison between two instruments
     including delta statistics, rolling standard deviation,
     and histogram tabs. Use this when comparing two
     instruments measuring the same signal.
-
+ 
   Include in Analysis
   ───────────────────
   Controls which statistics are shown in the analysis
   results. Each can be individually enabled or disabled:
-
+ 
     Mean / Average      Arithmetic mean of all readings
     Std Dev (σ)         Standard deviation
     Min / Max           Minimum and maximum values
@@ -378,61 +539,61 @@
                         falling, or stable over the session
     Sample Rate         Average readings per second
     Error Count         Total communication errors recorded
-
-
+ 
+ 
 ═══════════════════════════════════════════════════════════════
   TAB: UI
 ═══════════════════════════════════════════════════════════════
-
+ 
   Default Window Title
   ────────────────────
   The text shown in the title bar of the Launcher window.
   If left blank, the default application name is used.
-
+ 
   Remember Window Size
   ────────────────────
   When checked, the window size is saved on close and
   restored on the next launch.
-
+ 
   Remember Window Position
   ────────────────────────
   When checked, the window position is saved on close
   and restored on the next launch.
-
+ 
   Input Controls
   ──────────────
   Enable Keyboard Panning
     When checked, the arrow keys and Page Up / Page Down
     scroll the chart view when the chart panel has focus.
-
+ 
   Enable Ctrl+Scroll Wheel Zooming
     When checked, holding Ctrl and scrolling the mouse
     wheel zooms the chart vertically.
-
+ 
   Feedback
   ────────
   Show Progress Messages
     When checked, status messages are shown in the
     progress bar at the bottom of each form during
     operations such as loading, saving, and polling.
-
+ 
   Flash Window on Error
   ─────────────────────
     When checked, the window title bar flashes when
     a communication error occurs during polling.
-
+ 
   Play Sound on Complete
   ──────────────────────
     When checked, a system sound plays when a fixed
     cycle polling session completes.
-
+ 
   Appearance
   ──────────
   Chart Theme
     Selects the color scheme used for all charts.
     The theme change applies immediately to all open
     chart windows without requiring a restart.
-
+ 
     Available themes:
       Dark         Dark background, light lines (default)
       Light        White background, dark lines
@@ -440,12 +601,12 @@
       Grey         Neutral grey background
       Golden       Gold-toned background
       Light Yellow  Soft yellow background
-
-
+ 
+ 
 ═══════════════════════════════════════════════════════════════
   TAB: ZOOM
 ═══════════════════════════════════════════════════════════════
-
+ 
   Default Zoom Level (1-100)
   ──────────────────────────
   The initial vertical zoom level applied when a chart
@@ -453,29 +614,29 @@
   1.0x (no zoom), values below 50 zoom out, and values
   above 50 zoom in. Adjust the Zoom slider on the chart
   to change zoom during a session.
-
+ 
   Zoom Sensitivity
   ────────────────
   Controls how much the zoom level changes per scroll
   wheel click when Ctrl+Scroll zooming is enabled.
   The slider range is 0.1x to 5.0x per step. Displayed
   as a multiplier next to the slider.
-
+ 
   Remember Zoom Level
   ───────────────────
   When checked, the zoom level at the end of each session
   is saved and restored when the next session opens.
-
-
+ 
+ 
 ═══════════════════════════════════════════════════════════════
   TAB: HP 3458A
 ═══════════════════════════════════════════════════════════════
-
+ 
   These settings apply specifically to the HP / Agilent /
   Keysight 3458A 8.5-digit multimeter. Other instruments
   use their own initialization sequences and are not
   affected by these settings.
-
+ 
   Connection & Reset
   ──────────────────
   Send RESET on Connect
@@ -484,20 +645,20 @@
     a connection is established. The instrument restarts
     and all settings return to factory defaults before
     the session begins. Recommended for a clean start.
-
+ 
   Reset Settle Delay (ms)
     How long the application waits after sending RESET
     before sending further commands. The 3458A takes
     several seconds to restart. Range: 500 to 10,000 ms.
     Default: 3,000 ms.
-
+ 
   Send END ALWAYS on Connect
     When checked, the END ALWAYS command is sent after
     connecting. This configures the 3458A to assert the
     GPIB EOI line at the end of every response, which
     is required for reliable reading termination through
     the Prologix adapter.
-
+ 
   Timing
   ──────
   Instrument Settle Time (ms)
@@ -505,19 +666,19 @@
     3458A's GPIB address before sending the first command.
     Allows the GPIB bus to settle after an address change.
     Range: 50 to 2,000 ms.
-
+ 
   ERR? Read Delay (ms)
     How long the application waits after sending ERR?
     before reading the response. The 3458A may take
     several hundred milliseconds to prepare an error
     register response. Range: 100 to 2,000 ms.
-
+ 
   NPLC Apply Delay (ms)
     How long the application waits after sending the
     NPLC command before proceeding. Allows the 3458A
     to reconfigure its integrator before the first
     measurement. Range: 0 to 1,000 ms.
-
+ 
   Measurement Defaults
   ────────────────────
   Default NPLC
@@ -525,63 +686,63 @@
     each session. Can be overridden per instrument in
     the Launcher. Options: 0.001, 0.01, 0.1, 1, 2,
     10, 100.
-
+ 
   Default Trigger Mode
     The trigger mode sent to the 3458A at session start.
     Options:
       TRIG AUTO   Continuous free-running measurements
       TRIG HOLD   Wait for software trigger (SGL command)
       TRIG EXT    Wait for external hardware trigger
-
+ 
   HP 3458A Digits (4-10)
     Controls the number of digits used when formatting
     3458A readings in the current values display and
     analysis output. The 3458A is capable of up to 8.5
     digits (displayed as 10 here for the full digit
     count). Range: 4 to 10.
-
-
+ 
+ 
 ═══════════════════════════════════════════════════════════════
   TAB: PROLOGIX
 ═══════════════════════════════════════════════════════════════
-
+ 
   These settings configure the Prologix GPIB adapter.
   They apply to both the GPIB-USB-HS and GPIB-ETHERNET
   variants.
-
+ 
   IP Address
   ──────────
   The IP address of the Prologix GPIB-ETHERNET adapter.
   Used when Ethernet connection mode is selected in the
   Launcher. Leave blank to use auto-detection via the
   Find Prologix IP button on the Launcher.
-
+ 
   Scan Subnet
   ───────────
   The subnet prefix used when scanning for the Prologix
   adapter on the network. Enter the first three octets
   of your network address, for example 192.168.1. Leave
   blank to auto-detect from the active network interface.
-
+ 
   Port
   ────
   The TCP port number used to connect to the Prologix
   GPIB-ETHERNET adapter. The factory default is 1234.
   Range: 1 to 65535.
-
+ 
   MAC / OUI
   ─────────
   The MAC address prefix (OUI) of the Prologix adapter
   used to identify it during network scans. The Prologix
   OUI is typically 00-1C-4A. This is used to filter
   scan results to only Prologix devices.
-
+ 
   Default GPIB Address
   ────────────────────
   The GPIB address pre-selected when the application
   starts. This is the address used for health checks
   and initial instrument verification. Range: 0 to 30.
-
+ 
   Prologix Auto Read
   ──────────────────
   When checked, the Prologix adapter is configured with
@@ -589,7 +750,7 @@
   return instrument responses after each command. When
   unchecked, ++auto 0 is used and reads must be
   requested explicitly with ++read.
-
+ 
   Prologix Read Timeout (ms)
   ──────────────────────────
   The timeout used for reads from the Prologix adapter.
@@ -598,42 +759,47 @@
   The application calculates and applies a minimum
   required timeout automatically based on NPLC.
   Range: 1,000 to 30,000 ms.
-
+ 
   Prologix Scan Timeout (ms)
   ──────────────────────────
   How long the network scan waits for a response from
   each IP address during a Find Prologix IP scan. Higher
   values find adapters on slower networks but take longer
   to complete. 1000 = 1 second. Typical value: 500 ms.
-
+ 
   Prologix Fetch Delay (ms)
   ─────────────────────────
   An additional delay inserted after the Prologix adapter
   returns data before the application processes the
   response. Used to prevent buffer overrun on high-speed
   reads. Range: 10 to 500 ms.
-
-
+ 
+ 
 ═══════════════════════════════════════════════════════════════
   NOTES
 ═══════════════════════════════════════════════════════════════
-
+ 
   - Settings are saved to a JSON file in the application
     data folder. They persist between sessions.
-
+ 
   - Changing the rendering engine (GPU / CPU) requires
     restarting the application to take effect.
-
+ 
   - Changing the chart theme applies immediately to all
     open chart windows without requiring a restart.
-
+ 
   - Reset replaces ALL settings with factory defaults.
     There is no partial reset per tab.
-
+ 
   - The HP 3458A tab settings only affect that specific
     instrument. All other instruments use their own
     built-in initialization sequences.
-
+ 
+  - Chart decimation is a display-only optimization.
+    It never affects CSV output, statistics, analysis,
+    or stored data — only how many points the chart
+    control is asked to draw per refresh.
+ 
 ───────────────────────────────────────────────────────────────
   Multi-Instrument Poller  |  Author: Mike Wheeler  |  2026
 ───────────────────────────────────────────────────────────────
