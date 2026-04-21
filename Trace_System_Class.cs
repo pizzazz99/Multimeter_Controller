@@ -520,22 +520,49 @@ namespace Trace_Execution_Namespace
     {
       if ( ! Enabled )
         return;
+
       Ensure_Started();
-      _Queue.Add( $"{DateTime.Now:HH:mm:ss.fff} - {Message}" );
+
+      try
+      {
+        if ( _Queue.IsAddingCompleted )
+          return;
+
+        _Queue.Add( $"{DateTime.Now:HH:mm:ss.fff} - {Message}" );
+      }
+      catch ( Exception Ex ) when ( Ex is InvalidOperationException or ObjectDisposedException )
+      {
+        // Queue completed or disposed — shutting down, silently drop message
+      }
     }
 
     internal static void Write_Raw( string Message )
     {
       if ( ! Enabled )
         return;
+
       Ensure_Started();
-      _Queue.Add( $"{DateTime.Now:HH:mm:ss.fff} - {Message}" );
+
+      try
+      {
+        if ( _Queue.IsAddingCompleted )
+          return;
+
+        _Queue.Add( $"{DateTime.Now:HH:mm:ss.fff} - {Message}" );
+      }
+      catch ( Exception Ex ) when ( Ex is InvalidOperationException or ObjectDisposedException )
+      {
+        // Queue completed or disposed — shutting down, silently drop message
+      }
     }
 
     private static void Ensure_Started()
     {
       lock ( _Init_Lock )
       {
+        if ( _Queue.IsAddingCompleted )
+          return;
+
         if ( _Pump == null )
           _Pump = Task.Run( Process_Queue );
 
@@ -712,14 +739,14 @@ namespace Trace_Execution_Namespace
       var Status_Strip =
         new Panel { Dock = DockStyle.Bottom, Height = 22, BackColor = Color.FromArgb( 0, 122, 204 ) };
 
-      var Status_Label = new Label { Text = "Execution Trace  \u2022  Select text freely  \u2022  Ctrl+C " +
-                                            "to copy",
-                                     ForeColor = Color.White,
-                                     BackColor = Color.Transparent,
-                                     AutoSize  = false,
-                                     Dock      = DockStyle.Fill,
-                                     Font      = new Font( "Segoe UI", 8f ),
-                                     Padding   = new Padding( 6, 3, 0, 0 ) };
+      var Status_Label =
+        new Label { Text      = "Execution Trace  \u2022  Select text freely  \u2022  Ctrl+C " + "to copy",
+                    ForeColor = Color.White,
+                    BackColor = Color.Transparent,
+                    AutoSize  = false,
+                    Dock      = DockStyle.Fill,
+                    Font      = new Font( "Segoe UI", 8f ),
+                    Padding   = new Padding( 6, 3, 0, 0 ) };
 
       Status_Strip.Controls.Add( Status_Label );
 

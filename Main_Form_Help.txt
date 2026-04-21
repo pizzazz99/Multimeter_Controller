@@ -32,6 +32,62 @@
   formatting or interpretation. Use this for low-level
   troubleshooting or sending Prologix ++ commands directly.
 
+  Test Commands
+  ─────────────
+  Automatically tests every command in the dictionary against
+  the currently selected instrument. The button toggles —
+  click once to start, click again to stop early.
+
+  Each command is tested according to its assigned test
+  behavior:
+
+    Query Safe      — The query form is sent and a non-empty
+                      response is required. Used for read-only
+                      commands and one-shot measurement queries.
+
+    Write Then Query — The example value is sent to the
+                      instrument, then the query form is sent
+                      back to confirm the setting was accepted.
+
+    Requires Sequence — Skipped in isolation. Covered by a
+                      dedicated multi-step sequence test that
+                      runs after all individual commands.
+
+    Skip Destructive — Not sent. Protects calibration data,
+                      state registers, memory contents, and
+                      commands with irreversible side effects.
+
+  After each command the error queue is checked (SYST:ERR? or
+  equivalent). Any instrument error is appended to that
+  command's result line.
+
+  Results are streamed live into the Response box as each
+  command completes. Each line is prefixed with:
+
+    [PASS]  — Command succeeded
+    [FAIL]  — Command failed or returned unexpected response
+    [SKIP]  — Command was not sent (destructive or sequenced)
+
+  After all individual commands, sequenced tests run
+  automatically. These cover multi-step operations that
+  require a specific order — for example CONF → INIT → FETCH?,
+  bus trigger sequences, and statistics accumulation.
+
+  A summary at the end shows total pass, fail, and skip counts.
+  Any failed commands are listed again at the bottom for easy
+  review without scrolling.
+
+  The Test Commands button is only enabled when:
+    - The application is connected to the Prologix adapter
+    - At least one instrument is configured
+    - The selected instrument has a test profile implemented
+
+  Currently supported instruments:
+    HP 34401A   HP 34411A   HP 34420A
+    HP 33120A   HP 33220A
+    HP 53132A   HP 53181A
+    HP 4263B    HP 3456A    HP 3458A
+
   Command History
   ───────────────
   Shows the last 50 commands sent during this session.
@@ -41,7 +97,8 @@
   Response Box
   ────────────
   Displays all responses received from instruments, connection
-  events, verification results, and diagnostic output.
+  events, verification results, diagnostic output, and command
+  test results.
 
 
 ═══════════════════════════════════════════════════════════════
@@ -237,6 +294,56 @@
   7.  Click Launch Poller to open the polling session window
       and begin multi-instrument data acquisition.
 
+  8.  Optionally click Test Commands to verify that all GPIB
+      commands for the selected instrument are accepted and
+      responding correctly before starting a long session.
+
+
+═══════════════════════════════════════════════════════════════
+  COMMAND TEST BEHAVIOR REFERENCE
+═══════════════════════════════════════════════════════════════
+
+  Every command in each instrument dictionary carries a
+  Test_Behavior tag that controls how the automated test
+  runner handles it. The four behaviors are:
+
+  Query Safe
+  ──────────
+  The query form of the command is sent and the response must
+  be non-empty. Used for identification queries (*IDN?),
+  read-only status queries (SYST:ERR?, *STB?), and one-shot
+  measurement commands (MEAS:VOLT:DC?, READ?).
+
+  Write Then Query
+  ────────────────
+  The example value from the dictionary entry is sent to the
+  instrument, then the query form is sent to confirm the
+  instrument accepted the setting. Used for all configuration
+  commands such as CONF:VOLT:DC, TRIG:SOUR, NPLC, and range
+  settings.
+
+  Requires Sequence
+  ─────────────────
+  Skipped during the individual command pass. Covered by a
+  dedicated sequence test that runs after all individual
+  commands finish. Examples include FETCH? (requires INIT
+  first), *TRG (requires TRIG:SOUR BUS and INIT), and
+  statistics queries (require readings to be accumulated).
+
+  Skip Destructive
+  ────────────────
+  Never sent during automated testing. This protects commands
+  that have irreversible side effects:
+
+    - *RST, RESET, CL1     — reset all settings
+    - CAL:SEC:STAT          — calibration security
+    - *SAV / *RCL           — state register overwrite
+    - DATA:DEL              — wipes stored readings
+    - SYST:REM              — locks front panel
+    - SYST:BEEP             — audible side effect
+    - CORR:OPEN:EXEC        — overwrites compensation data
+    - GPIB (address change) — would disconnect the instrument
+
 
 ═══════════════════════════════════════════════════════════════
   NOTES
@@ -249,6 +356,18 @@
   - Settings and instrument lists are not automatically saved
     between sessions. Use the Settings dialog to configure
     persistent defaults.
+  - Command tests issue *RST (or equivalent) at the start to
+    place the instrument in a known state. Do not run a command
+    test while a polling session is active on the same
+    instrument.
+  - The HP 3456A uses legacy HP-IB commands. Its test profile
+    uses CL1 (Clear-Continue) as the reset command and has no
+    SCPI error queue. Error checking is skipped for this
+    instrument during testing.
+  - The HP 4263B LCR meter stores open, short, and load
+    compensation data in non-volatile memory. The command test
+    never clears or re-runs compensation routines to protect
+    this data.
 
 
 ───────────────────────────────────────────────────────────────

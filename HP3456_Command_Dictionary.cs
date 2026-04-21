@@ -183,8 +183,8 @@ namespace Multimeter_Controller
     public static List<Command_Entry> Get_All_Commands()
     {
       var Commands = new List<Command_Entry> {
+
         // ===== Measurement Commands =====
-        // Function codes — unshifted (S0) mode
         new Command_Entry( Command: "F1",
                            Syntax: "[S0]F1",
                            Description: "Select DC voltage measurement function (DCV)",
@@ -193,7 +193,8 @@ namespace Multimeter_Controller
                                          "DCV/DCV Ratio." ),
                            Query_Form: "",
                            Default_Value: "F1 (DCV) on power-on / Home",
-                           Example: "S0F1" ),
+                           Example: "S0F1",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "F2",
                            Syntax: "[S0]F2",
@@ -202,18 +203,23 @@ namespace Multimeter_Controller
                            Parameters: "No parameters. Precede with S0 for ACV, or S1 for ACV/DCV Ratio.",
                            Query_Form: "",
                            Default_Value: "Not default",
-                           Example: "S0F2" ),
+                           Example: "S0F2",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "F3",
                            Syntax: "[S0]F3",
                            Description: ( "Select AC+DC voltage measurement function (true RMS of combined " +
                                           "signal)" ),
                            Category: Command_Category.Measurement,
-                           Parameters: ( "No parameters. Precede with S0 for ACV+DCV, or S1 for " +
-                                         "ACV+DCV/DCV Ratio." ),
+                           Parameters: ( "No parameters. Precede with S0 for ACV+DCV, or S1 for " + "ACV+" +
+                                                                                                    "DCV/" +
+                                                                                                    "DCV " +
+                                                                                                    "Ratio" +
+                                                                                                    "." ),
                            Query_Form: "",
                            Default_Value: "Not default",
-                           Example: "S0F3" ),
+                           Example: "S0F3",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "F4",
                            Syntax: "[S0]F4",
@@ -223,7 +229,8 @@ namespace Multimeter_Controller
                                          "(Offset Compensated) 2W Ohms." ),
                            Query_Form: "",
                            Default_Value: "Not default",
-                           Example: "S0F4" ),
+                           Example: "S0F4",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "F5",
                            Syntax: "[S0]F5",
@@ -233,9 +240,9 @@ namespace Multimeter_Controller
                                          "(Offset Compensated) 4W Ohms." ),
                            Query_Form: "",
                            Default_Value: "Not default",
-                           Example: "S0F5" ),
+                           Example: "S0F5",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
-        // Shift modifier
         new Command_Entry( Command: "S0",
                            Syntax: "S0",
                            Description: "Select unshifted function mode (normal measurement functions)",
@@ -244,20 +251,30 @@ namespace Multimeter_Controller
                                          "Ohms." ),
                            Query_Form: "",
                            Default_Value: "S0 (unshifted)",
-                           Example: "S0F1" ),
+                           Example: "S0F1",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "S1",
                            Syntax: "S1",
                            Description: "Select shifted function mode (ratio and O.C. ohms variants)",
                            Category: Command_Category.Measurement,
-                           Parameters: ( "None. S1 selects: F1=DCV/DCV Ratio, F2=ACV/DCV Ratio, " +
-                                         "F3=ACV+DCV/DCV Ratio, F4=O.C. 2W Ohms, F5=O.C. 4W Ohms." ),
+                           Parameters: ( "None. S1 selects: F1=DCV/DCV Ratio, F2=ACV/DCV Ratio, " + "F3=" +
+                                                                                                    "ACV+" +
+                                                                                                    "DCV/" +
+                                                                                                    "DCV " +
+                                                                                                    "Ratio," +
+                                                                                                    " F4=O." +
+                                                                                                    "C. 2W " +
+                                                                                                    "Ohms, " +
+                                                                                                    "F5=O." +
+                                                                                                    "C. 4W " +
+                                                                                                    "Ohms." ),
                            Query_Form: "",
                            Default_Value: "S0 (unshifted is default)",
-                           Example: "S1F4" ),
+                           Example: "S1F4",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         // ===== Configuration Commands =====
-        // Range codes
         new Command_Entry( Command: "R1",
                            Syntax: "R1",
                            Description: "Select auto-range (instrument selects range automatically)",
@@ -266,7 +283,8 @@ namespace Multimeter_Controller
                                          "downranges below 11% full-scale." ),
                            Query_Form: "",
                            Default_Value: "R1 (autorange)",
-                           Example: "F1R1" ),
+                           Example: "F1R1",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "R2",
                            Syntax: "R2",
@@ -276,7 +294,8 @@ namespace Multimeter_Controller
                            Parameters: "Volts: 100 mV full-scale. Ohms: 1 kΩ full-scale.",
                            Query_Form: "",
                            Default_Value: "Not default",
-                           Example: "F1R2" ),
+                           Example: "F1R2",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "R3",
                            Syntax: "R3",
@@ -286,17 +305,23 @@ namespace Multimeter_Controller
                            Parameters: "Volts: 1000 mV full-scale. Ohms: 1 kΩ full-scale.",
                            Query_Form: "",
                            Default_Value: "Not default",
-                           Example: "F1R3" ),
+                           Example: "F1R3",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "R4",
                            Syntax: "R4",
-                           Description: ( "Select 10 V range (volts functions) or 10 kΩ range (ohms " +
-                                          "functions)" ),
+                           Description: ( "Select 10 V range (volts functions) or 10 kΩ range (ohms " + "fu" +
+                                                                                                        "nc" +
+                                                                                                        "ti" +
+                                                                                                        "on" +
+                                                                                                        "s" +
+                                                                                                        ")" ),
                            Category: Command_Category.Configuration,
                            Parameters: "Volts: 10 V full-scale. Ohms: 10 kΩ full-scale.",
                            Query_Form: "",
                            Default_Value: "Not default",
-                           Example: "F1R4" ),
+                           Example: "F1R4",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "R5",
                            Syntax: "R5",
@@ -306,7 +331,8 @@ namespace Multimeter_Controller
                            Parameters: "Volts: 100 V full-scale. Ohms: 100 kΩ full-scale.",
                            Query_Form: "",
                            Default_Value: "Not default",
-                           Example: "F1R5" ),
+                           Example: "F1R5",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "R6",
                            Syntax: "R6",
@@ -316,7 +342,8 @@ namespace Multimeter_Controller
                            Parameters: "Volts: 1000 V full-scale. Ohms: 1 MΩ full-scale.",
                            Query_Form: "",
                            Default_Value: "Not default",
-                           Example: "F1R6" ),
+                           Example: "F1R6",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "R7",
                            Syntax: "R7",
@@ -325,7 +352,8 @@ namespace Multimeter_Controller
                            Parameters: "Ohms only: 10 MΩ full-scale. Invalid for F1, F2, F3.",
                            Query_Form: "",
                            Default_Value: "Not default",
-                           Example: "F4R7" ),
+                           Example: "F4R7",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "R8",
                            Syntax: "R8",
@@ -334,7 +362,8 @@ namespace Multimeter_Controller
                            Parameters: "Ohms only: 100 MΩ full-scale. Invalid for F1, F2, F3.",
                            Query_Form: "",
                            Default_Value: "Not default",
-                           Example: "F4R8" ),
+                           Example: "F4R8",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "R9",
                            Syntax: "R9",
@@ -344,9 +373,9 @@ namespace Multimeter_Controller
                            Parameters: "Ohms only: 1000 MΩ full-scale. Invalid for F1, F2, F3.",
                            Query_Form: "",
                            Default_Value: "Not default",
-                           Example: "F4R9" ),
+                           Example: "F4R9",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
-        // Integration time (NPLC) — stored via register I
         new Command_Entry( Command: "STI",
                            Syntax: "<value>STI",
                            Description: ( "Store number of power line cycles (NPLC / integration time) " +
@@ -357,7 +386,8 @@ namespace Multimeter_Controller
                                          "Default: 100." ),
                            Query_Form: "REI",
                            Default_Value: "100",
-                           Example: "100STI" ),
+                           Example: "100STI",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "REI",
                            Syntax: "REI",
@@ -367,18 +397,20 @@ namespace Multimeter_Controller
                            Parameters: "None. Returns the current NPLC value stored in register I.",
                            Query_Form: "REI",
                            Default_Value: "N/A (read-only recall)",
-                           Example: "REI" ),
+                           Example: "REI",
+                           Test_Behavior: Test_Behavior.Query_Safe ),
 
-        // Digits — stored via register G
         new Command_Entry( Command: "STG",
                            Syntax: "<value>STG",
                            Description: "Store number of display digits into register G",
                            Category: Command_Category.Configuration,
-                           Parameters: ( "value: 3|4|5|6 (digits displayed; 6 = maximum 6.5-digit " +
-                                         "resolution)" ),
+                           Parameters: ( "value: 3|4|5|6 (digits displayed; 6 = maximum 6.5-digit " + "reso" +
+                                                                                                      "luti" +
+                                                                                                      "on)" ),
                            Query_Form: "REG",
                            Default_Value: "6",
-                           Example: "6STG" ),
+                           Example: "6STG",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "REG",
                            Syntax: "REG",
@@ -387,9 +419,9 @@ namespace Multimeter_Controller
                            Parameters: "None. Returns the current digits value stored in register G.",
                            Query_Form: "REG",
                            Default_Value: "N/A (read-only recall)",
-                           Example: "REG" ),
+                           Example: "REG",
+                           Test_Behavior: Test_Behavior.Query_Safe ),
 
-        // Settling delay — stored via register D
         new Command_Entry( Command: "STD",
                            Syntax: "<value>STD",
                            Description: "Store settling delay (in seconds) into register D",
@@ -398,7 +430,8 @@ namespace Multimeter_Controller
                                          "of measurement." ),
                            Query_Form: "RED",
                            Default_Value: "0",
-                           Example: "0.5STD" ),
+                           Example: "0.5STD",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "RED",
                            Syntax: "RED",
@@ -407,9 +440,9 @@ namespace Multimeter_Controller
                            Parameters: "None. Returns the current delay value stored in register D.",
                            Query_Form: "RED",
                            Default_Value: "N/A (read-only recall)",
-                           Example: "RED" ),
+                           Example: "RED",
+                           Test_Behavior: Test_Behavior.Query_Safe ),
 
-        // Autozero
         new Command_Entry( Command: "Z0",
                            Syntax: "Z0",
                            Description: ( "Disable autozero (single offset measurement taken at mode " +
@@ -419,7 +452,8 @@ namespace Multimeter_Controller
                                          "high-impedance measurements (eliminates input switching)." ),
                            Query_Form: "",
                            Default_Value: "Z1 (ON is default)",
-                           Example: "Z0" ),
+                           Example: "Z0",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "Z1",
                            Syntax: "Z1",
@@ -429,9 +463,9 @@ namespace Multimeter_Controller
                            Parameters: "None. Recommended for highest accuracy.",
                            Query_Form: "",
                            Default_Value: "Z1 (ON)",
-                           Example: "Z1" ),
+                           Example: "Z1",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
-        // Analog filter
         new Command_Entry( Command: "FL0",
                            Syntax: "FL0",
                            Description: "Disable analog low-pass filter",
@@ -440,19 +474,49 @@ namespace Multimeter_Controller
                                          "at ≥50 Hz." ),
                            Query_Form: "",
                            Default_Value: "FL0 (OFF)",
-                           Example: "FL0" ),
+                           Example: "FL0",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "FL1",
                            Syntax: "FL1",
                            Description: "Enable analog low-pass filter (>60 dB at ≥50 Hz)",
                            Category: Command_Category.Configuration,
-                           Parameters: ( "None. In ACV or ACV+DCV mode, filter is applied to the AC " +
-                                         "converter output. Recommended for measurements below 400 Hz." ),
+                           Parameters: ( "None. In ACV or ACV+DCV mode, filter is applied to the AC " + "co" +
+                                                                                                        "nv" +
+                                                                                                        "er" +
+                                                                                                        "te" +
+                                                                                                        "r " +
+                                                                                                        "ou" +
+                                                                                                        "tp" +
+                                                                                                        "ut" +
+                                                                                                        ". " +
+                                                                                                        "Re" +
+                                                                                                        "co" +
+                                                                                                        "mm" +
+                                                                                                        "en" +
+                                                                                                        "de" +
+                                                                                                        "d " +
+                                                                                                        "fo" +
+                                                                                                        "r " +
+                                                                                                        "me" +
+                                                                                                        "as" +
+                                                                                                        "ur" +
+                                                                                                        "em" +
+                                                                                                        "en" +
+                                                                                                        "ts" +
+                                                                                                        " b" +
+                                                                                                        "el" +
+                                                                                                        "ow" +
+                                                                                                        " 4" +
+                                                                                                        "00" +
+                                                                                                        " H" +
+                                                                                                        "z" +
+                                                                                                        "." ),
                            Query_Form: "",
                            Default_Value: "FL0 (OFF is default)",
-                           Example: "FL1" ),
+                           Example: "FL1",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
-        // Output format
         new Command_Entry( Command: "P0",
                            Syntax: "P0",
                            Description: "Select ASCII output format (14 bytes per reading)",
@@ -462,29 +526,66 @@ namespace Multimeter_Controller
                                          "separated by commas when N>1." ),
                            Query_Form: "",
                            Default_Value: "P0 (ASCII)",
-                           Example: "P0" ),
+                           Example: "P0",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "P1",
                            Syntax: "P1",
                            Description: "Select packed BCD output format (4 bytes per reading)",
                            Category: Command_Category.Configuration,
-                           Parameters: ( "Format: 4 bytes: [exponent+sign+OR][BCD12][BCD34][BCD56]. " +
-                                         "Decimal point implicit at OR bit. Faster transfer than P0." ),
+                           Parameters: ( "Format: 4 bytes: [exponent+sign+OR][BCD12][BCD34][BCD56]. " + "De" +
+                                                                                                        "ci" +
+                                                                                                        "ma" +
+                                                                                                        "l " +
+                                                                                                        "po" +
+                                                                                                        "in" +
+                                                                                                        "t " +
+                                                                                                        "im" +
+                                                                                                        "pl" +
+                                                                                                        "ic" +
+                                                                                                        "it" +
+                                                                                                        " a" +
+                                                                                                        "t " +
+                                                                                                        "OR" +
+                                                                                                        " b" +
+                                                                                                        "it" +
+                                                                                                        ". " +
+                                                                                                        "Fa" +
+                                                                                                        "st" +
+                                                                                                        "er" +
+                                                                                                        " t" +
+                                                                                                        "ra" +
+                                                                                                        "ns" +
+                                                                                                        "fe" +
+                                                                                                        "r " +
+                                                                                                        "th" +
+                                                                                                        "an" +
+                                                                                                        " P" +
+                                                                                                        "0" +
+                                                                                                        "." ),
                            Query_Form: "",
                            Default_Value: "P0 (ASCII is default)",
-                           Example: "P1" ),
+                           Example: "P1",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         // ===== Trigger Commands =====
         new Command_Entry( Command: "T1",
                            Syntax: "T1",
-                           Description: ( "Select internal auto-trigger mode (instrument triggers " +
-                                          "continuously and automatically)" ),
+                           Description: ( "Select internal auto-trigger mode (instrument triggers " + "cont" +
+                                                                                                      "inuo" +
+                                                                                                      "usly" +
+                                                                                                      " and" +
+                                                                                                      " aut" +
+                                                                                                      "omat" +
+                                                                                                      "ical" +
+                                                                                                      "ly)" ),
                            Category: Command_Category.Trigger,
                            Parameters: ( "None. Instrument repeats measurements at maximum rate determined " +
                                          "by integration time and function." ),
                            Query_Form: "",
                            Default_Value: "T1 (internal auto)",
-                           Example: "T1" ),
+                           Example: "T1",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "T2",
                            Syntax: "T2",
@@ -496,7 +597,8 @@ namespace Multimeter_Controller
                                          "aborted and restarted." ),
                            Query_Form: "",
                            Default_Value: "Not default",
-                           Example: "T2" ),
+                           Example: "T2",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "T3",
                            Syntax: "T3",
@@ -507,7 +609,8 @@ namespace Multimeter_Controller
                                          "parsed. Can be used within a stored program." ),
                            Query_Form: "",
                            Default_Value: "Not default",
-                           Example: "T3" ),
+                           Example: "T3",
+                           Test_Behavior: Test_Behavior.Requires_Sequence ),
 
         new Command_Entry( Command: "T4",
                            Syntax: "T4",
@@ -518,9 +621,9 @@ namespace Multimeter_Controller
                                          "an explicit T3 is received." ),
                            Query_Form: "",
                            Default_Value: "Not default",
-                           Example: "T4" ),
+                           Example: "T4",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
-        // Number of readings register
         new Command_Entry( Command: "STN",
                            Syntax: "<value>STN",
                            Description: "Store number of readings per trigger into register N",
@@ -530,7 +633,8 @@ namespace Multimeter_Controller
                                          "ASCII mode." ),
                            Query_Form: "REN",
                            Default_Value: "1",
-                           Example: "10STN" ),
+                           Example: "10STN",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "REN",
                            Syntax: "REN",
@@ -539,7 +643,8 @@ namespace Multimeter_Controller
                            Parameters: "None.",
                            Query_Form: "REN",
                            Default_Value: "N/A (read-only recall)",
-                           Example: "REN" ),
+                           Example: "REN",
+                           Test_Behavior: Test_Behavior.Query_Safe ),
 
         // ===== Math Commands =====
         new Command_Entry( Command: "M0",
@@ -549,7 +654,8 @@ namespace Multimeter_Controller
                            Parameters: "None.",
                            Query_Form: "",
                            Default_Value: "M0 (OFF)",
-                           Example: "M0" ),
+                           Example: "M0",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "M1",
                            Syntax: "M1",
@@ -560,18 +666,35 @@ namespace Multimeter_Controller
                                          "reading; SRQ on limit failure if SM bit 200 is set." ),
                            Query_Form: "",
                            Default_Value: "M0 (OFF is default)",
-                           Example: "4.9STL 5.1STU M1" ),
+                           Example: "4.9STL 5.1STU M1",
+                           Test_Behavior: Test_Behavior.Requires_Sequence ),
 
         new Command_Entry( Command: "M2",
                            Syntax: "M2",
                            Description: ( "Enable statistics math mode — accumulates mean, variance, and " +
                                           "count over successive readings" ),
                            Category: Command_Category.Math,
-                           Parameters: ( "Results in read-only registers: M (mean), V (variance), C " +
-                                         "(count). Read with REM, REV, REC." ),
+                           Parameters: ( "Results in read-only registers: M (mean), V (variance), C " + "(c" +
+                                                                                                        "ou" +
+                                                                                                        "nt" +
+                                                                                                        ")." +
+                                                                                                        " R" +
+                                                                                                        "ea" +
+                                                                                                        "d " +
+                                                                                                        "wi" +
+                                                                                                        "th" +
+                                                                                                        " R" +
+                                                                                                        "EM" +
+                                                                                                        ", " +
+                                                                                                        "RE" +
+                                                                                                        "V," +
+                                                                                                        " R" +
+                                                                                                        "EC" +
+                                                                                                        "." ),
                            Query_Form: "",
                            Default_Value: "M0 (OFF is default)",
-                           Example: "M2" ),
+                           Example: "M2",
+                           Test_Behavior: Test_Behavior.Requires_Sequence ),
 
         new Command_Entry( Command: "M3",
                            Syntax: "M3",
@@ -581,29 +704,72 @@ namespace Multimeter_Controller
                            Parameters: "Load null reference: <value>STZ. Result = reading - Z.",
                            Query_Form: "",
                            Default_Value: "M0 (OFF is default)",
-                           Example: "0.00015STZ M3" ),
+                           Example: "0.00015STZ M3",
+                           Test_Behavior: Test_Behavior.Requires_Sequence ),
 
         new Command_Entry( Command: "M4",
                            Syntax: "M4",
                            Description: ( "Enable thermistor math mode — converts resistance reading to " +
                                           "temperature in °F" ),
                            Category: Command_Category.Math,
-                           Parameters: ( "Instrument uses built-in Steinhart-Hart coefficients for " +
-                                         "thermistor conversion. Use appropriate ohms function (F4 or F5)." ),
+                           Parameters: ( "Instrument uses built-in Steinhart-Hart coefficients for " + "the" +
+                                                                                                       "rmi" +
+                                                                                                       "sto" +
+                                                                                                       "r " +
+                                                                                                       "con" +
+                                                                                                       "ver" +
+                                                                                                       "sio" +
+                                                                                                       "n. " +
+                                                                                                       "Use" +
+                                                                                                       " ap" +
+                                                                                                       "pro" +
+                                                                                                       "pri" +
+                                                                                                       "ate" +
+                                                                                                       " oh" +
+                                                                                                       "ms " +
+                                                                                                       "fun" +
+                                                                                                       "cti" +
+                                                                                                       "on " +
+                                                                                                       "(F4" +
+                                                                                                       " or" +
+                                                                                                       " F5" +
+                                                                                                       ")." ),
                            Query_Form: "",
                            Default_Value: "M0 (OFF is default)",
-                           Example: "S0F4R1M4" ),
+                           Example: "S0F4R1M4",
+                           Test_Behavior: Test_Behavior.Requires_Sequence ),
 
         new Command_Entry( Command: "M5",
                            Syntax: "M5",
                            Description: ( "Enable thermistor math mode — converts resistance reading to " +
                                           "temperature in °C" ),
                            Category: Command_Category.Math,
-                           Parameters: ( "Instrument uses built-in Steinhart-Hart coefficients for " +
-                                         "thermistor conversion. Use appropriate ohms function (F4 or F5)." ),
+                           Parameters: ( "Instrument uses built-in Steinhart-Hart coefficients for " + "the" +
+                                                                                                       "rmi" +
+                                                                                                       "sto" +
+                                                                                                       "r " +
+                                                                                                       "con" +
+                                                                                                       "ver" +
+                                                                                                       "sio" +
+                                                                                                       "n. " +
+                                                                                                       "Use" +
+                                                                                                       " ap" +
+                                                                                                       "pro" +
+                                                                                                       "pri" +
+                                                                                                       "ate" +
+                                                                                                       " oh" +
+                                                                                                       "ms " +
+                                                                                                       "fun" +
+                                                                                                       "cti" +
+                                                                                                       "on " +
+                                                                                                       "(F4" +
+                                                                                                       " or" +
+                                                                                                       " F5" +
+                                                                                                       ")." ),
                            Query_Form: "",
                            Default_Value: "M0 (OFF is default)",
-                           Example: "S0F4R1M5" ),
+                           Example: "S0F4R1M5",
+                           Test_Behavior: Test_Behavior.Requires_Sequence ),
 
         new Command_Entry( Command: "M6",
                            Syntax: "M6",
@@ -614,7 +780,8 @@ namespace Multimeter_Controller
                                          "/ Y." ),
                            Query_Form: "",
                            Default_Value: "M0 (OFF is default)",
-                           Example: "0STZ 1000STY M6" ),
+                           Example: "0STZ 1000STY M6",
+                           Test_Behavior: Test_Behavior.Requires_Sequence ),
 
         new Command_Entry( Command: "M7",
                            Syntax: "M7",
@@ -625,7 +792,8 @@ namespace Multimeter_Controller
                                          "nominal." ),
                            Query_Form: "",
                            Default_Value: "M0 (OFF is default)",
-                           Example: "5.0STY M7" ),
+                           Example: "5.0STY M7",
+                           Test_Behavior: Test_Behavior.Requires_Sequence ),
 
         new Command_Entry( Command: "M8",
                            Syntax: "M8",
@@ -635,7 +803,8 @@ namespace Multimeter_Controller
                                          "Y." ),
                            Query_Form: "",
                            Default_Value: "M0 (OFF is default)",
-                           Example: "1.0STY M8" ),
+                           Example: "1.0STY M8",
+                           Test_Behavior: Test_Behavior.Requires_Sequence ),
 
         new Command_Entry( Command: "M9",
                            Syntax: "M9",
@@ -646,9 +815,9 @@ namespace Multimeter_Controller
                                          "Ω. Result in dBm." ),
                            Query_Form: "",
                            Default_Value: "M0 (OFF is default)",
-                           Example: "600STR M9" ),
+                           Example: "600STR M9",
+                           Test_Behavior: Test_Behavior.Requires_Sequence ),
 
-        // Math register store commands
         new Command_Entry( Command: "STL",
                            Syntax: "<value>STL",
                            Description: ( "Store value into lower limit register L (used by pass/fail math " +
@@ -657,7 +826,8 @@ namespace Multimeter_Controller
                            Parameters: "value: numeric lower limit in measurement units.",
                            Query_Form: "REL",
                            Default_Value: "0",
-                           Example: "4.9STL" ),
+                           Example: "4.9STL",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "STU",
                            Syntax: "<value>STU",
@@ -667,7 +837,8 @@ namespace Multimeter_Controller
                            Parameters: "value: numeric upper limit in measurement units.",
                            Query_Form: "REU",
                            Default_Value: "0",
-                           Example: "5.1STU" ),
+                           Example: "5.1STU",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "STY",
                            Syntax: "<value>STY",
@@ -677,7 +848,8 @@ namespace Multimeter_Controller
                            Parameters: "value: reference value in measurement units.",
                            Query_Form: "REY",
                            Default_Value: "0",
-                           Example: "5.0STY" ),
+                           Example: "5.0STY",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "STZ",
                            Syntax: "<value>STZ",
@@ -687,7 +859,8 @@ namespace Multimeter_Controller
                            Parameters: "value: null offset or scale offset in measurement units.",
                            Query_Form: "REZ",
                            Default_Value: "0",
-                           Example: "0.00015STZ" ),
+                           Example: "0.00015STZ",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "STR",
                            Syntax: "<value>STR",
@@ -698,9 +871,9 @@ namespace Multimeter_Controller
                                          "as general scratch register." ),
                            Query_Form: "RER",
                            Default_Value: "600",
-                           Example: "50STR" ),
+                           Example: "50STR",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
-        // Read-only math result registers
         new Command_Entry( Command: "REM",
                            Syntax: "REM",
                            Description: ( "Recall mean register M (read-only result from statistics math " +
@@ -710,7 +883,8 @@ namespace Multimeter_Controller
                                          "enabled." ),
                            Query_Form: "REM",
                            Default_Value: "N/A (read-only)",
-                           Example: "REM" ),
+                           Example: "REM",
+                           Test_Behavior: Test_Behavior.Requires_Sequence ),
 
         new Command_Entry( Command: "REV",
                            Syntax: "REV",
@@ -720,7 +894,8 @@ namespace Multimeter_Controller
                            Parameters: "None. Returns variance of accumulated readings.",
                            Query_Form: "REV",
                            Default_Value: "N/A (read-only)",
-                           Example: "REV" ),
+                           Example: "REV",
+                           Test_Behavior: Test_Behavior.Requires_Sequence ),
 
         new Command_Entry( Command: "REC",
                            Syntax: "REC",
@@ -730,7 +905,8 @@ namespace Multimeter_Controller
                            Parameters: "None. Returns total number of readings accumulated.",
                            Query_Form: "REC",
                            Default_Value: "N/A (read-only)",
-                           Example: "REC" ),
+                           Example: "REC",
+                           Test_Behavior: Test_Behavior.Requires_Sequence ),
 
         // ===== Memory Commands =====
         new Command_Entry( Command: "RS0",
@@ -741,7 +917,8 @@ namespace Multimeter_Controller
                            Parameters: "None. After disabling, stored readings can be recalled with RER.",
                            Query_Form: "",
                            Default_Value: "RS0 (OFF)",
-                           Example: "RS0" ),
+                           Example: "RS0",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "RS1",
                            Syntax: "RS1",
@@ -752,7 +929,8 @@ namespace Multimeter_Controller
                                          "are overwritten when full." ),
                            Query_Form: "",
                            Default_Value: "RS0 (OFF is default)",
-                           Example: "RS1" ),
+                           Example: "RS1",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "RER",
                            Syntax: "RER",
@@ -763,9 +941,10 @@ namespace Multimeter_Controller
                                          "HP-IB. In math context, returns value of register R." ),
                            Query_Form: "RER",
                            Default_Value: "N/A",
-                           Example: "RS0 RER" ),
+                           Example: "RS0 RER",
+                           Test_Behavior: Test_Behavior.Requires_Sequence ),
 
-        // ===== I/O Commands =====
+        // ===== IO Commands =====
         new Command_Entry( Command: "SO0",
                            Syntax: "SO0",
                            Description: ( "Disable system output mode (instrument outputs readings only " +
@@ -774,18 +953,45 @@ namespace Multimeter_Controller
                            Parameters: "None. Standard HP-IB talker mode.",
                            Query_Form: "",
                            Default_Value: "SO0 (OFF)",
-                           Example: "SO0" ),
+                           Example: "SO0",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "SO1",
                            Syntax: "SO1",
                            Description: ( "Enable system output mode (instrument asserts SRQ and outputs " +
                                           "reading automatically when data is ready)" ),
                            Category: Command_Category.IO,
-                           Parameters: ( "None. Useful for interrupt-driven acquisition; instrument " +
-                                         "signals controller via SRQ when reading is available." ),
+                           Parameters: ( "None. Useful for interrupt-driven acquisition; instrument " + "si" +
+                                                                                                        "gn" +
+                                                                                                        "al" +
+                                                                                                        "s " +
+                                                                                                        "co" +
+                                                                                                        "nt" +
+                                                                                                        "ro" +
+                                                                                                        "ll" +
+                                                                                                        "er" +
+                                                                                                        " v" +
+                                                                                                        "ia" +
+                                                                                                        " S" +
+                                                                                                        "RQ" +
+                                                                                                        " w" +
+                                                                                                        "he" +
+                                                                                                        "n " +
+                                                                                                        "re" +
+                                                                                                        "ad" +
+                                                                                                        "in" +
+                                                                                                        "g " +
+                                                                                                        "is" +
+                                                                                                        " a" +
+                                                                                                        "va" +
+                                                                                                        "il" +
+                                                                                                        "ab" +
+                                                                                                        "le" +
+                                                                                                        "." ),
                            Query_Form: "",
                            Default_Value: "SO0 (OFF is default)",
-                           Example: "SO1" ),
+                           Example: "SO1",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "D0",
                            Syntax: "D0",
@@ -795,7 +1001,8 @@ namespace Multimeter_Controller
                            Parameters: "None.",
                            Query_Form: "",
                            Default_Value: "D1 (ON)",
-                           Example: "D0" ),
+                           Example: "D0",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "D1",
                            Syntax: "D1",
@@ -804,7 +1011,8 @@ namespace Multimeter_Controller
                            Parameters: "None.",
                            Query_Form: "",
                            Default_Value: "D1 (ON)",
-                           Example: "D1" ),
+                           Example: "D1",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "O0",
                            Syntax: "O0",
@@ -814,7 +1022,8 @@ namespace Multimeter_Controller
                                          "configurations." ),
                            Query_Form: "",
                            Default_Value: "O1 (EOI enabled)",
-                           Example: "O0" ),
+                           Example: "O0",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "O1",
                            Syntax: "O1",
@@ -824,7 +1033,8 @@ namespace Multimeter_Controller
                            Parameters: "None.",
                            Query_Form: "",
                            Default_Value: "O1 (ON)",
-                           Example: "O1" ),
+                           Example: "O1",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "W",
                            Syntax: "W",
@@ -836,7 +1046,8 @@ namespace Multimeter_Controller
                                          "parsed as part of F1." ),
                            Query_Form: "",
                            Default_Value: "N/A",
-                           Example: "F1W10STN" ),
+                           Example: "F1W10STN",
+                           Test_Behavior: Test_Behavior.Skip_Destructive ),
 
         new Command_Entry( Command: "SM",
                            Syntax: "SM<mask>",
@@ -849,7 +1060,8 @@ namespace Multimeter_Controller
                                          "100=service request bit, 200=limits failure (pass/fail)." ),
                            Query_Form: "",
                            Default_Value: "SM000 (no SRQ)",
-                           Example: "SM004" ),
+                           Example: "SM004",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "SW1",
                            Syntax: "SW1",
@@ -859,7 +1071,8 @@ namespace Multimeter_Controller
                                          "active." ),
                            Query_Form: "SW1",
                            Default_Value: "N/A (query only)",
-                           Example: "SW1" ),
+                           Example: "SW1",
+                           Test_Behavior: Test_Behavior.Query_Safe ),
 
         // ===== System Commands =====
         new Command_Entry( Command: "H",
@@ -872,7 +1085,8 @@ namespace Multimeter_Controller
                                          "and reset)." ),
                            Query_Form: "",
                            Default_Value: "N/A",
-                           Example: "H" ),
+                           Example: "H",
+                           Test_Behavior: Test_Behavior.Skip_Destructive ),
 
         new Command_Entry( Command: "CL1",
                            Syntax: "CL1",
@@ -883,7 +1097,8 @@ namespace Multimeter_Controller
                                          "settings to factory defaults and erases stored program." ),
                            Query_Form: "",
                            Default_Value: "N/A",
-                           Example: "CL1" ),
+                           Example: "CL1",
+                           Test_Behavior: Test_Behavior.Skip_Destructive ),
 
         new Command_Entry( Command: "TE0",
                            Syntax: "TE0",
@@ -892,7 +1107,8 @@ namespace Multimeter_Controller
                            Parameters: "None.",
                            Query_Form: "",
                            Default_Value: "TE0 (OFF)",
-                           Example: "TE0" ),
+                           Example: "TE0",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "TE1",
                            Syntax: "TE1",
@@ -905,9 +1121,10 @@ namespace Multimeter_Controller
                                          "addressed to talk." ),
                            Query_Form: "",
                            Default_Value: "TE0 (OFF is default)",
-                           Example: "TE1" ),
+                           Example: "TE1",
+                           Test_Behavior: Test_Behavior.Query_Safe ),
 
-        // ===== Program Memory Commands (Subprogram) =====
+        // ===== Subprogram Commands =====
         new Command_Entry( Command: "L1",
                            Syntax: "L1",
                            Description: ( "Begin storing program codes into instrument program memory " +
@@ -918,17 +1135,33 @@ namespace Multimeter_Controller
                                          "becomes the Home state." ),
                            Query_Form: "",
                            Default_Value: "N/A",
-                           Example: "L1" ),
+                           Example: "L1",
+                           Test_Behavior: Test_Behavior.Skip_Destructive ),
 
         new Command_Entry( Command: "Q",
                            Syntax: "Q",
                            Description: "End program memory load sequence (load program mode OFF)",
                            Category: Command_Category.Subprogram,
-                           Parameters: ( "None. Terminates the program sequence begun with L1. The " +
-                                         "instrument returns to normal execution mode." ),
+                           Parameters: ( "None. Terminates the program sequence begun with L1. The " + "ins" +
+                                                                                                       "tru" +
+                                                                                                       "men" +
+                                                                                                       "t " +
+                                                                                                       "ret" +
+                                                                                                       "urn" +
+                                                                                                       "s " +
+                                                                                                       "to " +
+                                                                                                       "nor" +
+                                                                                                       "mal" +
+                                                                                                       " ex" +
+                                                                                                       "ecu" +
+                                                                                                       "tio" +
+                                                                                                       "n " +
+                                                                                                       "mod" +
+                                                                                                       "e." ),
                            Query_Form: "",
                            Default_Value: "N/A",
-                           Example: "Q" ),
+                           Example: "Q",
+                           Test_Behavior: Test_Behavior.Skip_Destructive ),
 
         new Command_Entry( Command: "X1",
                            Syntax: "X1",
@@ -938,12 +1171,106 @@ namespace Multimeter_Controller
                                          "execution completes, if enabled in SM mask." ),
                            Query_Form: "",
                            Default_Value: "N/A",
-                           Example: "X1" ),
+                           Example: "X1",
+                           Test_Behavior: Test_Behavior.Requires_Sequence ),
       };
 
       Commands.Sort( ( A, B ) => string.Compare( A.Command, B.Command, StringComparison.OrdinalIgnoreCase ) );
 
       return Commands;
+    }
+
+    public class Test_Profile : IInstrument_Test_Profile
+    {
+      public string              Reset_Command   => "CL1";
+      public string              Error_Query     => "";
+      public bool                Has_Error_Queue => false; // HP3456A has no error queue
+
+      public List<Command_Entry> Get_Commands() => HP3456_Command_Dictionary_Class.Get_All_Commands();
+
+      public IEnumerable<Command_Test_Result> Run_Sequences( Func<string, string> Query, Action<string> Send )
+      {
+        foreach ( var R in Test_DCV_Sequence( Query, Send ) )
+          yield return R;
+        foreach ( var R in Test_Stats_Sequence( Query, Send ) )
+          yield return R;
+      }
+
+      private static IEnumerable<Command_Test_Result> Test_DCV_Sequence( Func<string, string> Query,
+                                                                         Action<string>       Send )
+      {
+        var                 Seq_Cmd = new Command_Entry( Command: "T3 [sequence]",
+                                                         Syntax: "S0F1R1T1 → T3 → read",
+                                                         Description: "Sequenced single DCV reading test",
+                                                         Category: Command_Category.Measurement,
+                                                         Test_Behavior: Test_Behavior.Requires_Sequence );
+
+        Command_Test_Result Result;
+        try
+        {
+          Send( "S0F1R1T1" );             // DCV autorange auto-trigger
+          string Reading = Query( "T3" ); // single trigger + read
+          bool   OK      = double.TryParse( Reading.TrimStart( '+', '-', '0' ).Trim(),
+                                            System.Globalization.NumberStyles.Float,
+                                            System.Globalization.CultureInfo.InvariantCulture,
+                                            out _ ) ||
+                           Reading.Length >= 8;
+          Result         = OK ? Command_Test_Result.Pass( Seq_Cmd, Reading.Trim() )
+                              : Command_Test_Result.Fail( Seq_Cmd, $"Unexpected response: {Reading}" );
+        }
+        catch ( Exception Ex )
+        {
+          Result = Command_Test_Result.Fail( Seq_Cmd, Ex.Message );
+        }
+
+        yield return Result;
+      }
+
+      private static IEnumerable<Command_Test_Result> Test_Stats_Sequence( Func<string, string> Query,
+                                                                           Action<string>       Send )
+      {
+        var Seq_Cmd = new Command_Entry( Command: "M2 [sequence]",
+                                         Syntax: "S0F1R1T1M2 → 5x T3 → REM REC REV",
+                                         Description: "Sequenced statistics accumulation test",
+                                         Category: Command_Category.Math,
+                                         Test_Behavior: Test_Behavior.Requires_Sequence );
+
+        Command_Test_Result Result;
+        try
+        {
+          Send( "S0F1R1T1M2" );
+          for ( int I = 0; I < 5; I++ )
+            try
+            {
+              Query( "T3" );
+            }
+            catch
+            {
+            }
+
+          string Mean  = Query( "REM" );
+          string Count = Query( "REC" );
+          bool   OK    = ! string.IsNullOrWhiteSpace( Mean ) && ! string.IsNullOrWhiteSpace( Count );
+          Result       = OK ? Command_Test_Result.Pass( Seq_Cmd, $"Mean={Mean.Trim()} Count={Count.Trim()}" )
+                            : Command_Test_Result.Fail( Seq_Cmd, "Empty response from REM or REC" );
+        }
+        catch ( Exception Ex )
+        {
+          Result = Command_Test_Result.Fail( Seq_Cmd, Ex.Message );
+        }
+        finally
+        {
+          try
+          {
+            Send( "M0" );
+          }
+          catch
+          {
+          }
+        }
+
+        yield return Result;
+      }
     }
   }
 }

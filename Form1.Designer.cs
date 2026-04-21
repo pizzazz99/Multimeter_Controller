@@ -98,6 +98,8 @@ namespace Multimeter_Controller
       helpToolStripMenuItem = new ToolStripMenuItem();
       aboutToolStripMenuItem = new ToolStripMenuItem();
       Theme_Button = new Button();
+      Test_Commands_Button = new Button();
+      Close_Button = new Button();
       Connection_Group.SuspendLayout();
       ((System.ComponentModel.ISupportInitialize) GPIB_Address_Numeric).BeginInit();
       Instruments_Group.SuspendLayout();
@@ -151,9 +153,9 @@ namespace Multimeter_Controller
       // Open_Dictionary_Button
       // 
       Open_Dictionary_Button.Anchor =  AnchorStyles.Bottom | AnchorStyles.Left;
-      Open_Dictionary_Button.Location = new Point( 59, 350 );
+      Open_Dictionary_Button.Location = new Point( 12, 352 );
       Open_Dictionary_Button.Name = "Open_Dictionary_Button";
-      Open_Dictionary_Button.Size = new Size( 72, 35 );
+      Open_Dictionary_Button.Size = new Size( 72, 51 );
       Open_Dictionary_Button.TabIndex = 11;
       Open_Dictionary_Button.Text = "Dictionary";
       Open_Dictionary_Button.UseVisualStyleBackColor = true;
@@ -212,7 +214,7 @@ namespace Multimeter_Controller
       Connection_Group.Controls.Add( Connection_Status_Label );
       Connection_Group.Location = new Point( 1079, 30 );
       Connection_Group.Name = "Connection_Group";
-      Connection_Group.Size = new Size( 248, 647 );
+      Connection_Group.Size = new Size( 248, 534 );
       Connection_Group.TabIndex = 15;
       Connection_Group.TabStop = false;
       Connection_Group.Text = "Connection Settings";
@@ -889,11 +891,38 @@ namespace Multimeter_Controller
       Theme_Button.UseVisualStyleBackColor = true;
       Theme_Button.Click += Theme_Button_Click;
       // 
+      // Test_Commands_Button
+      // 
+      Test_Commands_Button.Anchor =  AnchorStyles.Bottom | AnchorStyles.Left;
+      Test_Commands_Button.Location = new Point( 105, 352 );
+      Test_Commands_Button.Name = "Test_Commands_Button";
+      Test_Commands_Button.Size = new Size( 81, 51 );
+      Test_Commands_Button.TabIndex = 75;
+      Test_Commands_Button.Text = "Test Commands";
+      Test_Commands_Button.UseVisualStyleBackColor = true;
+      Test_Commands_Button.Click += Test_Commands_Button_Click;
+      // 
+      // Close_Button
+      // 
+      Close_Button.Anchor =  AnchorStyles.Bottom | AnchorStyles.Left;
+      Close_Button.BackColor = Color.FromArgb(   180,   40,   40 );
+      Close_Button.ForeColor = Color.White;
+      Close_Button.Location = new Point( 1255, 639 );
+      Close_Button.Name = "Close_Button";
+      Close_Button.Size = new Size( 72, 38 );
+      Close_Button.TabIndex = 76;
+      Close_Button.Text = "Close";
+      Close_Button.UseVisualStyleBackColor = false;
+      Close_Button.Click += Close_Button_Click;
+      // 
       // Form1
       // 
       AutoScaleDimensions = new SizeF( 7F, 15F );
       AutoScaleMode = AutoScaleMode.Font;
       ClientSize = new Size( 1340, 698 );
+      ControlBox = false;
+      Controls.Add( Close_Button );
+      Controls.Add( Test_Commands_Button );
       Controls.Add( Theme_Button );
       Controls.Add( GPU_Info_Button );
       Controls.Add( Display_Recording_Button );
@@ -1019,6 +1048,8 @@ namespace Multimeter_Controller
     private ToolStripMenuItem helpToolStripMenuItem;
     private ToolStripMenuItem aboutToolStripMenuItem;
     private Button Theme_Button;
+    private Button Test_Commands_Button;
+    private Button Close_Button;
   }
 
 }

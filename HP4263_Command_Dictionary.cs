@@ -155,8 +155,8 @@ namespace Multimeter_Controller
     public static List<Command_Entry> Get_All_Commands()
     {
       var Commands = new List<Command_Entry> {
-        // ===== Measurement Commands =====
 
+        // ===== Measurement Commands =====
         new Command_Entry( Command: "MEAS:IMP?",
                            Syntax: "MEASure:IMPedance?",
                            Description: ( "One-shot impedance measurement — configure, trigger, and return " +
@@ -165,7 +165,8 @@ namespace Multimeter_Controller
                            Parameters: "None (uses current FUNC:IMP:TYPE setting)",
                            Query_Form: "MEAS:IMP?",
                            Default_Value: "N/A",
-                           Example: "MEAS:IMP?" ),
+                           Example: "MEAS:IMP?",
+                           Test_Behavior: Test_Behavior.Query_Safe ),
 
         new Command_Entry( Command: "READ?",
                            Syntax: "READ?",
@@ -175,31 +176,52 @@ namespace Multimeter_Controller
                            Parameters: "None (uses current configuration)",
                            Query_Form: "READ?",
                            Default_Value: "N/A",
-                           Example: "READ?" ),
+                           Example: "READ?",
+                           Test_Behavior: Test_Behavior.Query_Safe ),
 
         new Command_Entry( Command: "FETCH?",
                            Syntax: "FETCH?",
-                           Description: ( "Return last completed measurement without re-triggering " +
-                                          "(returns primary,secondary,status)" ),
+                           Description: ( "Return last completed measurement without re-triggering " + "(re" +
+                                                                                                       "tur" +
+                                                                                                       "ns " +
+                                                                                                       "pri" +
+                                                                                                       "mar" +
+                                                                                                       "y," +
+                                                                                                       "sec" +
+                                                                                                       "ond" +
+                                                                                                       "ary" +
+                                                                                                       ",st" +
+                                                                                                       "atu" +
+                                                                                                       "s)" ),
                            Category: Command_Category.Measurement,
-                           Parameters: ( "None (status: 0=normal, 1=pri overrange, 2=sec overrange, " +
-                                         "3=both, 4=overload)" ),
+                           Parameters: ( "None (status: 0=normal, 1=pri overrange, 2=sec overrange, " + "3=" +
+                                                                                                        "bo" +
+                                                                                                        "th" +
+                                                                                                        ", " +
+                                                                                                        "4=" +
+                                                                                                        "ov" +
+                                                                                                        "er" +
+                                                                                                        "lo" +
+                                                                                                        "ad" +
+                                                                                                        ")" ),
                            Query_Form: "FETCH?",
                            Default_Value: "N/A",
-                           Example: "FETCH?" ),
+                           Example: "FETCH?",
+                           Test_Behavior: Test_Behavior.Requires_Sequence ),
 
         // ===== Configuration Commands =====
-
         new Command_Entry( Command: "FUNC:IMP:TYPE",
                            Syntax: "FUNCtion:IMPedance:TYPE <parameter_pair>",
-                           Description: ( "Select impedance measurement parameter pair (primary + " +
-                                          "secondary)" ),
+                           Description: ( "Select impedance measurement parameter pair (primary + " + "seco" +
+                                                                                                      "ndar" +
+                                                                                                      "y)" ),
                            Category: Command_Category.Configuration,
                            Parameters: ( "CPD|CSD|CPQ|CSQ|CPRP|CSRS|LPD|LSD|LPQ|LSQ|LPRP|LSRS|RX|ZTD|ZTR|" +
                                          "GB|YTD|YTR|VDID" ),
                            Query_Form: "FUNC:IMP:TYPE?",
                            Default_Value: "CPD",
-                           Example: "FUNC:IMP:TYPE CPD" ),
+                           Example: "FUNC:IMP:TYPE CPD",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "FREQ",
                            Syntax: "FREQuency <frequency>",
@@ -208,7 +230,8 @@ namespace Multimeter_Controller
                            Parameters: "frequency: 100 | 120 | 1000 | 10000 | 20000 | 100000 (Hz)",
                            Query_Form: "FREQ?",
                            Default_Value: "1000",
-                           Example: "FREQ 1000" ),
+                           Example: "FREQ 1000",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "VOLT",
                            Syntax: "VOLTage:LEVel <voltage>",
@@ -217,7 +240,8 @@ namespace Multimeter_Controller
                            Parameters: "voltage: 5e-3 to 1.0 Vrms | MIN | MAX",
                            Query_Form: "VOLT?",
                            Default_Value: "1.0",
-                           Example: "VOLT 1.0" ),
+                           Example: "VOLT 1.0",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "CURR",
                            Syntax: "CURRent:LEVel <current>",
@@ -226,7 +250,8 @@ namespace Multimeter_Controller
                            Parameters: "current: 100e-6 to 100e-3 Arms | MIN | MAX",
                            Query_Form: "CURR?",
                            Default_Value: "N/A",
-                           Example: "CURR 10e-3" ),
+                           Example: "CURR 10e-3",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "FUNC:IMP:RANG",
                            Syntax: "FUNCtion:IMPedance:RANGe <impedance>",
@@ -235,7 +260,8 @@ namespace Multimeter_Controller
                            Parameters: "impedance: 10 | 100 | 1e3 | 10e3 | 100e3 | MIN | MAX (Ohms)",
                            Query_Form: "FUNC:IMP:RANG?",
                            Default_Value: "AUTO",
-                           Example: "FUNC:IMP:RANG 1e3" ),
+                           Example: "FUNC:IMP:RANG 1e3",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "FUNC:IMP:RANG:AUTO",
                            Syntax: "FUNCtion:IMPedance:RANGe:AUTO <mode>",
@@ -244,7 +270,8 @@ namespace Multimeter_Controller
                            Parameters: "mode: ON | OFF | ONCE",
                            Query_Form: "FUNC:IMP:RANG:AUTO?",
                            Default_Value: "ON",
-                           Example: "FUNC:IMP:RANG:AUTO ON" ),
+                           Example: "FUNC:IMP:RANG:AUTO ON",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "APER",
                            Syntax: "APERture <time>[,<averages>]",
@@ -253,7 +280,8 @@ namespace Multimeter_Controller
                            Parameters: "time: SHORt | MEDium | LONG, averages: 1 to 256 | MIN | MAX",
                            Query_Form: "APER?",
                            Default_Value: "MEDium, 1",
-                           Example: "APER LONG,8" ),
+                           Example: "APER LONG,8",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "BIAS:VOLT",
                            Syntax: "BIAS:VOLTage:LEVel <voltage>",
@@ -262,7 +290,8 @@ namespace Multimeter_Controller
                            Parameters: "voltage: 0 to 2.0 V | MIN | MAX",
                            Query_Form: "BIAS:VOLT?",
                            Default_Value: "0",
-                           Example: "BIAS:VOLT 1.5" ),
+                           Example: "BIAS:VOLT 1.5",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "BIAS:CURR",
                            Syntax: "BIAS:CURRent:LEVel <current>",
@@ -271,7 +300,8 @@ namespace Multimeter_Controller
                            Parameters: "current: 0 to 100e-3 A | MIN | MAX",
                            Query_Form: "BIAS:CURR?",
                            Default_Value: "0",
-                           Example: "BIAS:CURR 10e-3" ),
+                           Example: "BIAS:CURR 10e-3",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "BIAS:STAT",
                            Syntax: "BIAS:STATe <mode>",
@@ -280,17 +310,21 @@ namespace Multimeter_Controller
                            Parameters: "mode: ON | OFF",
                            Query_Form: "BIAS:STAT?",
                            Default_Value: "OFF",
-                           Example: "BIAS:STAT ON" ),
+                           Example: "BIAS:STAT ON",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "CORR:LENG",
                            Syntax: "CORRection:LENGth <metres>",
-                           Description: ( "Set cable length for compensation — affects parasitic " +
-                                          "correction model" ),
+                           Description: ( "Set cable length for compensation — affects parasitic " + "corre" +
+                                                                                                     "ction" +
+                                                                                                     " mode" +
+                                                                                                     "l" ),
                            Category: Command_Category.Configuration,
                            Parameters: "metres: 0 | 1 | 2",
                            Query_Form: "CORR:LENG?",
                            Default_Value: "0",
-                           Example: "CORR:LENG 1" ),
+                           Example: "CORR:LENG 1",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "FORM",
                            Syntax: "FORMat:DATA <type>",
@@ -299,10 +333,10 @@ namespace Multimeter_Controller
                            Parameters: "type: ASCii | REAL,32 | REAL,64",
                            Query_Form: "FORM?",
                            Default_Value: "ASCii",
-                           Example: "FORM ASC" ),
+                           Example: "FORM ASC",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         // ===== Compensation Commands =====
-
         new Command_Entry( Command: "CORR:OPEN",
                            Syntax: "CORRection:OPEN",
                            Description: ( "Perform open compensation measurement at current frequency " +
@@ -311,7 +345,8 @@ namespace Multimeter_Controller
                            Parameters: "None (connect open-circuit fixture before executing)",
                            Query_Form: "",
                            Default_Value: "N/A",
-                           Example: "CORR:OPEN" ),
+                           Example: "CORR:OPEN",
+                           Test_Behavior: Test_Behavior.Skip_Destructive ),
 
         new Command_Entry( Command: "CORR:OPEN:EXEC",
                            Syntax: "CORRection:OPEN:EXECute",
@@ -321,7 +356,8 @@ namespace Multimeter_Controller
                            Parameters: "None (connect open-circuit fixture before executing)",
                            Query_Form: "",
                            Default_Value: "N/A",
-                           Example: "CORR:OPEN:EXEC" ),
+                           Example: "CORR:OPEN:EXEC",
+                           Test_Behavior: Test_Behavior.Skip_Destructive ),
 
         new Command_Entry( Command: "CORR:OPEN:STAT",
                            Syntax: "CORRection:OPEN:STATe <mode>",
@@ -330,7 +366,8 @@ namespace Multimeter_Controller
                            Parameters: "mode: ON | OFF",
                            Query_Form: "CORR:OPEN:STAT?",
                            Default_Value: "OFF",
-                           Example: "CORR:OPEN:STAT ON" ),
+                           Example: "CORR:OPEN:STAT ON",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "CORR:SHOR",
                            Syntax: "CORRection:SHORt",
@@ -340,7 +377,8 @@ namespace Multimeter_Controller
                            Parameters: "None (connect shorted fixture before executing)",
                            Query_Form: "",
                            Default_Value: "N/A",
-                           Example: "CORR:SHOR" ),
+                           Example: "CORR:SHOR",
+                           Test_Behavior: Test_Behavior.Skip_Destructive ),
 
         new Command_Entry( Command: "CORR:SHOR:EXEC",
                            Syntax: "CORRection:SHORt:EXECute",
@@ -350,7 +388,8 @@ namespace Multimeter_Controller
                            Parameters: "None (connect shorted fixture before executing)",
                            Query_Form: "",
                            Default_Value: "N/A",
-                           Example: "CORR:SHOR:EXEC" ),
+                           Example: "CORR:SHOR:EXEC",
+                           Test_Behavior: Test_Behavior.Skip_Destructive ),
 
         new Command_Entry( Command: "CORR:SHOR:STAT",
                            Syntax: "CORRection:SHORt:STATe <mode>",
@@ -359,7 +398,8 @@ namespace Multimeter_Controller
                            Parameters: "mode: ON | OFF",
                            Query_Form: "CORR:SHOR:STAT?",
                            Default_Value: "OFF",
-                           Example: "CORR:SHOR:STAT ON" ),
+                           Example: "CORR:SHOR:STAT ON",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "CORR:LOAD:TYPE",
                            Syntax: "CORRection:LOAD:TYPE <parameter_pair>",
@@ -369,7 +409,8 @@ namespace Multimeter_Controller
                                          "| LPQ | LSQ | LPRP | LSRS | RX | ZTD | ZTR | GB | YTD | YTR" ),
                            Query_Form: "CORR:LOAD:TYPE?",
                            Default_Value: "CPD",
-                           Example: "CORR:LOAD:TYPE CPD" ),
+                           Example: "CORR:LOAD:TYPE CPD",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "CORR:LOAD:EXEC",
                            Syntax: "CORRection:LOAD:EXECute",
@@ -379,7 +420,8 @@ namespace Multimeter_Controller
                            Parameters: "None (connect reference load component before executing)",
                            Query_Form: "",
                            Default_Value: "N/A",
-                           Example: "CORR:LOAD:EXEC" ),
+                           Example: "CORR:LOAD:EXEC",
+                           Test_Behavior: Test_Behavior.Skip_Destructive ),
 
         new Command_Entry( Command: "CORR:LOAD:STAT",
                            Syntax: "CORRection:LOAD:STATe <mode>",
@@ -388,7 +430,8 @@ namespace Multimeter_Controller
                            Parameters: "mode: ON | OFF",
                            Query_Form: "CORR:LOAD:STAT?",
                            Default_Value: "OFF",
-                           Example: "CORR:LOAD:STAT ON" ),
+                           Example: "CORR:LOAD:STAT ON",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "CORR:CLE",
                            Syntax: "CORRection:CLEar",
@@ -397,10 +440,10 @@ namespace Multimeter_Controller
                            Parameters: "None",
                            Query_Form: "",
                            Default_Value: "N/A",
-                           Example: "CORR:CLE" ),
+                           Example: "CORR:CLE",
+                           Test_Behavior: Test_Behavior.Skip_Destructive ),
 
         // ===== Trigger Commands =====
-
         new Command_Entry( Command: "TRIG:SOUR",
                            Syntax: "TRIGger:SOURce <source>",
                            Description: "Select trigger source for measurements",
@@ -408,7 +451,8 @@ namespace Multimeter_Controller
                            Parameters: "source: INTernal | BUS | EXTernal",
                            Query_Form: "TRIG:SOUR?",
                            Default_Value: "INTernal",
-                           Example: "TRIG:SOUR INT" ),
+                           Example: "TRIG:SOUR INT",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "TRIG:DEL",
                            Syntax: "TRIGger:DELay <seconds>",
@@ -417,7 +461,8 @@ namespace Multimeter_Controller
                            Parameters: "seconds: 0 to 60 s | MIN | MAX",
                            Query_Form: "TRIG:DEL?",
                            Default_Value: "0",
-                           Example: "TRIG:DEL 0.01" ),
+                           Example: "TRIG:DEL 0.01",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "SAMP:COUN",
                            Syntax: "SAMPle:COUNt <count>",
@@ -426,7 +471,8 @@ namespace Multimeter_Controller
                            Parameters: "count: 1 to 999 | MIN | MAX",
                            Query_Form: "SAMP:COUN?",
                            Default_Value: "1",
-                           Example: "SAMP:COUN 10" ),
+                           Example: "SAMP:COUN 10",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "INIT",
                            Syntax: "INITiate",
@@ -435,7 +481,8 @@ namespace Multimeter_Controller
                            Parameters: "None",
                            Query_Form: "",
                            Default_Value: "N/A",
-                           Example: "INIT" ),
+                           Example: "INIT",
+                           Test_Behavior: Test_Behavior.Requires_Sequence ),
 
         new Command_Entry( Command: "ABOR",
                            Syntax: "ABORt",
@@ -444,7 +491,8 @@ namespace Multimeter_Controller
                            Parameters: "None",
                            Query_Form: "",
                            Default_Value: "N/A",
-                           Example: "ABOR" ),
+                           Example: "ABOR",
+                           Test_Behavior: Test_Behavior.Skip_Destructive ),
 
         new Command_Entry( Command: "*TRG",
                            Syntax: "*TRG",
@@ -453,10 +501,10 @@ namespace Multimeter_Controller
                            Parameters: "None (requires TRIG:SOUR BUS)",
                            Query_Form: "",
                            Default_Value: "N/A",
-                           Example: "*TRG" ),
+                           Example: "*TRG",
+                           Test_Behavior: Test_Behavior.Requires_Sequence ),
 
         // ===== Math Commands =====
-
         new Command_Entry( Command: "CALC:LIM:TYPE",
                            Syntax: "CALCulate:LIMit:TYPE <parameter>",
                            Description: "Select which measurement parameter limit testing applies to",
@@ -464,7 +512,8 @@ namespace Multimeter_Controller
                            Parameters: "parameter: A (primary) | B (secondary)",
                            Query_Form: "CALC:LIM:TYPE?",
                            Default_Value: "A",
-                           Example: "CALC:LIM:TYPE A" ),
+                           Example: "CALC:LIM:TYPE A",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "CALC:LIM:COMP",
                            Syntax: "CALCulate:LIMit:COMParator <mode>",
@@ -473,7 +522,8 @@ namespace Multimeter_Controller
                            Parameters: "mode: ABS | DEV | PDEV (absolute, deviation, percent deviation)",
                            Query_Form: "CALC:LIM:COMP?",
                            Default_Value: "ABS",
-                           Example: "CALC:LIM:COMP ABS" ),
+                           Example: "CALC:LIM:COMP ABS",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "CALC:LIM:LOW",
                            Syntax: "CALCulate:LIMit:LOWer <value>",
@@ -482,7 +532,8 @@ namespace Multimeter_Controller
                            Parameters: "value: any numeric in current measurement units",
                            Query_Form: "CALC:LIM:LOW?",
                            Default_Value: "0",
-                           Example: "CALC:LIM:LOW 90e-12" ),
+                           Example: "CALC:LIM:LOW 90e-12",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "CALC:LIM:UPP",
                            Syntax: "CALCulate:LIMit:UPPer <value>",
@@ -491,7 +542,8 @@ namespace Multimeter_Controller
                            Parameters: "value: any numeric in current measurement units",
                            Query_Form: "CALC:LIM:UPP?",
                            Default_Value: "0",
-                           Example: "CALC:LIM:UPP 110e-12" ),
+                           Example: "CALC:LIM:UPP 110e-12",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "CALC:LIM:STAT",
                            Syntax: "CALCulate:LIMit:STATe <mode>",
@@ -500,7 +552,8 @@ namespace Multimeter_Controller
                            Parameters: "mode: ON | OFF",
                            Query_Form: "CALC:LIM:STAT?",
                            Default_Value: "OFF",
-                           Example: "CALC:LIM:STAT ON" ),
+                           Example: "CALC:LIM:STAT ON",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "CALC:LIM:FAIL?",
                            Syntax: "CALCulate:LIMit:FAIL?",
@@ -510,10 +563,10 @@ namespace Multimeter_Controller
                            Parameters: "None (read-only)",
                            Query_Form: "CALC:LIM:FAIL?",
                            Default_Value: "N/A",
-                           Example: "CALC:LIM:FAIL?" ),
+                           Example: "CALC:LIM:FAIL?",
+                           Test_Behavior: Test_Behavior.Requires_Sequence ),
 
         // ===== System Commands =====
-
         new Command_Entry( Command: "*IDN?",
                            Syntax: "*IDN?",
                            Description: "Query instrument identification string",
@@ -521,7 +574,8 @@ namespace Multimeter_Controller
                            Parameters: "None",
                            Query_Form: "*IDN?",
                            Default_Value: "N/A",
-                           Example: "*IDN?" ),
+                           Example: "*IDN?",
+                           Test_Behavior: Test_Behavior.Query_Safe ),
 
         new Command_Entry( Command: "*RST",
                            Syntax: "*RST",
@@ -530,7 +584,8 @@ namespace Multimeter_Controller
                            Parameters: "None",
                            Query_Form: "",
                            Default_Value: "N/A",
-                           Example: "*RST" ),
+                           Example: "*RST",
+                           Test_Behavior: Test_Behavior.Skip_Destructive ),
 
         new Command_Entry( Command: "*CLS",
                            Syntax: "*CLS",
@@ -539,7 +594,8 @@ namespace Multimeter_Controller
                            Parameters: "None",
                            Query_Form: null,
                            Default_Value: "N/A",
-                           Example: "*CLS" ),
+                           Example: "*CLS",
+                           Test_Behavior: Test_Behavior.Skip_Destructive ),
 
         new Command_Entry( Command: "*OPC?",
                            Syntax: "*OPC?",
@@ -549,17 +605,24 @@ namespace Multimeter_Controller
                            Parameters: "None",
                            Query_Form: "*OPC?",
                            Default_Value: "N/A",
-                           Example: "*OPC?" ),
+                           Example: "*OPC?",
+                           Test_Behavior: Test_Behavior.Query_Safe ),
 
         new Command_Entry( Command: "*OPC",
                            Syntax: "*OPC",
-                           Description: ( "Set OPC bit in Standard Event register when all pending " +
-                                          "operations complete" ),
+                           Description: ( "Set OPC bit in Standard Event register when all pending " + "ope" +
+                                                                                                       "rat" +
+                                                                                                       "ion" +
+                                                                                                       "s " +
+                                                                                                       "com" +
+                                                                                                       "ple" +
+                                                                                                       "te" ),
                            Category: Command_Category.System,
                            Parameters: "None",
                            Query_Form: "",
                            Default_Value: "N/A",
-                           Example: "*OPC" ),
+                           Example: "*OPC",
+                           Test_Behavior: Test_Behavior.Requires_Sequence ),
 
         new Command_Entry( Command: "*TST?",
                            Syntax: "*TST?",
@@ -568,7 +631,8 @@ namespace Multimeter_Controller
                            Parameters: "None (returns 0 for pass, non-zero for fail)",
                            Query_Form: "*TST?",
                            Default_Value: "N/A",
-                           Example: "*TST?" ),
+                           Example: "*TST?",
+                           Test_Behavior: Test_Behavior.Query_Safe ),
 
         new Command_Entry( Command: "SYST:ERR?",
                            Syntax: "SYSTem:ERRor?",
@@ -577,7 +641,8 @@ namespace Multimeter_Controller
                            Parameters: "None (returns error number and message string)",
                            Query_Form: "SYST:ERR?",
                            Default_Value: "N/A",
-                           Example: "SYST:ERR?" ),
+                           Example: "SYST:ERR?",
+                           Test_Behavior: Test_Behavior.Query_Safe ),
 
         new Command_Entry( Command: "SYST:VERS?",
                            Syntax: "SYSTem:VERSion?",
@@ -586,7 +651,8 @@ namespace Multimeter_Controller
                            Parameters: "None",
                            Query_Form: "SYST:VERS?",
                            Default_Value: "N/A",
-                           Example: "SYST:VERS?" ),
+                           Example: "SYST:VERS?",
+                           Test_Behavior: Test_Behavior.Query_Safe ),
 
         new Command_Entry( Command: "*STB?",
                            Syntax: "*STB?",
@@ -595,7 +661,8 @@ namespace Multimeter_Controller
                            Parameters: "None (returns decimal value of status byte)",
                            Query_Form: "*STB?",
                            Default_Value: "N/A",
-                           Example: "*STB?" ),
+                           Example: "*STB?",
+                           Test_Behavior: Test_Behavior.Query_Safe ),
 
         new Command_Entry( Command: "*SRE",
                            Syntax: "*SRE <value>",
@@ -604,7 +671,8 @@ namespace Multimeter_Controller
                            Parameters: "value: 0–255 (bit mask)",
                            Query_Form: "*SRE?",
                            Default_Value: "0",
-                           Example: "*SRE 32" ),
+                           Example: "*SRE 32",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "*ESE",
                            Syntax: "*ESE <value>",
@@ -613,7 +681,8 @@ namespace Multimeter_Controller
                            Parameters: "value: 0–255 (bit mask)",
                            Query_Form: "*ESE?",
                            Default_Value: "0",
-                           Example: "*ESE 1" ),
+                           Example: "*ESE 1",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "*ESR?",
                            Syntax: "*ESR?",
@@ -622,10 +691,10 @@ namespace Multimeter_Controller
                            Parameters: "None (returns decimal value of register)",
                            Query_Form: "*ESR?",
                            Default_Value: "N/A",
-                           Example: "*ESR?" ),
+                           Example: "*ESR?",
+                           Test_Behavior: Test_Behavior.Query_Safe ),
 
         // ===== IO Commands =====
-
         new Command_Entry( Command: "DISP",
                            Syntax: "DISPlay <mode>",
                            Description: "Enable or disable front panel display",
@@ -633,7 +702,8 @@ namespace Multimeter_Controller
                            Parameters: "mode: ON | OFF",
                            Query_Form: "DISP?",
                            Default_Value: "ON",
-                           Example: "DISP ON" ),
+                           Example: "DISP ON",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "DISP:PAGE",
                            Syntax: "DISPlay:PAGE <page>",
@@ -642,7 +712,8 @@ namespace Multimeter_Controller
                            Parameters: "page: MEAS | SETUP | LIST | CORR | LIMIT",
                            Query_Form: "DISP:PAGE?",
                            Default_Value: "MEAS",
-                           Example: "DISP:PAGE MEAS" ),
+                           Example: "DISP:PAGE MEAS",
+                           Test_Behavior: Test_Behavior.Write_Then_Query ),
 
         new Command_Entry( Command: "SYST:BEEP",
                            Syntax: "SYSTem:BEEPer",
@@ -651,10 +722,10 @@ namespace Multimeter_Controller
                            Parameters: "None",
                            Query_Form: null,
                            Default_Value: "N/A",
-                           Example: "SYST:BEEP" ),
+                           Example: "SYST:BEEP",
+                           Test_Behavior: Test_Behavior.Skip_Destructive ),
 
         // ===== Memory Commands =====
-
         new Command_Entry( Command: "*SAV",
                            Syntax: "*SAV <register>",
                            Description: "Save current instrument state to memory register",
@@ -662,7 +733,8 @@ namespace Multimeter_Controller
                            Parameters: "register: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10",
                            Query_Form: "",
                            Default_Value: "N/A",
-                           Example: "*SAV 1" ),
+                           Example: "*SAV 1",
+                           Test_Behavior: Test_Behavior.Skip_Destructive ),
 
         new Command_Entry( Command: "*RCL",
                            Syntax: "*RCL <register>",
@@ -671,10 +743,10 @@ namespace Multimeter_Controller
                            Parameters: "register: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10",
                            Query_Form: null,
                            Default_Value: "N/A",
-                           Example: "*RCL 1" ),
+                           Example: "*RCL 1",
+                           Test_Behavior: Test_Behavior.Skip_Destructive ),
 
         // ===== Calibration Commands =====
-
         new Command_Entry( Command: "CAL:SEC:STAT",
                            Syntax: "CALibration:SECure:STATe <mode>,<code>",
                            Description: "Enable or disable calibration security",
@@ -682,7 +754,8 @@ namespace Multimeter_Controller
                            Parameters: "mode: ON | OFF, code: security code string",
                            Query_Form: "CAL:SEC:STAT?",
                            Default_Value: "ON",
-                           Example: "CAL:SEC:STAT OFF,HP04263" ),
+                           Example: "CAL:SEC:STAT OFF,HP04263",
+                           Test_Behavior: Test_Behavior.Skip_Destructive ),
 
         new Command_Entry( Command: "CAL:COUN?",
                            Syntax: "CALibration:COUNt?",
@@ -691,7 +764,8 @@ namespace Multimeter_Controller
                            Parameters: "None (read-only)",
                            Query_Form: "CAL:COUN?",
                            Default_Value: "N/A",
-                           Example: "CAL:COUN?" ),
+                           Example: "CAL:COUN?",
+                           Test_Behavior: Test_Behavior.Query_Safe ),
 
         new Command_Entry( Command: "CAL:STR",
                            Syntax: "CALibration:STRing <message>",
@@ -700,12 +774,106 @@ namespace Multimeter_Controller
                            Parameters: "message: up to 40 characters in double quotes",
                            Query_Form: "CAL:STR?",
                            Default_Value: "N/A",
-                           Example: "CAL:STR \"Cal 2026-01-15\"" ),
+                           Example: "CAL:STR \"Cal 2026-01-15\"",
+                           Test_Behavior: Test_Behavior.Skip_Destructive ),
       };
 
       Commands.Sort( ( A, B ) => string.Compare( A.Command, B.Command, StringComparison.OrdinalIgnoreCase ) );
 
       return Commands;
+    }
+
+    public class Test_Profile : IInstrument_Test_Profile
+    {
+      public string              Reset_Command   => "*RST";
+      public string              Error_Query     => "SYST:ERR?";
+      public bool                Has_Error_Queue => true;
+
+      public List<Command_Entry> Get_Commands() => HP4263_Command_Dictionary_Class.Get_All_Commands();
+
+      public IEnumerable<Command_Test_Result> Run_Sequences( Func<string, string> Query, Action<string> Send )
+      {
+        foreach ( var R in Test_Impedance_Sequence( Query, Send ) )
+          yield return R;
+        foreach ( var R in Test_Limit_Sequence( Query, Send ) )
+          yield return R;
+      }
+
+      private static IEnumerable<Command_Test_Result> Test_Impedance_Sequence( Func<string, string> Query,
+                                                                               Action<string>       Send )
+      {
+        var Seq_Cmd = new Command_Entry( Command: "READ? [sequence]",
+                                         Syntax: ( "FUNC:IMP:TYPE CPD → FREQ 1000 → FUNC:IMP:RANG:AUTO ON " +
+                                                   "→ READ?" ),
+                                         Description: "Sequenced impedance measurement test",
+                                         Category: Command_Category.Measurement,
+                                         Test_Behavior: Test_Behavior.Requires_Sequence );
+
+        Command_Test_Result Result;
+        try
+        {
+          Send( "FUNC:IMP:TYPE CPD" );
+          Send( "FREQ 1000" );
+          Send( "FUNC:IMP:RANG:AUTO ON" );
+          string Response = Query( "READ?" );
+
+          // Response is primary,secondary,status — split and validate
+          string[ ] Parts = Response.Split( ',' );
+          bool OK = Parts.Length >= 2 && double.TryParse( Parts[ 0 ].Trim(),
+                                                          System.Globalization.NumberStyles.Float,
+                                                          System.Globalization.CultureInfo.InvariantCulture,
+                                                          out _ );
+          Result  = OK ? Command_Test_Result.Pass( Seq_Cmd, Response.Trim() )
+                       : Command_Test_Result.Fail( Seq_Cmd, $"Unexpected response format: {Response}" );
+        }
+        catch ( Exception Ex )
+        {
+          Result = Command_Test_Result.Fail( Seq_Cmd, Ex.Message );
+        }
+
+        yield return Result;
+      }
+
+      private static IEnumerable<Command_Test_Result> Test_Limit_Sequence( Func<string, string> Query,
+                                                                           Action<string>       Send )
+      {
+        var Seq_Cmd = new Command_Entry( Command: "CALC:LIM:FAIL? [sequence]",
+                                         Syntax: ( "CALC:LIM:TYPE A → CALC:LIM:STAT ON → READ? → " +
+                                                   "CALC:LIM:FAIL?" ),
+                                         Description: "Sequenced limit test query",
+                                         Category: Command_Category.Math,
+                                         Test_Behavior: Test_Behavior.Requires_Sequence );
+
+        Command_Test_Result Result;
+        try
+        {
+          Send( "CALC:LIM:TYPE A" );
+          Send( "CALC:LIM:LOW 0" );
+          Send( "CALC:LIM:UPP 1e6" );
+          Send( "CALC:LIM:STAT ON" );
+          Query( "READ?" );
+          string Fail = Query( "CALC:LIM:FAIL?" );
+          bool   OK   = Fail.Trim() == "0" || Fail.Trim() == "1";
+          Result = OK ? Command_Test_Result.Pass( Seq_Cmd, $"FAIL?={Fail.Trim()} (0=pass 1=fail)" )
+                      : Command_Test_Result.Fail( Seq_Cmd, $"Unexpected CALC:LIM:FAIL? response: {Fail}" );
+        }
+        catch ( Exception Ex )
+        {
+          Result = Command_Test_Result.Fail( Seq_Cmd, Ex.Message );
+        }
+        finally
+        {
+          try
+          {
+            Send( "CALC:LIM:STAT OFF" );
+          }
+          catch
+          {
+          }
+        }
+
+        yield return Result;
+      }
     }
   }
 }

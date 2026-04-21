@@ -81,48 +81,70 @@ namespace Multimeter_Controller
   public partial class Form1 : Form
   {
 
-    private List<Command_Entry>      _All_Commands;
+    private List<Command_Entry> _All_Commands;
     private readonly Instrument_Comm _Comm;
-    private Meter_Type               _Selected_Meter = Meter_Type_Extensions.Combo_Order[ 0 ];
+    private Meter_Type _Selected_Meter = Meter_Type_Extensions.Combo_Order[ 0 ];
     private CancellationTokenSource? _Scan_Cts;
-    private bool      _Is_Scanning;
-    private bool      _Ignore_Selection_Changed = false;
+    private bool _Is_Scanning;
+    private bool _Ignore_Selection_Changed = false;
 
     // Maximum number of commands to keep in history
     private const int _Max_History_Size = 50;
 
     private readonly List<Instrument> _Instruments = new List<Instrument>();
 
-    private int                       _Selected_Address = 0;
+    private int _Selected_Address = 0;
 
-    private bool                      _Updating_Controls = false;
+    private bool _Updating_Controls = false;
 
-    private int                       _Selected_Index = -1;
+    private int _Selected_Index = -1;
 
-    private Application_Settings      _Settings = null!;
-    private Chart_Theme               _Theme    = null!;
+    private Application_Settings _Settings = null!;
+    private Chart_Theme _Theme = null!;
 
-    private int                       _Instrument_Count = 0;
-    public bool                       Is_GPIB           = false;
-    public bool                       Is_Serial         = false;
-    public bool                       Is_Ethernet       = false;
+    private int _Instrument_Count = 0;
+    public bool Is_GPIB = false;
+    public bool Is_Serial = false;
+    public bool Is_Ethernet = false;
 
-    private bool                      _Cleanup_Done = false;
+    private bool _Cleanup_Done = false;
 
     private Multi_Instrument_Poll_Form? _Poll_Form = null;
 
-    private bool _Adding_Instrument  = false; // true while async add is in progress
-    private bool Poll_Form_Is_Open  => _Poll_Form != null && ! _Poll_Form.IsDisposed;
+    private bool _Adding_Instrument = false; // true while async add is in progress
+    private bool Poll_Form_Is_Open => _Poll_Form != null && !_Poll_Form.IsDisposed;
 
     private void AboutItem_Click( object sender, EventArgs e ) => App_Help.Show_About( this );
-    private void HelpItem_Click( object sender, EventArgs e )  => App_Help.Show_Launcher_Help( this );
+    private void HelpItem_Click( object sender, EventArgs e ) => App_Help.Show_Launcher_Help( this );
 
     private System.Windows.Forms.ToolTip Tool_Tip = new System.Windows.Forms.ToolTip();
-
+    private CancellationTokenSource? _Test_Cts;
     public Form1()
     {
 
       using var Block = Trace_Block.Start_If_Enabled();
+
+      AppDomain.CurrentDomain.UnhandledException += ( s, e ) =>
+      {
+        var Ex = e.ExceptionObject as Exception;
+        MessageBox.Show( $"Type:  {Ex?.GetType().FullName}\n\n" + $"Msg:   {Ex?.Message}\n\n" +
+                           $"Stack:\n{Ex?.StackTrace}",
+                         "Unhandled Domain Exception",
+                         MessageBoxButtons.OK,
+                         MessageBoxIcon.Error );
+      };
+
+      TaskScheduler.UnobservedTaskException += ( s, e ) =>
+      {
+        e.SetObserved();
+        MessageBox.Show( $"Type:  {e.Exception.GetType().FullName}\n\n" +
+                           $"Msg:   {e.Exception.Message}\n\n" +
+                           $"Inner: {e.Exception.InnerException?.Message}\n\n" +
+                           $"Stack:\n{e.Exception.StackTrace}",
+                         "Unobserved Task Exception",
+                         MessageBoxButtons.OK,
+                         MessageBoxIcon.Error );
+      };
 
       Capture_Trace.Write( "Main Form Constructor Start..." );
 
@@ -131,7 +153,7 @@ namespace Multimeter_Controller
         _Settings = Application_Settings.Load();
         Capture_Trace.Write( "Loaded Application Settings" );
       }
-      catch ( Exception ex )
+      catch (Exception ex)
       {
         MessageBox.Show( $"Load crashed: {ex.Message}\n\n{ex.StackTrace}" );
         return;
@@ -143,7 +165,7 @@ namespace Multimeter_Controller
         // _Theme = Chart_Theme.Light_Preset();
         Capture_Trace.Write( "Loaded Application Theme" );
       }
-      catch ( Exception ex )
+      catch (Exception ex)
       {
         MessageBox.Show( $"Theme crashed: {ex.Message}\n\n{ex.StackTrace}" );
         return;
@@ -169,7 +191,7 @@ namespace Multimeter_Controller
 
       string Instrument_Type = "";
 
-      foreach ( var Type in Meter_Type_Extensions.Combo_Order )
+      foreach (var Type in Meter_Type_Extensions.Combo_Order)
       {
         Instrument_Type = Type.Get_Name();
         Capture_Trace.Write( $"Adding Instrument type -> {Instrument_Type}" );
@@ -180,12 +202,12 @@ namespace Multimeter_Controller
       Capture_Trace.Write( "" );
 
       Instrument_Type_Combo.SelectedIndex = Meter_Type.Generic_GPIB.To_Combo_Index();
-      Instrument_Name_Text.Text           = Meter_Type.Generic_GPIB.Get_Name();
+      Instrument_Name_Text.Text = Meter_Type.Generic_GPIB.Get_Name();
 
       Load_NPLC_Combo( Meter_Type.Generic_GPIB );
       _Updating_Controls = false;
 
-      Instruments_List.DataSource    = _Instruments;
+      Instruments_List.DataSource = _Instruments;
       Instruments_List.DisplayMember = "Name";
 
       _Comm = new Instrument_Comm( _Settings );
@@ -207,25 +229,19 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-
-
-
-
       helpToolStripMenuItem.Click += ( s, e ) => App_Help.Show_Launcher_Help( this );
       aboutToolStripMenuItem.Click += ( s, e ) => App_Help.Show_About( this );
 
       _Comm.Connection_Changed += Comm_Connection_Changed;
-      _Comm.Error_Occurred     += Comm_Error_Occurred;
-      _Comm.Data_Received      += Comm_Data_Received;
+      _Comm.Error_Occurred += Comm_Error_Occurred;
+      _Comm.Data_Received += Comm_Data_Received;
 
-      if ( ! string.IsNullOrWhiteSpace( _Settings.Default_Window_Title ) )
+      if (!string.IsNullOrWhiteSpace( _Settings.Default_Window_Title ))
         this.Text = _Settings.Default_Window_Title + " - Launcher";
 
       Instruments_List.SelectedIndexChanged += Instruments_List_SelectedIndexChanged;
       _Settings.Theme_Changed += On_Theme_Changed;
     }
-
-
 
     private void On_Theme_Changed( object? Sender, EventArgs E )
     {
@@ -238,17 +254,16 @@ namespace Multimeter_Controller
       using var Block = Trace_Block.Start_If_Enabled();
 
       var Tags_Allowed = new HashSet<string> { "Response_Text_Box",
-                                             "Instruments_List",
-                                             "Command_History",
-                                             "Command_List",
-                                             "Detail_List" };
+                                                     "Instruments_List",
+                                                     "Command_History",
+                                                     "Command_List",
+                                                     "Detail_List" };
       foreach (var item in Get_All_Tags( this ))
       {
         if (item.tag != null && Tags_Allowed.Contains( item.tag ))
           _Settings.Apply_Theme_To_Control( item.control, _Settings.Panel_Theme, item.tag );
       }
     }
-
 
     private void Load_NPLC_Combo( Meter_Type Type, decimal? Current_NPLC = null )
     {
@@ -261,7 +276,7 @@ namespace Multimeter_Controller
       string Target = Current_NPLC?.ToString( CultureInfo.InvariantCulture ) ?? _Settings.Default_NPLC ?? "1";
 
       NPLC_Combo_Box.SelectedItem = Target;
-      if ( NPLC_Combo_Box.SelectedIndex < 0 )
+      if (NPLC_Combo_Box.SelectedIndex < 0)
         NPLC_Combo_Box.SelectedIndex = 0;
     }
 
@@ -269,10 +284,10 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      if ( _Comm.Is_Connected && ! _Cleanup_Done )
+      if (_Comm.Is_Connected && !_Cleanup_Done)
       {
         e.Cancel = true;
-        _        = Shutdown_And_Close();
+        _ = Shutdown_And_Close();
         return;
       }
 
@@ -295,7 +310,7 @@ namespace Multimeter_Controller
       using var Block = Trace_Block.Start_If_Enabled();
 
       Command_List.Items.Clear();
-      foreach ( Command_Entry Entry in _All_Commands )
+      foreach (Command_Entry Entry in _All_Commands)
       {
         Command_List.Items.Add( $"{Entry.Command}  -  {Entry.Description}" );
       }
@@ -304,27 +319,36 @@ namespace Multimeter_Controller
     public class Device_Health_Result
     {
 
-      public string       Prologix_Auto    = "";
-      public string       Prologix_EOI     = "";
-      public string       Prologix_EOS     = "";
-      public string       Prologix_SaveCfg = "";
+      public string Prologix_Auto = "";
+      public string Prologix_EOI = "";
+      public string Prologix_EOS = "";
+      public string Prologix_SaveCfg = "";
 
-      public bool         Is_Healthy { get; set; }
-      public string       Device_Identity { get; set; }
+      public bool Is_Healthy
+      {
+        get; set;
+      }
+      public string Device_Identity
+      {
+        get; set;
+      }
       public List<string> Passed_Checks { get; set; } = new();
       public List<string> Failed_Checks { get; set; } = new();
-      public string       Summary =>
+      public string Summary =>
         Is_Healthy ? $"Device at address {Checked_Address} is operational."
                    : $"Device at address {Checked_Address} failed {Failed_Checks.Count} check(s).";
-      public int Checked_Address { get; set; }
+      public int Checked_Address
+      {
+        get; set;
+      }
     }
 
     private void Command_List_Selected_Index_Changed( object Sender, EventArgs E )
     {
-      if ( _Ignore_Selection_Changed )
+      if (_Ignore_Selection_Changed)
         return;
 
-      if ( Command_List.SelectedIndex < 0 || Command_List.SelectedIndex >= _All_Commands.Count )
+      if (Command_List.SelectedIndex < 0 || Command_List.SelectedIndex >= _All_Commands.Count)
       {
         Detail_Text_Box.Text = "";
         return;
@@ -351,14 +375,14 @@ namespace Multimeter_Controller
 
       // ===== WINDOW TITLE =====
 
-      if ( ! string.IsNullOrWhiteSpace( _Settings.Default_Window_Title ) )
+      if (!string.IsNullOrWhiteSpace( _Settings.Default_Window_Title ))
         this.Text = _Settings.Default_Window_Title;
       else
         this.Text = "W&W Co.  Since 1969";
 
       // ===== SAVE FOLDER =====
 
-      if ( ! string.IsNullOrEmpty( _Settings.Default_Save_Folder ) )
+      if (!string.IsNullOrEmpty( _Settings.Default_Save_Folder ))
       {
         try
         {
@@ -371,12 +395,12 @@ namespace Multimeter_Controller
 
       // ===== GPIB SETTINGS =====
 
-      if ( _Comm != null )
+      if (_Comm != null)
       {
         _Comm.Read_Timeout_Ms = _Settings.Default_GPIB_Timeout_Ms;
       }
 
-      Subnet_Textbox.Text     = _Settings.Network_Scan_Subnet;
+      Subnet_Textbox.Text = _Settings.Network_Scan_Subnet;
       IP_Address_Textbox.Text = _Settings.Default_IP_Address;
 
       Capture_Trace.Write(
@@ -435,13 +459,13 @@ namespace Multimeter_Controller
 
       try
       {
-        if ( this == null || this.IsDisposed || ! this.IsHandleCreated )
+        if (this == null || this.IsDisposed || !this.IsHandleCreated)
           return;
 
-        if ( InvokeRequired )
+        if (InvokeRequired)
         {
           // Check handle again to avoid race between check and invoke
-          if ( this.IsHandleCreated && ! this.IsDisposed )
+          if (this.IsHandleCreated && !this.IsDisposed)
             BeginInvoke( UI_Action );
         }
         else
@@ -449,11 +473,11 @@ namespace Multimeter_Controller
           UI_Action();
         }
       }
-      catch ( ObjectDisposedException )
+      catch (ObjectDisposedException)
       {
         // Ignore – form is closing
       }
-      catch ( InvalidOperationException )
+      catch (InvalidOperationException)
       {
         // Ignore – handle already destroyed
       }
@@ -469,31 +493,31 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      if ( InvokeRequired )
+      if (InvokeRequired)
       {
         BeginInvoke( new Action( () => Update_Trace_Button_State( Trace_Visible ) ) );
         return;
       }
 
-      Button_Show_Execution_Trace.Text      = Trace_Visible ? "Trace OFF" : "Trace ON";
+      Button_Show_Execution_Trace.Text = Trace_Visible ? "Trace OFF" : "Trace ON";
       Button_Show_Execution_Trace.BackColor = Trace_Visible ? Color.Yellow : SystemColors.Control;
     }
 
     private void Trace_Window_Trace_Visibility_Changed( bool Visible )
     {
-      if ( InvokeRequired )
+      if (InvokeRequired)
       {
         BeginInvoke( () => Trace_Window_Trace_Visibility_Changed( Visible ) );
         return;
       }
-      Button_Show_Execution_Trace.Text      = Visible ? "Trace OFF" : "Trace ON";
+      Button_Show_Execution_Trace.Text = Visible ? "Trace OFF" : "Trace ON";
       Button_Show_Execution_Trace.BackColor = Visible ? Color.Green : SystemColors.Control;
     }
 
     private void Button_Show_Execution_Trace_Click( object? Sender, EventArgs Args )
     {
       Trace_Execution.Toggle();
-      Button_Show_Execution_Trace.Text      = Trace_Execution.IsRunning ? "Trace OFF" : "Trace ON";
+      Button_Show_Execution_Trace.Text = Trace_Execution.IsRunning ? "Trace OFF" : "Trace ON";
       Button_Show_Execution_Trace.BackColor = Trace_Execution.IsRunning ? Color.Yellow : SystemColors.Control;
     }
 
@@ -501,7 +525,7 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      if ( _Poll_Form != null && ! _Poll_Form.IsDisposed )
+      if (_Poll_Form != null && !_Poll_Form.IsDisposed)
       {
         _Poll_Form.BringToFront();
         return;
@@ -509,7 +533,7 @@ namespace Multimeter_Controller
 
       Cursor = Cursors.WaitCursor;
 
-      if ( _Instruments.Count == 0 )
+      if (_Instruments.Count == 0)
       {
         MessageBox.Show( "No instruments configured. Please scan for instruments first.",
                          "No Instruments",
@@ -523,21 +547,24 @@ namespace Multimeter_Controller
       Commit_Current_Instrument_Edits();
 
       var Cloned = _Instruments
-                     .Select( Ins => new Instrument { Name       = Ins.Name,
-                                                      Address    = Ins.Address,
-                                                      Type       = Ins.Type,
-                                                      Visible    = Ins.Visible,
-                                                      NPLC       = Ins.NPLC,
-                                                      Meter_Roll = Ins.Meter_Roll,
-                                                      Is_Master  = Ins.Is_Master } )
+                     .Select( Ins => new Instrument
+                     {
+                       Name = Ins.Name,
+                       Address = Ins.Address,
+                       Type = Ins.Type,
+                       Visible = Ins.Visible,
+                       NPLC = Ins.NPLC,
+                       Meter_Roll = Ins.Meter_Roll,
+                       Is_Master = Ins.Is_Master
+                     } )
                      .ToList();
 
       // ── Verify NPLC values before opening ─────────────────────────────
-      foreach ( var I in Cloned )
+      foreach (var I in Cloned)
         Capture_Trace.Write( $"Clone: {I.Name} NPLC={I.NPLC}" );
 
       // ── Require master selection when 3+ instruments ───────────────────────
-      if ( Cloned.Count( I => I.Visible ) > 2 && ! Cloned.Any( I => I.Is_Master ) )
+      if (Cloned.Count( I => I.Visible ) > 2 && !Cloned.Any( I => I.Is_Master ))
       {
         MessageBox.Show( "Please select a master instrument before starting a multi-poll.",
                          "Master Instrument Required",
@@ -562,13 +589,13 @@ namespace Multimeter_Controller
 
     private void Commit_Current_Instrument_Edits()
     {
-      if ( _Selected_Index < 0 || _Selected_Index >= _Instruments.Count )
+      if (_Selected_Index < 0 || _Selected_Index >= _Instruments.Count)
         return;
 
-      if ( ! decimal.TryParse( NPLC_Combo_Box.SelectedItem?.ToString(),
+      if (!decimal.TryParse( NPLC_Combo_Box.SelectedItem?.ToString(),
                                NumberStyles.Number,
                                CultureInfo.InvariantCulture,
-                               out decimal NPLC ) )
+                               out decimal NPLC ))
         return;
 
       _Instruments[ _Selected_Index ].NPLC = NPLC;
@@ -581,12 +608,12 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      Cursor             = Cursors.WaitCursor;
+      Cursor = Cursors.WaitCursor;
       _Updating_Controls = true;
       Capture_Trace.Write( "Adding Instrument" );
 
-      int        Address = (int) GPIB_Address_Numeric.Value;
-      Meter_Type Type    = Meter_Type_Extensions.From_Combo_Index( Instrument_Type_Combo.SelectedIndex );
+      int Address = (int) GPIB_Address_Numeric.Value;
+      Meter_Type Type = Meter_Type_Extensions.From_Combo_Index( Instrument_Type_Combo.SelectedIndex );
 
       Capture_Trace.Write(
         $"Type captured on entry: {Type}  ComboIndex: {Instrument_Type_Combo.SelectedIndex}" );
@@ -595,11 +622,11 @@ namespace Multimeter_Controller
 
       string Default_Name = Meter_Type_Extensions.Get_Name( Type ); // ← capture before await
 
-      if ( string.IsNullOrEmpty( Name ) )
+      if (string.IsNullOrEmpty( Name ))
         Name = Default_Name;
 
       // ── Duplicate address check ───────────────────────────────────────
-      if ( _Instruments.Any( i => i.Address == Address ) )
+      if (_Instruments.Any( i => i.Address == Address ))
       {
         _Updating_Controls = false;
         MessageBox.Show( $"An instrument at GPIB address {Address} is already in the list.",
@@ -610,11 +637,11 @@ namespace Multimeter_Controller
         return;
       }
 
-      if ( _Comm.Is_Connected )
+      if (_Comm.Is_Connected)
       {
         try
         {
-          if ( _Comm.Is_Address_Verified( Address ) )
+          if (_Comm.Is_Address_Verified( Address ))
           {
             Capture_Trace.Write( $"Address {Address} ({Type}) already verified - using cached result." );
             Append_Response( $"[Address {Address} already verified - using cached result]" );
@@ -622,10 +649,10 @@ namespace Multimeter_Controller
             string Cached_Response = await Task.Run(
               () => _Comm.Verify_GPIB_Address( Address, Is_Legacy_HP( Type ), Restore_Address: false ) );
 
-            if ( string.IsNullOrEmpty( Cached_Response ) )
+            if (string.IsNullOrEmpty( Cached_Response ))
             {
               Append_Response( $"[No response from address {Address} - not added]" );
-              Cursor             = Cursors.Default;
+              Cursor = Cursors.Default;
               _Updating_Controls = false;
               return;
             }
@@ -633,11 +660,11 @@ namespace Multimeter_Controller
             Meter_Type Detected = Multimeter_Common_Helpers_Class.Get_Meter_Type( Cached_Response );
             Capture_Trace.Write( $"Cached detected type: {Detected}  Selected type: {Type}" );
 
-            if ( Detected != Meter_Type.Generic_GPIB && Detected != Type )
+            if (Detected != Meter_Type.Generic_GPIB && Detected != Type)
             {
-              string       Detected_Name = Meter_Type_Extensions.Get_Name( Detected );
-              string       Selected_Name = Meter_Type_Extensions.Get_Name( Type );
-              DialogResult Result        = DialogResult.No;
+              string Detected_Name = Meter_Type_Extensions.Get_Name( Detected );
+              string Selected_Name = Meter_Type_Extensions.Get_Name( Type );
+              DialogResult Result = DialogResult.No;
 
               this.Invoke( () =>
                            {
@@ -651,14 +678,14 @@ namespace Multimeter_Controller
                                                 MessageBoxIcon.Warning );
                            } );
 
-              if ( Result == DialogResult.Cancel )
+              if (Result == DialogResult.Cancel)
               {
-                Cursor                  = Cursors.Default;
+                Cursor = Cursors.Default;
                 Command_List_Label.Text = "";
                 return;
               }
 
-              if ( Result == DialogResult.Yes )
+              if (Result == DialogResult.Yes)
               {
                 Type = Detected;
                 Name = Meter_Type_Extensions.Get_Name( Type );
@@ -686,7 +713,7 @@ namespace Multimeter_Controller
             string ID_Response = await Task.Run(
               () => _Comm.Verify_GPIB_Address( Address, Is_Legacy_HP( Type ), Restore_Address: false ) );
 
-            if ( string.IsNullOrEmpty( ID_Response ) )
+            if (string.IsNullOrEmpty( ID_Response ))
             {
               Append_Response( $"[No instrument at address {Address} - not added]" );
               Cursor = Cursors.Default;
@@ -697,7 +724,7 @@ namespace Multimeter_Controller
             Append_Response( $"[Verified at address {Address}: {ID_Response}]" );
 
             // ── Instrument present but could not be identified ────────────
-            if ( ID_Response == "UNIDENTIFIED" )
+            if (ID_Response == "UNIDENTIFIED")
             {
               Append_Response( $"[Address {Address} has an instrument but it did not respond to IDN]" );
               DialogResult Unid_Result = DialogResult.No;
@@ -713,7 +740,7 @@ namespace Multimeter_Controller
                     MessageBoxIcon.Warning );
                 } );
 
-              if ( Unid_Result != DialogResult.Yes )
+              if (Unid_Result != DialogResult.Yes)
               {
                 Cursor = Cursors.Default;
                 return;
@@ -724,16 +751,16 @@ namespace Multimeter_Controller
             {
               Meter_Type Detected = Multimeter_Common_Helpers_Class.Get_Meter_Type( ID_Response );
 
-              if ( Detected == Meter_Type.Generic_GPIB )
+              if (Detected == Meter_Type.Generic_GPIB)
               {
                 Append_Response(
                   $"[Instrument at address {Address} did not respond to *IDN? — added as {Meter_Type_Extensions.Get_Name( Type )}]" );
               }
-              else if ( Detected != Type )
+              else if (Detected != Type)
               {
-                string       Detected_Name = Meter_Type_Extensions.Get_Name( Detected );
-                string       Selected_Name = Meter_Type_Extensions.Get_Name( Type );
-                DialogResult Result        = DialogResult.No;
+                string Detected_Name = Meter_Type_Extensions.Get_Name( Detected );
+                string Selected_Name = Meter_Type_Extensions.Get_Name( Type );
+                DialogResult Result = DialogResult.No;
 
                 this.Invoke( () =>
                              {
@@ -747,17 +774,17 @@ namespace Multimeter_Controller
                                                   MessageBoxIcon.Warning );
                              } );
 
-                if ( Result == DialogResult.Cancel )
+                if (Result == DialogResult.Cancel)
                 {
                   Command_List_Label.Text = "Commands:";
-                  Cursor                  = Cursors.Default;
+                  Cursor = Cursors.Default;
                   return;
                 }
 
-                if ( Result == DialogResult.Yes )
+                if (Result == DialogResult.Yes)
                 {
                   Command_List_Label.Text = Detected_Name.ToString() + " Commands:";
-                  Type                    = Detected;
+                  Type = Detected;
                   this.Invoke( () => Load_NPLC_Combo( Type ) );
                   Append_Response( $"[Instrument type changed from {Selected_Name} to {Detected_Name}]" );
                 }
@@ -769,7 +796,7 @@ namespace Multimeter_Controller
               }
 
               // ── Update name to match final type if still at default ───
-              if ( Name == Default_Name )
+              if (Name == Default_Name)
                 Name = Meter_Type_Extensions.Get_Name( Type );
             }
           }
@@ -790,7 +817,7 @@ namespace Multimeter_Controller
         decimal.TryParse( NPLC_Combo_Box.SelectedItem?.ToString(), out decimal parsed ) ? parsed : 1m;
 
       decimal Default_NPLC = Meter_Type_Extensions.Get_Default_NPLC( Type );
-      if ( NPLC != Default_NPLC )
+      if (NPLC != Default_NPLC)
       {
         Capture_Trace.Write( $"NPLC overridden by user: {Default_NPLC} → {NPLC}" );
         Append_Response( $"[Note: NPLC set to {NPLC} (default is {Default_NPLC})]" );
@@ -798,13 +825,16 @@ namespace Multimeter_Controller
 
       Capture_Trace.Write( $"Creating instrument: Type={Type}  Name={Name}  Address={Address}" );
 
-      var Inst = new Instrument { Name       = Name,
-                                  Address    = Address,
-                                  Type       = Type,
-                                  Verified   = true,
-                                  Visible    = true,
-                                  NPLC       = NPLC,
-                                  Meter_Roll = Roll_Name_Textbox.Text.Trim() };
+      var Inst = new Instrument
+      {
+        Name = Name,
+        Address = Address,
+        Type = Type,
+        Verified = true,
+        Visible = true,
+        NPLC = NPLC,
+        Meter_Roll = Roll_Name_Textbox.Text.Trim()
+      };
 
       // Calculate min delay including the new instrument before adding
       int Nplc_Min_Ms = _Instruments.Sum( s => s.Poll_Delay_Ms ) +
@@ -817,7 +847,7 @@ namespace Multimeter_Controller
       {
         await Initialize_Remote_For_Instrument( Inst );
       }
-      catch ( Exception Ex )
+      catch (Exception Ex)
       {
         Capture_Trace.Write( $"Failed to initialize instrument at address {Address}: {Ex.Message}" );
         Append_Response( $"[Warning: initialization failed for address {Address}: {Ex.Message}]" );
@@ -825,7 +855,7 @@ namespace Multimeter_Controller
       finally
       {
         Roll_Name_Textbox.Enabled = false;
-        _Selected_Index           = _Instruments.IndexOf( Inst ); // ← select the newly added instrument
+        _Selected_Index = _Instruments.IndexOf( Inst ); // ← select the newly added instrument
         Refresh_Instrument_List();
         Set_Button_State();
 
@@ -840,11 +870,11 @@ namespace Multimeter_Controller
 
       Instruments_List.SelectedIndexChanged -= Instruments_List_SelectedIndexChanged;
 
-      Instruments_List.DataSource    = null;
-      Instruments_List.DataSource    = _Instruments.Where( i => i.Visible ).ToList();
+      Instruments_List.DataSource = null;
+      Instruments_List.DataSource = _Instruments.Where( i => i.Visible ).ToList();
       Instruments_List.DisplayMember = "Display";
 
-      if ( _Selected_Index >= 0 && _Selected_Index < Instruments_List.Items.Count )
+      if (_Selected_Index >= 0 && _Selected_Index < Instruments_List.Items.Count)
         Instruments_List.SelectedIndex = _Selected_Index;
 
       Instruments_List.SelectedIndexChanged += Instruments_List_SelectedIndexChanged; // ← resubscribe first
@@ -859,13 +889,13 @@ namespace Multimeter_Controller
       using var Block = Trace_Block.Start_If_Enabled();
 
       Select_Instrument_Button.Enabled = State;
-      GPIB_Address_Label.Enabled       = State;
-      GPIB_Address_Numeric.Enabled     = State;
+      GPIB_Address_Label.Enabled = State;
+      GPIB_Address_Numeric.Enabled = State;
 
       Remove_Instrument_Button.Enabled = State;
-      Scan_Bus_Button.Enabled          = State;
-      Saved_Instruments_Label.Enabled  = State;
-      Instruments_List.Enabled         = State;
+      Scan_Bus_Button.Enabled = State;
+      Saved_Instruments_Label.Enabled = State;
+      Instruments_List.Enabled = State;
     }
     private void IP_Address_Text_TextChanged( object sender, EventArgs e )
     {
@@ -886,16 +916,16 @@ namespace Multimeter_Controller
     private void Instrument_Type_Combo_SelectedIndexChanged( object Sender, EventArgs E )
     {
       using var Block = Trace_Block.Start_If_Enabled();
-      if ( _Updating_Controls )
+      if (_Updating_Controls)
         return;
-      if ( _Adding_Instrument ) // ← don't stomp combo while async add is running
+      if (_Adding_Instrument) // ← don't stomp combo while async add is running
         return;
-      _Selected_Meter         = Meter_Type_Extensions.From_Combo_Index( Instrument_Type_Combo.SelectedIndex );
-      _Comm.Connected_Meter   = _Selected_Meter;
-      _All_Commands           = Command_Dictionary_Class.Get_All_Commands( _Selected_Meter );
+      _Selected_Meter = Meter_Type_Extensions.From_Combo_Index( Instrument_Type_Combo.SelectedIndex );
+      _Comm.Connected_Meter = _Selected_Meter;
+      _All_Commands = Command_Dictionary_Class.Get_All_Commands( _Selected_Meter );
       Command_List_Label.Text = $"{_Selected_Meter.Get_Name()} Commands";
-      Instrument_Name_Text.Text  = _Selected_Meter.Get_Name();
-      Detail_Text_Box.Text       = "";
+      Instrument_Name_Text.Text = _Selected_Meter.Get_Name();
+      Detail_Text_Box.Text = "";
       Send_Command_Text_Box.Text = "";
       Load_NPLC_Combo( _Selected_Meter );
     }
@@ -904,11 +934,11 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      if ( ! _Comm.Is_Connected )
+      if (!_Comm.Is_Connected)
         return;
 
       // ── Prologix interface setup ──────────────────────────────────────────
-      if ( _Comm.Mode == Connection_Mode.Prologix_GPIB || _Comm.Mode == Connection_Mode.Prologix_Ethernet )
+      if (_Comm.Mode == Connection_Mode.Prologix_GPIB || _Comm.Mode == Connection_Mode.Prologix_Ethernet)
       {
         _Comm.Flush_Buffers();
         string ver = await Task.Run( () => _Comm.Query_Prologix_Version() );
@@ -918,16 +948,16 @@ namespace Multimeter_Controller
 
       Capture_Trace.Write( $"Setting {inst.Type} at address {inst.Address} to remote mode..." );
 
-      switch ( inst.Type )
+      switch (inst.Type)
       {
         // ====================================================================
         // HP 34401A / HP 34420A / HP 33120A / HP 53132A
         // Existing SCPI instruments — unchanged from original
         // ====================================================================
-        case Meter_Type.HP33120 :
-        case Meter_Type.HP34401 :
-        case Meter_Type.HP34420 :
-        case Meter_Type.HP53132 :
+        case Meter_Type.HP33120:
+        case Meter_Type.HP34401:
+        case Meter_Type.HP34420:
+        case Meter_Type.HP53132:
           await _Comm.Send_Prologix_CommandAsync( $"++addr {inst.Address}" );
           await Task.Delay( 50 );
           await _Comm.Send_Prologix_CommandAsync( "++auto 0" );
@@ -966,7 +996,7 @@ namespace Multimeter_Controller
         //   - Supports DATA:LAST? for non-disruptive polling
         //   - Larger memory — clear it on connect to avoid stale readings
         // ====================================================================
-        case Meter_Type.HP34411 :
+        case Meter_Type.HP34411:
           await _Comm.Send_Prologix_CommandAsync( $"++addr {inst.Address}" );
           await Task.Delay( 50 );
           await _Comm.Send_Prologix_CommandAsync( "++auto 0" );
@@ -1019,7 +1049,7 @@ namespace Multimeter_Controller
         //   - OUTP:LOAD defaults to 50 Ohm — confirm this is set
         //   - No SYSTEM:BEEPER:STATE — use SYST:BEEP:STAT
         // ====================================================================
-        case Meter_Type.HP33220 :
+        case Meter_Type.HP33220:
           await _Comm.Send_Prologix_CommandAsync( $"++addr {inst.Address}" );
           await Task.Delay( 50 );
           await _Comm.Send_Prologix_CommandAsync( "++auto 0" );
@@ -1073,7 +1103,7 @@ namespace Multimeter_Controller
         //   - TRIG:SOUR IMM for continuous free-running polling
         //   - SENS:FREQ:GATE:TIME 0.1 is a reasonable default gate
         // ====================================================================
-        case Meter_Type.HP53181 :
+        case Meter_Type.HP53181:
           await _Comm.Send_Prologix_CommandAsync( $"++addr {inst.Address}" );
           await Task.Delay( 50 );
           await _Comm.Send_Prologix_CommandAsync( "++auto 0" );
@@ -1135,7 +1165,7 @@ namespace Multimeter_Controller
         //   - Compensation state is preserved in non-volatile memory —
         //     do NOT clear it on connect. Query and report status only.
         // ====================================================================
-        case Meter_Type.HP4263 :
+        case Meter_Type.HP4263:
           await _Comm.Send_Prologix_CommandAsync( $"++addr {inst.Address}" );
           await Task.Delay( 50 );
           await _Comm.Send_Prologix_CommandAsync( "++auto 0" );
@@ -1193,11 +1223,11 @@ namespace Multimeter_Controller
           Capture_Trace.Write( "Querying compensation state..." );
           try
           {
-            string  Open_State =
+            string Open_State =
               await Task.Run( () => _Comm.Query_Instrument_At_Address( inst.Address, "CORR:OPEN:STAT?" ) );
-            string  Shor_State =
+            string Shor_State =
               await Task.Run( () => _Comm.Query_Instrument_At_Address( inst.Address, "CORR:SHOR:STAT?" ) );
-            string  Load_State =
+            string Load_State =
               await Task.Run( () => _Comm.Query_Instrument_At_Address( inst.Address, "CORR:LOAD:STAT?" ) );
 
             Append_Response( $"> Compensation — Open: {(Open_State.Trim() == "1" ? "ON" : "OFF")}  " +
@@ -1218,8 +1248,8 @@ namespace Multimeter_Controller
         // ====================================================================
         // HP 3458A — existing, unchanged
         // ====================================================================
-        case Meter_Type.HP3458 :
-          if ( _Settings.Send_Reset_On_Connect_3458 )
+        case Meter_Type.HP3458:
+          if (_Settings.Send_Reset_On_Connect_3458)
           {
             Capture_Trace.Write( "Sending Reset..." );
             await _Comm.Send_Instrument_CommandAsync( inst.Address, "RESET" );
@@ -1230,7 +1260,7 @@ namespace Multimeter_Controller
             await Task.Delay( 50 );
           }
 
-          if ( _Settings.Send_End_Always_3458 )
+          if (_Settings.Send_End_Always_3458)
           {
             Capture_Trace.Write( "Sending Beep off..." );
             await _Comm.Send_Instrument_CommandAsync( inst.Address, "BEEP 0" );
@@ -1264,7 +1294,7 @@ namespace Multimeter_Controller
         // ====================================================================
         // Default — generic or unrecognised instrument
         // ====================================================================
-        default :
+        default:
           Capture_Trace.Write( $"No specific init for meter type: {inst.Type}" );
           Append_Response( $"> Connected to {inst.Type} at address {inst.Address}" );
           break;
@@ -1279,31 +1309,34 @@ namespace Multimeter_Controller
     // rather than SCPI. Used during *IDN? verification to select the correct
     // identification probe sequence.
     private static bool Is_Legacy_HP( Meter_Type Type ) =>
-      Type switch { Meter_Type.HP3458  => true, // HP-IB native — responds to "ID?" not "*IDN?"
-                    Meter_Type.HP3456  => true, // HP-IB native — responds to "ID?" not "*IDN?"
-                    Meter_Type.HP34401 => false,
-                    Meter_Type.HP34411 => false,
-                    Meter_Type.HP33120 => false,
-                    Meter_Type.HP33220 => false,
-                    Meter_Type.HP34420 => false,
-                    Meter_Type.HP53132 => false,
-                    Meter_Type.HP53181 => false,
-                    Meter_Type.HP4263  => false,
-                    _                  => false };
+      Type switch
+      {
+        Meter_Type.HP3458 => true, // HP-IB native — responds to "ID?" not "*IDN?"
+        Meter_Type.HP3456 => true, // HP-IB native — responds to "ID?" not "*IDN?"
+        Meter_Type.HP34401 => false,
+        Meter_Type.HP34411 => false,
+        Meter_Type.HP33120 => false,
+        Meter_Type.HP33220 => false,
+        Meter_Type.HP34420 => false,
+        Meter_Type.HP53132 => false,
+        Meter_Type.HP53181 => false,
+        Meter_Type.HP4263 => false,
+        _ => false
+      };
 
     private void Remove_Instrument_Button_Click( object Sender, EventArgs E )
     {
       using var Block = Trace_Block.Start_If_Enabled();
-      int       Index = Instruments_List.SelectedIndex;
+      int Index = Instruments_List.SelectedIndex;
 
-      if ( Index < 0 )
+      if (Index < 0)
       {
 
         return;
       }
 
-      bool Removing_Active = ( _Instruments[ Index ].Type == _Selected_Meter );
-      if ( Removing_Active )
+      bool Removing_Active = (_Instruments[ Index ].Type == _Selected_Meter);
+      if (Removing_Active)
       {
         Command_List.Items.Clear();
         Command_List_Label.Text = "Commands";
@@ -1317,8 +1350,8 @@ namespace Multimeter_Controller
 
     private void Refresh_Instruments_List()
     {
-      Instruments_List.DataSource    = null;
-      Instruments_List.DataSource    = _Instruments;
+      Instruments_List.DataSource = null;
+      Instruments_List.DataSource = _Instruments;
       Instruments_List.DisplayMember = "Display"; // ← always re-assert after rebind
     }
 
@@ -1326,11 +1359,11 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      int       Index = Instruments_List.SelectedIndex;
+      int Index = Instruments_List.SelectedIndex;
 
       Capture_Trace.Write( $"Index -> {Index}" );
 
-      if ( Index < 0 || Index >= _Instruments.Count )
+      if (Index < 0 || Index >= _Instruments.Count)
         return;
 
       _Selected_Index = Index; // ← this is the only thing this method adds
@@ -1341,23 +1374,23 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      if ( Instruments_List.SelectedItem is not Instrument Instrument )
+      if (Instruments_List.SelectedItem is not Instrument Instrument)
         return;
 
       Command_List.BeginUpdate();
 
       //_Selected_Index = _Instruments.IndexOf ( Instrument );  // ← true index in master list
 
-      int Index       = Instruments_List.SelectedIndex;
+      int Index = Instruments_List.SelectedIndex;
       _Selected_Index = Index;
 
-      _Selected_Meter   = Instrument.Type;
+      _Selected_Meter = Instrument.Type;
       _Selected_Address = Instrument.Address;
       _Comm.Change_GPIB_Address( Instrument.Address );
       _Comm.Connected_Meter = _Selected_Meter;
-      _All_Commands         = Command_Dictionary_Class.Get_All_Commands( _Selected_Meter );
+      _All_Commands = Command_Dictionary_Class.Get_All_Commands( _Selected_Meter );
 
-      _Updating_Controls                  = true;
+      _Updating_Controls = true;
       Instrument_Type_Combo.SelectedIndex = _Selected_Meter.To_Combo_Index();
       Load_NPLC_Combo( _Selected_Meter, Instrument.NPLC );
       _Updating_Controls = false;
@@ -1372,20 +1405,20 @@ namespace Multimeter_Controller
     private async void Scan_Bus_Button_Click( object sender, EventArgs e )
     {
       // If already scanning, cancel and let the finally below clean up
-      if ( _Is_Scanning )
+      if (_Is_Scanning)
       {
         _Scan_Cts?.Cancel();
-        Scan_Bus_Button.Text    = "Canceling...";
+        Scan_Bus_Button.Text = "Canceling...";
         Scan_Bus_Button.Enabled = false;
         Append_Response( "[Canceling bus scan...]" );
         return;
       }
 
-      if ( ! _Comm.Is_Connected )
+      if (!_Comm.Is_Connected)
         return;
 
-      _Is_Scanning         = true;
-      _Scan_Cts            = new CancellationTokenSource();
+      _Is_Scanning = true;
+      _Scan_Cts = new CancellationTokenSource();
       Scan_Bus_Button.Text = "Stop Scan";
       Append_Response( "[Scanning GPIB bus...]" );
 
@@ -1393,11 +1426,11 @@ namespace Multimeter_Controller
       {
         await Run_Bus_Scan( _Scan_Cts.Token );
       }
-      catch ( OperationCanceledException )
+      catch (OperationCanceledException)
       {
         Append_Response( "[Bus scan canceled]" );
       }
-      catch ( Exception ex )
+      catch (Exception ex)
       {
         Append_Response( $"[Error during bus scan: {ex.Message}]" );
       }
@@ -1405,48 +1438,51 @@ namespace Multimeter_Controller
       {
         _Is_Scanning = false;
         _Scan_Cts?.Dispose();
-        _Scan_Cts               = null;
-        Scan_Bus_Button.Text    = "Scan Bus";
+        _Scan_Cts = null;
+        Scan_Bus_Button.Text = "Scan Bus";
         Scan_Bus_Button.Enabled = _Comm.Is_Connected;
       }
     }
 
     private async Task Run_Bus_Scan( CancellationToken Token )
     {
-      using var         Block = Trace_Block.Start_If_Enabled();
+      using var Block = Trace_Block.Start_If_Enabled();
 
-      var               Progress = new Progress<string>( msg => Append_Response( msg ) );
+      var Progress = new Progress<string>( msg => Append_Response( msg ) );
 
       List<Scan_Result> Results = await _Comm.Scan_GPIB_BusAsync( Progress, Token );
 
-      foreach ( var result in Results )
+      foreach (var result in Results)
       {
         Meter_Type type = result.Detected_Type ?? Meter_Type.HP3458;
         string name = result.ID_String.Length > 40 ? result.ID_String.Substring( 0, 40 ) : result.ID_String;
 
-        var    existing = _Instruments.FirstOrDefault( i => i.Address == result.Address );
+        var existing = _Instruments.FirstOrDefault( i => i.Address == result.Address );
 
-        if ( existing != null )
+        if (existing != null)
         {
           existing.Verified = true;
-          existing.Visible  = true;
-          existing.Name     = name;
+          existing.Visible = true;
+          existing.Name = name;
           Append_Response( $"[Instrument at GPIB {result.Address} refreshed]" );
         }
         else
         {
-          _Instruments.Add( new Instrument { Name     = name,
-                                             Address  = result.Address,
-                                             Type     = type,
-                                             Verified = true,
-                                             Visible  = true } );
+          _Instruments.Add( new Instrument
+          {
+            Name = name,
+            Address = result.Address,
+            Type = type,
+            Verified = true,
+            Visible = true
+          } );
           Append_Response( $"[Detected new instrument at GPIB {result.Address}]" );
         }
       }
 
       Refresh_Instrument_List();
 
-      if ( Results.Count == 0 )
+      if (Results.Count == 0)
         Append_Response( "No instruments found on the GPIB bus." );
     }
 
@@ -1454,7 +1490,7 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      if ( Entry == null )
+      if (Entry == null)
       {
         Execute_Button.Enabled = false;
         // Query_Button.Enabled = false;
@@ -1469,21 +1505,21 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      string    Input = Send_Command_Text_Box.Text.Trim();
-      if ( string.IsNullOrWhiteSpace( Input ) )
+      string Input = Send_Command_Text_Box.Text.Trim();
+      if (string.IsNullOrWhiteSpace( Input ))
         return;
 
       Capture_Trace.Write( $"Command -> {Input}" );
 
       // Parse command and optional parameters
-      string[ ] Parts   = Input.Split( ' ', 2 );
+      string[] Parts = Input.Split( ' ', 2 );
       string Base_Token = Parts[ 0 ].TrimEnd( '?' );
-      bool   Is_Query   = Parts[ 0 ].EndsWith( '?' );
+      bool Is_Query = Parts[ 0 ].EndsWith( '?' );
       string Parameters = Parts.Length > 1 ? Parts[ 1 ].Trim() : "";
 
       // Rebuild final command preserving query suffix and parameters
       string Final_Command =
-        Base_Token + ( Is_Query ? "?" : "" ) + ( string.IsNullOrEmpty( Parameters ) ? "" : " " + Parameters );
+        Base_Token + (Is_Query ? "?" : "") + (string.IsNullOrEmpty( Parameters ) ? "" : " " + Parameters);
 
       Execute_Command( Final_Command );
     }
@@ -1492,7 +1528,7 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      if ( ! _Comm.Is_Connected )
+      if (!_Comm.Is_Connected)
         return;
 
       try
@@ -1500,15 +1536,15 @@ namespace Multimeter_Controller
         Capture_Trace.Write( $"Command -> {Command}" );
         Add_Command_To_History( Command );
 
-        if ( Command.StartsWith( "++" ) )
+        if (Command.StartsWith( "++" ))
         {
           _Comm.Send_Prologix_Command( Command );
         }
-        else if ( Command.EndsWith( "?" ) )
+        else if (Command.EndsWith( "?" ))
         {
           // Query - send and read response
           string Response = _Comm.Query_Instrument( Command );
-          if ( ! string.IsNullOrWhiteSpace( Response ) )
+          if (!string.IsNullOrWhiteSpace( Response ))
             Append_Response( $"< {Response}" );
           else
             Append_Response( "< (no response)" );
@@ -1518,7 +1554,7 @@ namespace Multimeter_Controller
           _Comm.Send_Instrument_Command( Command );
         }
       }
-      catch ( Exception Ex )
+      catch (Exception Ex)
       {
         Add_Command_To_History( $"ERROR: {Ex.Message}" );
       }
@@ -1528,7 +1564,7 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      if ( ! _Comm.Is_Connected )
+      if (!_Comm.Is_Connected)
         return;
 
       try
@@ -1540,7 +1576,7 @@ namespace Multimeter_Controller
         string Response = _Comm.Query_Instrument( Command );
         Append_Response( $"< {Response}" );
       }
-      catch ( Exception Ex )
+      catch (Exception Ex)
       {
         Add_Command_To_History( $"ERROR: {Ex.Message}" );
       }
@@ -1574,8 +1610,8 @@ namespace Multimeter_Controller
     }
     private async void Diag_Button_Click( object Sender, EventArgs E )
     {
-      using var Block   = Trace_Block.Start_If_Enabled();
-      string    Command = Send_Command_Text_Box.Text.Trim();
+      using var Block = Trace_Block.Start_If_Enabled();
+      string Command = Send_Command_Text_Box.Text.Trim();
 
       /*
       if ( string.IsNullOrEmpty ( Command ) )
@@ -1584,7 +1620,7 @@ namespace Multimeter_Controller
       }
       */
 
-      if ( ! _Comm.Is_Connected )
+      if (!_Comm.Is_Connected)
       {
         Append_Response( "[Not connected]" );
         return;
@@ -1610,7 +1646,7 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      if ( Response_Text_Box.Text.Length > 0 )
+      if (Response_Text_Box.Text.Length > 0)
       {
         Response_Text_Box.AppendText( "\r\n" );
       }
@@ -1637,7 +1673,7 @@ namespace Multimeter_Controller
 
       // Baud rates
       Baud_Rate_Combo.Items.Clear();
-      foreach ( int Rate in Instrument_Comm.Get_Available_Baud_Rates() )
+      foreach (int Rate in Instrument_Comm.Get_Available_Baud_Rates())
       {
         Baud_Rate_Combo.Items.Add( Rate );
       }
@@ -1645,7 +1681,7 @@ namespace Multimeter_Controller
 
       // Data bits
       Data_Bits_Combo.Items.Clear();
-      foreach ( int Bits in Instrument_Comm.Get_Available_Data_Bits() )
+      foreach (int Bits in Instrument_Comm.Get_Available_Data_Bits())
       {
         Data_Bits_Combo.Items.Add( Bits );
       }
@@ -1653,7 +1689,7 @@ namespace Multimeter_Controller
 
       // Parity
       Parity_Combo.Items.Clear();
-      foreach ( Parity P in Enum.GetValues( typeof( Parity ) ) )
+      foreach (Parity P in Enum.GetValues( typeof( Parity ) ))
       {
         Parity_Combo.Items.Add( P );
       }
@@ -1668,14 +1704,14 @@ namespace Multimeter_Controller
 
       // Flow control
       Flow_Control_Combo.Items.Clear();
-      foreach ( Handshake H in Enum.GetValues( typeof( Handshake ) ) )
+      foreach (Handshake H in Enum.GetValues( typeof( Handshake ) ))
       {
         Flow_Control_Combo.Items.Add( H );
       }
       Flow_Control_Combo.SelectedItem = Handshake.None;
 
       Read_Timeout_Combo_Box.Items.Clear();
-      foreach ( int Timeout in Instrument_Comm.Get_Available_Read_Timeouts() )
+      foreach (int Timeout in Instrument_Comm.Get_Available_Read_Timeouts())
       {
         Read_Timeout_Combo_Box.Items.Add( Timeout );
       }
@@ -1709,18 +1745,18 @@ namespace Multimeter_Controller
       string? Previous_Selection = COM_Port_Combo.SelectedItem?.ToString();
 
       COM_Port_Combo.Items.Clear();
-      string[ ] Ports = Instrument_Comm.Get_Available_Ports();
+      string[] Ports = Instrument_Comm.Get_Available_Ports();
 
-      foreach ( string Port in Ports )
+      foreach (string Port in Ports)
       {
         COM_Port_Combo.Items.Add( Port );
       }
 
-      if ( Previous_Selection != null && COM_Port_Combo.Items.Contains( Previous_Selection ) )
+      if (Previous_Selection != null && COM_Port_Combo.Items.Contains( Previous_Selection ))
       {
         COM_Port_Combo.SelectedItem = Previous_Selection;
       }
-      else if ( COM_Port_Combo.Items.Count > 0 )
+      else if (COM_Port_Combo.Items.Count > 0)
       {
         COM_Port_Combo.SelectedIndex = 0;
       }
@@ -1737,46 +1773,46 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      if ( Connection_Mode_Combo.SelectedIndex == 1 )
+      if (Connection_Mode_Combo.SelectedIndex == 1)
       {
         Capture_Trace.Write( "Setting defaults for Direct Serial connection" );
 
         // Defaults for Direct Serial (RS-232)
-        Baud_Rate_Combo.SelectedItem        = 9600;
-        Data_Bits_Combo.SelectedItem        = 8;
-        Parity_Combo.SelectedItem           = Parity.None;
-        Stop_Bits_Combo.SelectedItem        = StopBits.One;
-        Flow_Control_Combo.SelectedItem     = Handshake.None;
+        Baud_Rate_Combo.SelectedItem = 9600;
+        Data_Bits_Combo.SelectedItem = 8;
+        Parity_Combo.SelectedItem = Parity.None;
+        Stop_Bits_Combo.SelectedItem = StopBits.One;
+        Flow_Control_Combo.SelectedItem = Handshake.None;
         Read_Timeout_Combo_Box.SelectedItem = 3000;
 
         Connected_Instrument_Textbox.Text = "";
-        _Selected_Address                 = 0;
+        _Selected_Address = 0;
         Set_GPID_Controls( State: false );
       }
-      else if ( Connection_Mode_Combo.SelectedIndex == 2 )
+      else if (Connection_Mode_Combo.SelectedIndex == 2)
       {
         Capture_Trace.Write( "Setting defaults for Ethernet connection" );
         IP_Address_Textbox.Text = "192.168.1.100"; // matches Ethernet_Host default in your class
                                                    //  IP_Port_Numeric.Value = 1234;             // matches
                                                    //  Ethernet_Port default in your class
                                                    // GPIB_Address_Numeric.Value = 22;
-        _Selected_Address       = 22;
+        _Selected_Address = 22;
         Set_GPID_Controls( State: true );
       }
       else
       {
         Capture_Trace.Write( "Setting defaults for Prologix GPIB-USB adapter" );
         // Defaults for Prologix GPIB-USB-HS adapter
-        Baud_Rate_Combo.SelectedItem        = 9600;
-        Data_Bits_Combo.SelectedItem        = 8;
-        Parity_Combo.SelectedItem           = Parity.None;
-        Stop_Bits_Combo.SelectedItem        = StopBits.Two;
-        Flow_Control_Combo.SelectedItem     = Handshake.RequestToSend;
+        Baud_Rate_Combo.SelectedItem = 9600;
+        Data_Bits_Combo.SelectedItem = 8;
+        Parity_Combo.SelectedItem = Parity.None;
+        Stop_Bits_Combo.SelectedItem = StopBits.Two;
+        Flow_Control_Combo.SelectedItem = Handshake.RequestToSend;
         Read_Timeout_Combo_Box.SelectedItem = 3000;
 
         // GPIB_Address_Numeric.Value = 22;
         GPIB_Address_Numeric.Value = 22;
-        _Selected_Address          = (int) GPIB_Address_Numeric.Value;
+        _Selected_Address = (int) GPIB_Address_Numeric.Value;
 
         Set_GPID_Controls( State: true );
       }
@@ -1786,14 +1822,14 @@ namespace Multimeter_Controller
     {
       int Original_Address = -1;
 
-      foreach ( var S in _Instruments )
+      foreach (var S in _Instruments)
       {
         try
         {
           _Comm.Change_GPIB_Address( S.Address );
           await Task.Delay( 50 );
 
-          if ( S.Type == Meter_Type.HP3458 )
+          if (S.Type == Meter_Type.HP3458)
             _Comm.Send_Instrument_Command( "LOCAL" );
           else
             _Comm.Send_Instrument_Command( "SYST:LOC" );
@@ -1808,7 +1844,7 @@ namespace Multimeter_Controller
 
     private async void Connect_Button_Click( object sender, EventArgs e )
     {
-      if ( _Comm.Is_Connected )
+      if (_Comm.Is_Connected)
       {
         Connect_Button.Enabled = false;
         try
@@ -1832,9 +1868,9 @@ namespace Multimeter_Controller
       Is_Ethernet = Connection_Mode_Combo.SelectedIndex == 2;
       Capture_Trace.Write(
         $"Selected connection mode: {(Is_Ethernet ? "Ethernet" : Connection_Mode_Combo.SelectedItem)}" );
-      if ( Is_Ethernet )
+      if (Is_Ethernet)
       {
-        _Comm.Mode          = Connection_Mode.Prologix_Ethernet;
+        _Comm.Mode = Connection_Mode.Prologix_Ethernet;
         _Comm.Ethernet_Host = IP_Address_Textbox.Text.Trim();
         _Comm.Ethernet_Port = (int) _Settings.Default_Prologic_Port;
 
@@ -1844,7 +1880,7 @@ namespace Multimeter_Controller
       }
       else
       {
-        if ( COM_Port_Combo.SelectedItem == null )
+        if (COM_Port_Combo.SelectedItem == null)
         {
           MessageBox.Show( "Please select a COM port.",
                            "Connection Error",
@@ -1856,12 +1892,12 @@ namespace Multimeter_Controller
         _Comm.Mode = Connection_Mode_Combo.SelectedIndex == 0 ? Connection_Mode.Prologix_GPIB
                                                               : Connection_Mode.Direct_Serial;
 
-        _Comm.Port_Name       = COM_Port_Combo.SelectedItem.ToString()!;
-        _Comm.Baud_Rate       = (int) Baud_Rate_Combo.SelectedItem!;
-        _Comm.Data_Bits       = (int) Data_Bits_Combo.SelectedItem!;
-        _Comm.Parity          = (Parity) Parity_Combo.SelectedItem!;
-        _Comm.Stop_Bits       = (StopBits) Stop_Bits_Combo.SelectedItem!;
-        _Comm.Flow_Control    = (Handshake) Flow_Control_Combo.SelectedItem!;
+        _Comm.Port_Name = COM_Port_Combo.SelectedItem.ToString()!;
+        _Comm.Baud_Rate = (int) Baud_Rate_Combo.SelectedItem!;
+        _Comm.Data_Bits = (int) Data_Bits_Combo.SelectedItem!;
+        _Comm.Parity = (Parity) Parity_Combo.SelectedItem!;
+        _Comm.Stop_Bits = (StopBits) Stop_Bits_Combo.SelectedItem!;
+        _Comm.Flow_Control = (Handshake) Flow_Control_Combo.SelectedItem!;
         _Comm.Read_Timeout_Ms = (int) Read_Timeout_Combo_Box.SelectedItem!;
 
         Capture_Trace.Write( $"Comm Mode       -> {_Comm.Mode}" );
@@ -1881,12 +1917,12 @@ namespace Multimeter_Controller
         await Task.Run( () => _Comm.Connect() );
         Capture_Trace.Write( "Connection established." );
 
-        if ( _Comm.Mode == Connection_Mode.Prologix_GPIB || _Comm.Mode == Connection_Mode.Prologix_Ethernet )
+        if (_Comm.Mode == Connection_Mode.Prologix_GPIB || _Comm.Mode == Connection_Mode.Prologix_Ethernet)
         {
           _Comm.Configure_Prologix_Transport_Only();
         }
       }
-      catch ( Exception ex )
+      catch (Exception ex)
       {
         Capture_Trace.Write( $"Connection failed: {ex.Message}" );
         // optionally: MessageBox.Show(...) or status label update
@@ -1902,41 +1938,41 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      if ( Connected )
+      if (Connected)
       {
-        Connection_Status_Label.Text      = "Connected";
+        Connection_Status_Label.Text = "Connected";
         Connection_Status_Label.ForeColor = Color.Green;
-        Connect_Button.Text               = "Disconnect";
+        Connect_Button.Text = "Disconnect";
 
         // Disable settings while connected
         Connection_Mode_Combo.Enabled = false;
-        COM_Port_Combo.Enabled        = false;
-        Baud_Rate_Combo.Enabled       = false;
-        Data_Bits_Combo.Enabled       = false;
-        Parity_Combo.Enabled          = false;
-        Stop_Bits_Combo.Enabled       = false;
-        Flow_Control_Combo.Enabled    = false;
-        Refresh_Ports_Button.Enabled  = false;
-        Defaults_Button.Enabled       = false;
+        COM_Port_Combo.Enabled = false;
+        Baud_Rate_Combo.Enabled = false;
+        Data_Bits_Combo.Enabled = false;
+        Parity_Combo.Enabled = false;
+        Stop_Bits_Combo.Enabled = false;
+        Flow_Control_Combo.Enabled = false;
+        Refresh_Ports_Button.Enabled = false;
+        Defaults_Button.Enabled = false;
 
         // Initialize_Remote_Connection ( );
       }
       else
       {
-        Connection_Status_Label.Text      = "Disconnected";
+        Connection_Status_Label.Text = "Disconnected";
         Connection_Status_Label.ForeColor = Color.Red;
-        Connect_Button.Text               = "Connect";
+        Connect_Button.Text = "Connect";
 
         // Enable settings while disconnected
         Connection_Mode_Combo.Enabled = true;
-        COM_Port_Combo.Enabled        = true;
-        Baud_Rate_Combo.Enabled       = true;
-        Data_Bits_Combo.Enabled       = true;
-        Parity_Combo.Enabled          = true;
-        Stop_Bits_Combo.Enabled       = true;
-        Flow_Control_Combo.Enabled    = true;
-        Refresh_Ports_Button.Enabled  = true;
-        Defaults_Button.Enabled       = true;
+        COM_Port_Combo.Enabled = true;
+        Baud_Rate_Combo.Enabled = true;
+        Data_Bits_Combo.Enabled = true;
+        Parity_Combo.Enabled = true;
+        Stop_Bits_Combo.Enabled = true;
+        Flow_Control_Combo.Enabled = true;
+        Refresh_Ports_Button.Enabled = true;
+        Defaults_Button.Enabled = true;
 
         // Disable scan while disconnected
         Scan_Bus_Button.Enabled = false;
@@ -1946,36 +1982,36 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      Is_GPIB     = Connection_Mode_Combo.SelectedIndex == 0;
-      Is_Serial   = Connection_Mode_Combo.SelectedIndex == 1;
+      Is_GPIB = Connection_Mode_Combo.SelectedIndex == 0;
+      Is_Serial = Connection_Mode_Combo.SelectedIndex == 1;
       Is_Ethernet = Connection_Mode_Combo.SelectedIndex == 2;
 
       // Serial controls only relevant for serial/GPIB-USB
       // COM port needed for both GPIB-USB and Direct Serial
-      COM_Port_Combo.Enabled  = Is_GPIB || Is_Serial;
-      COM_Port_Label.Enabled  = Is_GPIB || Is_Serial;
+      COM_Port_Combo.Enabled = Is_GPIB || Is_Serial;
+      COM_Port_Label.Enabled = Is_GPIB || Is_Serial;
       Scan_Bus_Button.Enabled = Is_GPIB || Is_Ethernet;
 
       // RS-232 settings only relevant for Direct Serial
       // (Prologix GPIB-USB uses fixed settings, Ethernet has none)
-      Baud_Rate_Combo.Enabled        = Is_GPIB || Is_Serial;
-      Baud_Rate_Label.Enabled        = Is_GPIB || Is_Serial;
-      Data_Bits_Combo.Enabled        = Is_GPIB || Is_Serial;
-      Data_Bits_Label.Enabled        = Is_GPIB || Is_Serial;
-      Parity_Combo.Enabled           = Is_GPIB || Is_Serial;
-      Parity_Label.Enabled           = Is_GPIB || Is_Serial;
-      Stop_Bits_Combo.Enabled        = Is_GPIB || Is_Serial;
-      Stop_Bits_Label.Enabled        = Is_GPIB || Is_Serial;
-      Flow_Control_Combo.Enabled     = Is_GPIB || Is_Serial;
-      Flow_Control_Label.Enabled     = Is_GPIB || Is_Serial;
+      Baud_Rate_Combo.Enabled = Is_GPIB || Is_Serial;
+      Baud_Rate_Label.Enabled = Is_GPIB || Is_Serial;
+      Data_Bits_Combo.Enabled = Is_GPIB || Is_Serial;
+      Data_Bits_Label.Enabled = Is_GPIB || Is_Serial;
+      Parity_Combo.Enabled = Is_GPIB || Is_Serial;
+      Parity_Label.Enabled = Is_GPIB || Is_Serial;
+      Stop_Bits_Combo.Enabled = Is_GPIB || Is_Serial;
+      Stop_Bits_Label.Enabled = Is_GPIB || Is_Serial;
+      Flow_Control_Combo.Enabled = Is_GPIB || Is_Serial;
+      Flow_Control_Label.Enabled = Is_GPIB || Is_Serial;
       Read_Timeout_Combo_Box.Enabled = Is_GPIB || Is_Serial;
-      Read_Timeout_Label.Enabled     = Is_GPIB || Is_Serial;
+      Read_Timeout_Label.Enabled = Is_GPIB || Is_Serial;
 
       // Ethernet controls
       Find_Prologix_Button.Enabled = Is_Ethernet;
-      IP_Address_Textbox.Enabled   = Is_Ethernet;
-      IP_Address_Label.Enabled     = Is_Ethernet;
-      Subnet_Textbox.Enabled       = Is_Ethernet;
+      IP_Address_Textbox.Enabled = Is_Ethernet;
+      IP_Address_Label.Enabled = Is_Ethernet;
+      Subnet_Textbox.Enabled = Is_Ethernet;
 
       Set_GPID_Controls( State: Is_GPIB || Is_Ethernet );
 
@@ -1991,60 +2027,69 @@ namespace Multimeter_Controller
       Multi_Poll_Button.Enabled = _Instruments.Count > 0;
       Meter_Info_Button.Enabled = true;
 
-      Open_Dictionary_Button.Enabled   = _Instruments.Count > 0;
-      Diag_Button.Enabled              = _Instruments.Count > 0;
-      Execute_Button.Enabled           = _Instruments.Count > 0;
+      Open_Dictionary_Button.Enabled = _Instruments.Count > 0;
+      Diag_Button.Enabled = _Instruments.Count > 0;
+      Execute_Button.Enabled = _Instruments.Count > 0;
       Remove_Instrument_Button.Enabled = _Instruments.Count > 0;
-      NPLC_Combo_Box.Enabled           = _Instruments.Count > 0;
-      Instrument_Name_Label.Enabled    = _Instruments.Count > 0;
-      Instrument_Name_Text.Enabled     = _Instruments.Count > 0;
-      Command_List.Enabled             = _Instruments.Count > 0;
+      NPLC_Combo_Box.Enabled = _Instruments.Count > 0;
+      Instrument_Name_Label.Enabled = _Instruments.Count > 0;
+      Instrument_Name_Text.Enabled = _Instruments.Count > 0;
+      Command_List.Enabled = _Instruments.Count > 0;
       Command_History_List_Box.Enabled = _Instruments.Count > 0;
-      Detail_Text_Box.Enabled          = _Instruments.Count > 0;
-      Send_Command_Text_Box.Enabled    = _Instruments.Count > 0;
-      History_Label.Enabled            = _Instruments.Count > 0;
-      Send_Command_Label.Enabled       = _Instruments.Count > 0;
-      Response_Label.Enabled           = _Instruments.Count > 0;
-      NPLC_Label.Enabled               = _Instruments.Count > 0;
+      Detail_Text_Box.Enabled = _Instruments.Count > 0;
+      Send_Command_Text_Box.Enabled = _Instruments.Count > 0;
+      History_Label.Enabled = _Instruments.Count > 0;
+      Send_Command_Label.Enabled = _Instruments.Count > 0;
+      Response_Label.Enabled = _Instruments.Count > 0;
+      NPLC_Label.Enabled = _Instruments.Count > 0;
       Apply_NPLC_To_All_Button.Enabled = NPLC_Combo_Box.SelectedIndex >= 0 && _Instruments.Count > 1;
 
       // Elements that are active if connection has been made
-      Instrument_Type_Combo.Enabled  = _Comm.Is_Connected;
-      Instrument_Type_Label.Enabled  = _Comm.Is_Connected;
-      GPIB_Address_Numeric.Enabled   = _Comm.Is_Connected && ( Is_GPIB || Is_Ethernet );
-      GPIB_Address_Label.Enabled     = _Comm.Is_Connected && ( Is_GPIB || Is_Ethernet );
-      Add_Instrument_Button.Enabled  = _Comm.Is_Connected && ( Is_GPIB || Is_Ethernet );
-      NPLC_Combo_Box.Enabled         = _Comm.Is_Connected && ( Is_GPIB || Is_Ethernet || Is_Serial );
-      Roll_Name_Textbox.Enabled      = _Comm.Is_Connected && ( Is_GPIB || Is_Ethernet || Is_Serial );
-      Meter_Roll_Label.Enabled       = _Comm.Is_Connected && ( Is_GPIB || Is_Ethernet || Is_Serial );
+      Instrument_Type_Combo.Enabled = _Comm.Is_Connected;
+      Instrument_Type_Label.Enabled = _Comm.Is_Connected;
+      GPIB_Address_Numeric.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet);
+      GPIB_Address_Label.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet);
+      Add_Instrument_Button.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet);
+      NPLC_Combo_Box.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet || Is_Serial);
+      Roll_Name_Textbox.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet || Is_Serial);
+      Meter_Roll_Label.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet || Is_Serial);
       Prologix_Health_Button.Enabled = _Comm.Is_Connected && _Instruments.Count == 0;
 
       Select_Instrument_Button.Enabled = _Instruments.Count > 0;
 
-      Scan_Bus_Button.Enabled = _Comm.Is_Connected && ( Is_GPIB || Is_Ethernet );
+      Scan_Bus_Button.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet);
 
       // When polling form is open or closed
 
-      Instrument_Type_Combo.Enabled = _Comm.Is_Connected && ! Poll_Form_Is_Open;
-      Instrument_Type_Label.Enabled = _Comm.Is_Connected && ! Poll_Form_Is_Open;
-      Scan_Bus_Button.Enabled       = _Comm.Is_Connected && ( Is_GPIB || Is_Ethernet ) && ! Poll_Form_Is_Open;
-      Select_Instrument_Button.Enabled = _Instruments.Count > 0 && ! Poll_Form_Is_Open;
+      Instrument_Type_Combo.Enabled = _Comm.Is_Connected && !Poll_Form_Is_Open;
+      Instrument_Type_Label.Enabled = _Comm.Is_Connected && !Poll_Form_Is_Open;
+      Scan_Bus_Button.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet) && !Poll_Form_Is_Open;
+      Select_Instrument_Button.Enabled = _Instruments.Count > 0 && !Poll_Form_Is_Open;
       NPLC_Combo_Box.Enabled =
-        _Comm.Is_Connected && ( Is_GPIB || Is_Ethernet || Is_Serial ) && ! Poll_Form_Is_Open;
-      Add_Instrument_Button.Enabled = _Comm.Is_Connected && ( Is_GPIB || Is_Ethernet ) && ! Poll_Form_Is_Open;
-      Remove_Instrument_Button.Enabled = _Instruments.Count > 0 && ! Poll_Form_Is_Open;
-      GPIB_Address_Numeric.Enabled = _Comm.Is_Connected && ( Is_GPIB || Is_Ethernet ) && ! Poll_Form_Is_Open;
+        _Comm.Is_Connected && (Is_GPIB || Is_Ethernet || Is_Serial) && !Poll_Form_Is_Open;
+      Add_Instrument_Button.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet) && !Poll_Form_Is_Open;
+      Remove_Instrument_Button.Enabled = _Instruments.Count > 0 && !Poll_Form_Is_Open;
+      GPIB_Address_Numeric.Enabled = _Comm.Is_Connected && (Is_GPIB || Is_Ethernet) && !Poll_Form_Is_Open;
       Multi_Poll_Button.Enabled =
-        _Comm.Is_Connected && ( Is_GPIB || Is_Ethernet ) && ! Poll_Form_Is_Open && _Instruments.Count > 0;
+        _Comm.Is_Connected && (Is_GPIB || Is_Ethernet) && !Poll_Form_Is_Open && _Instruments.Count > 0;
 
       GPU_Info_Button.Enabled = _Settings.GPU_Rendering_Available;
+
+      // Does teh instrument support command testing?
+      var Test_Profile = Command_Dictionary_Class.Get_Test_Profile( _Selected_Meter );
+      Test_Commands_Button.Enabled = _Comm.Is_Connected && _Instruments.Count > 0 &&
+                                     Command_Dictionary_Class.Has_Test_Profile( _Selected_Meter );
+
+      // Test_Commands_Button.ToolTipText = Test_Profile == null
+      //   ? $"{_Selected_Meter.Get_Name()} does not support command testing"
+      //   : $"Test all {_Selected_Meter.Get_Name()} commands";
     }
 
     private void Comm_Connection_Changed( object? Sender, bool Connected )
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      if ( InvokeRequired )
+      if (InvokeRequired)
       {
         Invoke( () => Update_Connection_Status( Connected ) );
       }
@@ -2058,7 +2103,7 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      if ( InvokeRequired )
+      if (InvokeRequired)
       {
         Invoke( () => Show_Error( Message ) );
       }
@@ -2084,7 +2129,7 @@ namespace Multimeter_Controller
       //    Instrument_Address_Numeric.Value = GPIB_Address_Numeric.Value;
 
       // Only update hardware if connected
-      if ( _Comm.Is_Connected )
+      if (_Comm.Is_Connected)
       {
         _Comm.Change_GPIB_Address( (int) GPIB_Address_Numeric.Value );
       }
@@ -2103,30 +2148,30 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      if ( string.IsNullOrWhiteSpace( Command ) )
+      if (string.IsNullOrWhiteSpace( Command ))
         return; // Don't add empty commands
 
       // Add to bottom
       Command_History_List_Box.Items.Add( Command );
 
       // Trim history if it exceeds max size
-      while ( Command_History_List_Box.Items.Count > _Max_History_Size )
+      while (Command_History_List_Box.Items.Count > _Max_History_Size)
       {
         // Remove oldest (top item)
         Command_History_List_Box.Items.RemoveAt( 0 );
       }
 
       // Scroll to newest command
-      int Last_Index                         = Command_History_List_Box.Items.Count - 1;
+      int Last_Index = Command_History_List_Box.Items.Count - 1;
       Command_History_List_Box.SelectedIndex = Last_Index;
-      Command_History_List_Box.TopIndex      = Last_Index;
+      Command_History_List_Box.TopIndex = Last_Index;
     }
 
     private void Update_Button_State( Command_Entry Entry )
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      if ( Entry == null )
+      if (Entry == null)
       {
         Execute_Button.Enabled = false;
         // Query_Button.Enabled = false;
@@ -2135,25 +2180,25 @@ namespace Multimeter_Controller
 
       CommandMode Mode = Entry.Get_Command_Mode();
 
-      switch ( Mode )
+      switch (Mode)
       {
-        case CommandMode.Both :
+        case CommandMode.Both:
           Execute_Button.Enabled = true;
           // Query_Button.Enabled = true;
           break;
 
-        case CommandMode.Query_Only :
+        case CommandMode.Query_Only:
           Execute_Button.Enabled = true;
           // Query_Button.Enabled = true;
           break;
 
-        case CommandMode.Set_Only :
+        case CommandMode.Set_Only:
           Execute_Button.Enabled = true;
           // Query_Button.Enabled = false;
           break;
 
-        case CommandMode.None :
-        default :
+        case CommandMode.None:
+        default:
           Execute_Button.Enabled = false;
           // Query_Button.Enabled = false;
           break;
@@ -2164,10 +2209,10 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      if ( Command_History_List_Box.SelectedItem != null )
+      if (Command_History_List_Box.SelectedItem != null)
       {
         string? History_Text = Command_History_List_Box.SelectedItem.ToString();
-        if ( string.IsNullOrWhiteSpace( History_Text ) )
+        if (string.IsNullOrWhiteSpace( History_Text ))
           return;
 
         Send_Command_Text_Box.Text = History_Text;
@@ -2175,7 +2220,7 @@ namespace Multimeter_Controller
         Send_Command_Text_Box.SelectionStart = Send_Command_Text_Box.Text.Length;
 
         // Match history command to a Command_Entry and update buttons
-        string Raw_Token     = History_Text.Split( ' ', 2 )[ 0 ];
+        string Raw_Token = History_Text.Split( ' ', 2 )[ 0 ];
         string Trimmed_Token = Raw_Token.TrimEnd( '?' );
 
         Command_Entry? Matched = _All_Commands?.FirstOrDefault(
@@ -2190,7 +2235,7 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      if ( ! string.IsNullOrWhiteSpace( _Settings.Network_Scan_Subnet ) )
+      if (!string.IsNullOrWhiteSpace( _Settings.Network_Scan_Subnet ))
       {
         string Subnet = _Settings.Network_Scan_Subnet.TrimEnd( '.' );
         Capture_Trace.Write( $"Using user-specified subnet: {Subnet}" );
@@ -2200,32 +2245,32 @@ namespace Multimeter_Controller
       try
       {
         // Get all network interfaces with their unicast addresses
-        foreach ( var NI in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces() )
+        foreach (var NI in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
         {
           // Skip loopback, tunnels, VPN, virtual adapters
-          if ( NI.NetworkInterfaceType == System.Net.NetworkInformation.NetworkInterfaceType.Loopback )
+          if (NI.NetworkInterfaceType == System.Net.NetworkInformation.NetworkInterfaceType.Loopback)
             continue;
-          if ( NI.OperationalStatus != System.Net.NetworkInformation.OperationalStatus.Up )
+          if (NI.OperationalStatus != System.Net.NetworkInformation.OperationalStatus.Up)
             continue;
-          if ( NI.Description.Contains( "Virtual", StringComparison.OrdinalIgnoreCase ) ||
+          if (NI.Description.Contains( "Virtual", StringComparison.OrdinalIgnoreCase ) ||
                NI.Description.Contains( "Hyper-V", StringComparison.OrdinalIgnoreCase ) ||
                NI.Description.Contains( "VPN", StringComparison.OrdinalIgnoreCase ) ||
-               NI.Description.Contains( "Tunnel", StringComparison.OrdinalIgnoreCase ) )
+               NI.Description.Contains( "Tunnel", StringComparison.OrdinalIgnoreCase ))
             continue;
 
-          foreach ( var UA in NI.GetIPProperties().UnicastAddresses )
+          foreach (var UA in NI.GetIPProperties().UnicastAddresses)
           {
-            if ( UA.Address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork )
+            if (UA.Address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
               continue;
-            string IP       = UA.Address.ToString();
-            string[ ] Parts = IP.Split( '.' );
-            string Subnet   = $"{Parts[ 0 ]}.{Parts[ 1 ]}.{Parts[ 2 ]}";
+            string IP = UA.Address.ToString();
+            string[] Parts = IP.Split( '.' );
+            string Subnet = $"{Parts[ 0 ]}.{Parts[ 1 ]}.{Parts[ 2 ]}";
             Capture_Trace.Write( $"Selected adapter: {NI.Description} -> {IP} -> subnet {Subnet}" );
             return Subnet;
           }
         }
       }
-      catch ( Exception Ex )
+      catch (Exception Ex)
       {
         Capture_Trace.Write( $"Failed to detect local subnet: {Ex.Message}" );
       }
@@ -2237,26 +2282,26 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      string    Original_Text      = Find_Prologix_Button.Text;
+      string Original_Text = Find_Prologix_Button.Text;
       Find_Prologix_Button.Enabled = false;
-      Find_Prologix_Button.Text    = "Scanning...";
+      Find_Prologix_Button.Text = "Scanning...";
 
       string Subnet = Get_Local_Subnet();
 
-      await  Task.Delay( 500 );
+      await Task.Delay( 500 );
 
       Capture_Trace.Write( $"Subnet detected: {Subnet}" );
 
-      var     Found =
+      var Found =
         await Multimeter_Common_Helpers_Class.Scan_For_Prologix( Subnet,
                                                                  _Settings.Prologic_Scan_Timeout_MS,
                                                                  null,
                                                                  Msg => Capture_Trace.Write( Msg ) );
 
       Find_Prologix_Button.Enabled = true;
-      Find_Prologix_Button.Text    = Original_Text;
+      Find_Prologix_Button.Text = Original_Text;
 
-      if ( Found.Count == 0 )
+      if (Found.Count == 0)
       {
         MessageBox.Show( "No Prologix device found on the network.",
                          "Scan Complete",
@@ -2264,9 +2309,9 @@ namespace Multimeter_Controller
                          MessageBoxIcon.Information );
         return;
       }
-      if ( Found.Count == 1 )
+      if (Found.Count == 1)
       {
-        IP_Address_Textbox.Text      = Found[ 0 ];
+        IP_Address_Textbox.Text = Found[ 0 ];
         _Settings.Default_IP_Address = Found[ 0 ];
 
         MessageBox.Show( $"Found Prologix at {Found[ 0 ]}",
@@ -2278,30 +2323,30 @@ namespace Multimeter_Controller
       else
       {
         string Selected = Show_IP_Selection_Dialog( Found );
-        if ( ! string.IsNullOrEmpty( Selected ) )
+        if (!string.IsNullOrEmpty( Selected ))
           IP_Address_Textbox.Text = Selected;
       }
     }
 
     private string Show_IP_Selection_Dialog( List<string> IPs )
     {
-      using var Dialog       = new Form();
-      Dialog.Text            = "Select Prologix Device";
-      Dialog.Size            = new Size( 300, 200 );
-      Dialog.StartPosition   = FormStartPosition.CenterParent;
+      using var Dialog = new Form();
+      Dialog.Text = "Select Prologix Device";
+      Dialog.Size = new Size( 300, 200 );
+      Dialog.StartPosition = FormStartPosition.CenterParent;
       Dialog.FormBorderStyle = FormBorderStyle.FixedDialog;
-      Dialog.MaximizeBox     = false;
-      Dialog.MinimizeBox     = false;
+      Dialog.MaximizeBox = false;
+      Dialog.MinimizeBox = false;
 
-      var List_Box  = new ListBox();
+      var List_Box = new ListBox();
       List_Box.Dock = DockStyle.Fill;
-      foreach ( var IP in IPs )
+      foreach (var IP in IPs)
         List_Box.Items.Add( IP );
       List_Box.SelectedIndex = 0;
 
-      var OK_Button          = new System.Windows.Forms.Button();
-      OK_Button.Text         = "Select";
-      OK_Button.Dock         = DockStyle.Bottom;
+      var OK_Button = new System.Windows.Forms.Button();
+      OK_Button.Text = "Select";
+      OK_Button.Dock = DockStyle.Bottom;
       OK_Button.DialogResult = DialogResult.OK;
 
       Dialog.Controls.Add( List_Box );
@@ -2603,9 +2648,9 @@ namespace Multimeter_Controller
     }
 
     public static void Show_Session_Settings( Form Owner,
-                                             Application_Settings Settings,
-                                             List<Instrument> Instruments,
-                                             Chart_Theme Theme )
+                                              Application_Settings Settings,
+                                              List<Instrument> Instruments,
+                                              Chart_Theme Theme )
     {
       using var Popup = new Rich_Text_Popup( "Session Settings", 660, 700, Resizable: true );
 
@@ -2727,9 +2772,9 @@ namespace Multimeter_Controller
         .Add_Heading_Mono( "Performance" )
         .Add_Row( "Rendering Engine",
                   Settings.Use_GPU_Rendering && Settings.GPU_Rendering_Available ? "GPU (SkiaSharp/OpenGL)"
-                  : Settings.Use_GPU_Rendering && !Settings.GPU_Rendering_Available
-                    ? "CPU (GPU requested but unavailable)"
-                    : "CPU (GDI+)" )
+                  : Settings.Use_GPU_Rendering && !Settings.GPU_Rendering_Available ? "CPU (GPU requested " +
+                                                                                       "but unavailable)"
+                                                                                     : "CPU (GDI+)" )
         .Add_Row( "Throttle Refresh",
                   Settings.Throttle_When_Many_Points
                     ? $"Yes — above {Settings.Throttle_Point_Threshold:N0} points"
@@ -2747,9 +2792,8 @@ namespace Multimeter_Controller
         .Add_Heading_Mono( "Analysis" )
         .Add_Row( "Auto Analyze After Rec", Settings.Auto_Analyze_After_Recording ? "Yes" : "No" )
         .Add_Row( "GPU Comparison",
-                  Settings.Discrete_GPU_Available
-                    ? (Settings.Analysis_Show_GPU_Comparison ? "Yes" : "No")
-                    : "N/A — no discrete GPU" )
+                  Settings.Discrete_GPU_Available ? (Settings.Analysis_Show_GPU_Comparison ? "Yes" : "No")
+                                                  : "N/A — no discrete GPU" )
         .Add_Row( "Series Mode", Settings.Analysis_Series_Count == 2 ? "Two series" : "Single series" )
         .Add_Row( "Show Mean", Settings.Analysis_Show_Mean ? "Yes" : "No" )
         .Add_Row( "Show Std Dev", Settings.Analysis_Show_Std_Dev ? "Yes" : "No" )
@@ -2778,15 +2822,15 @@ namespace Multimeter_Controller
         .Add_Heading_Mono( "Connection" )
         .Add_Row( "Default IP",
                   string.IsNullOrEmpty( Settings.Default_IP_Address ) ? "Auto-detect"
-                                                                       : Settings.Default_IP_Address )
+                                                                      : Settings.Default_IP_Address )
         .Add_Row( "Default Port", $"{Settings.Default_Prologic_Port}" )
         .Add_Row( "Scan Subnet",
                   string.IsNullOrEmpty( Settings.Network_Scan_Subnet ) ? "Auto-detect"
-                                                                        : Settings.Network_Scan_Subnet )
+                                                                       : Settings.Network_Scan_Subnet )
         .Add_Row( "Scan Timeout", $"{Settings.Prologic_Scan_Timeout_MS} ms" )
         .Add_Row( "Prologix MAC",
                   string.IsNullOrEmpty( Settings.Prologic_MAC_Address ) ? "—"
-                                                                         : Settings.Prologic_MAC_Address )
+                                                                        : Settings.Prologic_MAC_Address )
         .Add_Row( "Default GPIB Address", $"{Settings.Default_GPIB_Instrument_Address}" )
         .Add_Row( "Prologix Auto Read", Settings.Prologix_Auto_Read ? "Yes" : "No" )
         .Add_Row( "Prologix Fetch Delay", $"{Settings.Prologix_Fetch_Ms} ms" )
@@ -2833,7 +2877,7 @@ namespace Multimeter_Controller
 
       using var Dlg = new Settings_Form( _Settings );
 
-      if ( Dlg.ShowDialog( this ) == DialogResult.OK )
+      if (Dlg.ShowDialog( this ) == DialogResult.OK)
       {
         _Settings = Dlg.Get_Settings();
         _Settings.Save();
@@ -2850,22 +2894,22 @@ namespace Multimeter_Controller
     private void NPLC_Combo_Box_SelectedIndexChanged( object Sender, EventArgs E )
     {
       using var Block = Trace_Block.Start_If_Enabled();
-      if ( _Updating_Controls )
+      if (_Updating_Controls)
         return;
-      if ( _Selected_Index < 0 || _Selected_Index >= _Instruments.Count )
+      if (_Selected_Index < 0 || _Selected_Index >= _Instruments.Count)
         return;
 
-      if ( ! decimal.TryParse( NPLC_Combo_Box.SelectedItem?.ToString(),
+      if (!decimal.TryParse( NPLC_Combo_Box.SelectedItem?.ToString(),
                                NumberStyles.Number,
                                CultureInfo.InvariantCulture,
-                               out decimal NPLC ) )
+                               out decimal NPLC ))
         return;
 
-      var     Inst    = _Instruments[ _Selected_Index ];
+      var Inst = _Instruments[ _Selected_Index ];
       decimal Default = Meter_Type_Extensions.Get_Default_NPLC( Inst.Type );
-      Inst.NPLC       = NPLC;
+      Inst.NPLC = NPLC;
 
-      if ( NPLC != Default )
+      if (NPLC != Default)
       {
         Capture_Trace.Write( $"NPLC overridden: {Inst.Name} default={Default} selected={NPLC}" );
         Append_Response( $"[Note: NPLC set to {NPLC} (default is {Default})]" );
@@ -2883,8 +2927,8 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      if ( NPLC_Combo_Box.SelectedItem is not string Value ||
-           ! decimal.TryParse( Value, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal NPLC ) )
+      if (NPLC_Combo_Box.SelectedItem is not string Value ||
+           !decimal.TryParse( Value, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal NPLC ))
       {
         MessageBox.Show( "Please select a valid NPLC value first.",
                          "No NPLC Selected",
@@ -2894,9 +2938,9 @@ namespace Multimeter_Controller
       }
 
       int Count = 0;
-      foreach ( var Instrument in _Instruments )
+      foreach (var Instrument in _Instruments)
       {
-        if ( Instrument.Type.Get_NPLC_Values().Contains( NPLC ) )
+        if (Instrument.Type.Get_NPLC_Values().Contains( NPLC ))
         {
           Instrument.NPLC = NPLC;
           Count++;
@@ -2918,11 +2962,11 @@ namespace Multimeter_Controller
 
     private void Roll_Name_Textbox_Leave( object sender, EventArgs e )
     {
-      if ( Roll_Name_Textbox is null || ! Roll_Name_Textbox.Enabled )
+      if (Roll_Name_Textbox is null || !Roll_Name_Textbox.Enabled)
         return;
 
       string val = Roll_Name_Textbox.Text.Trim();
-      if ( ! string.IsNullOrEmpty( val ) && ( _Instruments?.Any( i => i.Meter_Roll == val ) ?? false ) )
+      if (!string.IsNullOrEmpty( val ) && (_Instruments?.Any( i => i.Meter_Roll == val ) ?? false))
       {
         MessageBox.Show( $"The role '{val}' is already in use.",
                          "Duplicate Name",
@@ -2939,7 +2983,7 @@ namespace Multimeter_Controller
       Cursor = Cursors.WaitCursor;
 
       var Form = new Recording_Playback_Form( _Settings );
-      Cursor   = Cursors.Default;
+      Cursor = Cursors.Default;
       Form.Show();
     }
 
@@ -3062,11 +3106,11 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      if ( Master_Instrument_Combobox.SelectedIndex < 0 )
+      if (Master_Instrument_Combobox.SelectedIndex < 0)
         return; // ← no selection yet, nothing to do
-      if ( Master_Instrument_Combobox.SelectedItem is not Instrument Selected )
+      if (Master_Instrument_Combobox.SelectedItem is not Instrument Selected)
         return; // ← safety guard against any non-Instrument items
-      foreach ( var Inst in _Instruments )
+      foreach (var Inst in _Instruments)
         Inst.Is_Master = false;
       Selected.Is_Master = true;
     }
@@ -3076,38 +3120,38 @@ namespace Multimeter_Controller
       using var Block = Trace_Block.Start_If_Enabled();
 
       Master_Instrument_Combobox.SelectedIndexChanged -= Master_Instrument_Combobox_SelectedIndexChanged;
-      Master_Instrument_Combobox.DataSource            = null;
-      var Visible                                      = _Instruments.Where( I => I.Visible ).ToList();
-      if ( Visible.Count < 2 )
+      Master_Instrument_Combobox.DataSource = null;
+      var Visible = _Instruments.Where( I => I.Visible ).ToList();
+      if (Visible.Count < 2)
       {
-        Master_Instrument_Combobox.Enabled               = false;
-        Master_Instrument_Combobox.DataSource            = new List<string> { "— add instruments first —" };
-        About_Selections_Button.Enabled                  = false;
+        Master_Instrument_Combobox.Enabled = false;
+        Master_Instrument_Combobox.DataSource = new List<string> { "— add instruments first —" };
+        About_Selections_Button.Enabled = false;
         Master_Instrument_Combobox.SelectedIndexChanged += Master_Instrument_Combobox_SelectedIndexChanged;
         return;
       }
       // ── Only allow choice when 3+ instruments ─────────────────────
-      bool Needs_Master                  = Visible.Count > 2;
+      bool Needs_Master = Visible.Count > 2;
       Master_Instrument_Combobox.Enabled = Needs_Master;
-      About_Selections_Button.Enabled    = Needs_Master;
-      if ( ! Needs_Master )
+      About_Selections_Button.Enabled = Needs_Master;
+      if (!Needs_Master)
       {
         // 2 instruments — no master needed, clear any prior Is_Master flags
-        foreach ( var Inst in _Instruments )
+        foreach (var Inst in _Instruments)
           Inst.Is_Master = false;
-        Master_Instrument_Combobox.DataSource            = Visible;
-        Master_Instrument_Combobox.DisplayMember         = "Display";
-        Master_Instrument_Combobox.ValueMember           = "Address";
+        Master_Instrument_Combobox.DataSource = Visible;
+        Master_Instrument_Combobox.DisplayMember = "Display";
+        Master_Instrument_Combobox.ValueMember = "Address";
         Master_Instrument_Combobox.SelectedIndexChanged += Master_Instrument_Combobox_SelectedIndexChanged;
         return;
       }
       // ── 3+ instruments: require explicit master selection ──────────
-      Master_Instrument_Combobox.DataSource    = Visible;
+      Master_Instrument_Combobox.DataSource = Visible;
       Master_Instrument_Combobox.DisplayMember = "Display";
-      Master_Instrument_Combobox.ValueMember   = "Address";
+      Master_Instrument_Combobox.ValueMember = "Address";
       // Restore prior master if still in list, otherwise leave unselected
-      var Current_Master                       = Visible.FirstOrDefault( I => I.Is_Master );
-      if ( Current_Master != null )
+      var Current_Master = Visible.FirstOrDefault( I => I.Is_Master );
+      if (Current_Master != null)
         Master_Instrument_Combobox.SelectedItem = Current_Master;
       else
         Master_Instrument_Combobox.SelectedIndex = -1; // ← no default, user must choose
@@ -3118,7 +3162,7 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      using ( var Popup = new Rich_Text_Popup( "About Selections", 520, 360 ) )
+      using (var Popup = new Rich_Text_Popup( "About Selections", 520, 360 ))
       {
         Popup.Add_Title( "Why a Master Instrument Must Be Identified" )
           .Add_Separator()
@@ -3149,14 +3193,14 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-      int       Address = (int) GPIB_Address_Numeric.Value;
+      int Address = (int) GPIB_Address_Numeric.Value;
 
       try
       {
         Prologix_Health_Button.Enabled = false;
-        var Result                     = Verify_Prologix_Health( Address );
+        var Result = Verify_Prologix_Health( Address );
 
-        using ( var Popup = new Rich_Text_Popup( "Device Health Check", 680, 480, Resizable: false ) )
+        using (var Popup = new Rich_Text_Popup( "Device Health Check", 680, 480, Resizable: false ))
         {
           // ── Title ────────────────────────────────────────────────────────────
           Popup.Add_Title( "  Prologix Device Health Check" );
@@ -3174,32 +3218,32 @@ namespace Multimeter_Controller
           Popup.Add_Blank();
 
           // ── Overall status ───────────────────────────────────────────────────
-          if ( Result.Is_Healthy )
+          if (Result.Is_Healthy)
             Popup.Add_Body_Colored( "  ✔  All checks passed — device is operational.",
                                     Color.FromArgb( 0, 140, 0 ) );
           else
             Popup.Add_Error( $"  ✘  {Result.Failed_Checks.Count} check(s) failed — review details below." );
 
           // ── Passed checks ────────────────────────────────────────────────────
-          if ( Result.Passed_Checks.Any() )
+          if (Result.Passed_Checks.Any())
           {
             Popup.Add_Blank();
             Popup.Add_Heading_Mono( "  Passed Checks" );
-            foreach ( string Check in Result.Passed_Checks )
+            foreach (string Check in Result.Passed_Checks)
               Popup.Add_Body_Colored( $"  ✔  {Check}", Color.FromArgb( 0, 140, 0 ) );
           }
 
           // ── Failed checks ────────────────────────────────────────────────────
-          if ( Result.Failed_Checks.Any() )
+          if (Result.Failed_Checks.Any())
           {
             Popup.Add_Blank();
             Popup.Add_Heading_Mono( "  Failed Checks" );
-            foreach ( string Check in Result.Failed_Checks )
+            foreach (string Check in Result.Failed_Checks)
               Popup.Add_Error( $"  ✘  {Check}" );
           }
 
           // ── Device identity if available ─────────────────────────────────────
-          if ( ! string.IsNullOrWhiteSpace( Result.Device_Identity ) )
+          if (!string.IsNullOrWhiteSpace( Result.Device_Identity ))
           {
             Popup.Add_Blank();
             Popup.Add_Separator();
@@ -3210,9 +3254,9 @@ namespace Multimeter_Controller
           Popup.Show_Popup( this );
         }
       }
-      catch ( Exception ex )
+      catch (Exception ex)
       {
-        using ( var Popup = new Rich_Text_Popup( "Health Check Error", 500, 220 ) )
+        using (var Popup = new Rich_Text_Popup( "Health Check Error", 500, 220 ))
         {
           Popup.Add_Title( "  Unexpected Error" );
           Popup.Add_Blank();
@@ -3233,8 +3277,8 @@ namespace Multimeter_Controller
 
       _Comm.Flush_Input_Buffer();
 
-      var Result            = new Device_Health_Result { Checked_Address = address };
-      int Original_Timeout  = _Comm.Read_Timeout_Ms;
+      var Result = new Device_Health_Result { Checked_Address = address };
+      int Original_Timeout = _Comm.Read_Timeout_Ms;
       _Comm.Read_Timeout_Ms = _Settings.Default_GPIB_Timeout_Ms;
       _Comm.Change_GPIB_Address( address );
 
@@ -3247,15 +3291,15 @@ namespace Multimeter_Controller
         {
           _Comm.Flush_Input_Buffer();
           string Controller_Version = _Comm.Query_Instrument( "++ver" );
-          string Ver_Trimmed        = Controller_Version?.Split( '\n' ) [ 0 ].Trim() ?? string.Empty;
+          string Ver_Trimmed = Controller_Version?.Split( '\n' )[ 0 ].Trim() ?? string.Empty;
 
-          if ( ! string.IsNullOrWhiteSpace( Ver_Trimmed ) &&
-               Ver_Trimmed.StartsWith( "Prologix", StringComparison.OrdinalIgnoreCase ) )
+          if (!string.IsNullOrWhiteSpace( Ver_Trimmed ) &&
+               Ver_Trimmed.StartsWith( "Prologix", StringComparison.OrdinalIgnoreCase ))
             Result.Passed_Checks.Add( $"Prologix controller responsive: {Ver_Trimmed}" );
           else
             Result.Failed_Checks.Add( $"Unexpected ++ver response: '{Ver_Trimmed}'" );
         }
-        catch ( Exception ex )
+        catch (Exception ex)
         {
           Result.Failed_Checks.Add( $"Prologix controller not responding to ++ver: {ex.Message}" );
         }
@@ -3264,18 +3308,18 @@ namespace Multimeter_Controller
         try
         {
           _Comm.Flush_Input_Buffer();
-          string Mode         = _Comm.Query_Instrument( "++mode" );
-          string Mode_Trimmed = Mode?.Split( '\n' ) [ 0 ].Trim() ?? string.Empty;
+          string Mode = _Comm.Query_Instrument( "++mode" );
+          string Mode_Trimmed = Mode?.Split( '\n' )[ 0 ].Trim() ?? string.Empty;
 
-          if ( Mode_Trimmed == "1" )
+          if (Mode_Trimmed == "1")
             Result.Passed_Checks.Add( "Prologix is in CONTROLLER mode." );
-          else if ( double.TryParse( Mode_Trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out _ ) )
+          else if (double.TryParse( Mode_Trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out _ ))
             Result.Passed_Checks.Add( "++mode response obscured by instrument poll (non-critical)." );
           else
             Result.Failed_Checks.Add(
               $"Prologix not in CONTROLLER mode — ++mode returned: '{Mode_Trimmed}', expected '1'." );
         }
-        catch ( Exception ex )
+        catch (Exception ex)
         {
           Result.Failed_Checks.Add( $"Could not verify ++mode: {ex.Message}" );
         }
@@ -3284,18 +3328,18 @@ namespace Multimeter_Controller
         try
         {
           _Comm.Flush_Input_Buffer();
-          string RAW         = _Comm.Query_Instrument( "++read_tmo_ms" );
-          string RAW_Trimmed = RAW?.Split( '\n' ) [ 0 ].Trim() ?? string.Empty;
+          string RAW = _Comm.Query_Instrument( "++read_tmo_ms" );
+          string RAW_Trimmed = RAW?.Split( '\n' )[ 0 ].Trim() ?? string.Empty;
 
-          if ( int.TryParse( RAW_Trimmed, out int Tmo ) )
+          if (int.TryParse( RAW_Trimmed, out int Tmo ))
             Result.Passed_Checks.Add( $"Prologix read timeout: {Tmo} ms" );
-          else if ( double.TryParse( RAW_Trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out _ ) )
+          else if (double.TryParse( RAW_Trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out _ ))
           { /* stale measurement on first line — silent skip */
           }
           else
             Result.Failed_Checks.Add( $"Could not parse ++read_tmo_ms response: '{RAW_Trimmed}'" );
         }
-        catch ( Exception ex )
+        catch (Exception ex)
         {
           Result.Failed_Checks.Add( $"Could not verify ++read_tmo_ms: {ex.Message}" );
         }
@@ -3304,7 +3348,7 @@ namespace Multimeter_Controller
         try
         {
           _Comm.Flush_Input_Buffer();
-          string Auto          = _Comm.Query_Instrument( "++auto" )?.Split( '\n' ) [ 0 ].Trim() ?? "";
+          string Auto = _Comm.Query_Instrument( "++auto" )?.Split( '\n' )[ 0 ].Trim() ?? "";
           Result.Prologix_Auto = Auto == "1" ? "On" : Auto == "0" ? "Off" : Auto;
         }
         catch
@@ -3315,7 +3359,7 @@ namespace Multimeter_Controller
         try
         {
           _Comm.Flush_Input_Buffer();
-          string EOI          = _Comm.Query_Instrument( "++eoi" )?.Split( '\n' ) [ 0 ].Trim() ?? "";
+          string EOI = _Comm.Query_Instrument( "++eoi" )?.Split( '\n' )[ 0 ].Trim() ?? "";
           Result.Prologix_EOI = EOI == "1" ? "Enabled" : EOI == "0" ? "Disabled" : EOI;
         }
         catch
@@ -3326,12 +3370,15 @@ namespace Multimeter_Controller
         try
         {
           _Comm.Flush_Input_Buffer();
-          string EOS          = _Comm.Query_Instrument( "++eos" )?.Split( '\n' ) [ 0 ].Trim() ?? "";
-          Result.Prologix_EOS = EOS switch { "0" => "CR+LF",
-                                             "1" => "CR",
-                                             "2" => "LF",
-                                             "3" => "None",
-                                             _   => EOS };
+          string EOS = _Comm.Query_Instrument( "++eos" )?.Split( '\n' )[ 0 ].Trim() ?? "";
+          Result.Prologix_EOS = EOS switch
+          {
+            "0" => "CR+LF",
+            "1" => "CR",
+            "2" => "LF",
+            "3" => "None",
+            _ => EOS
+          };
         }
         catch
         {
@@ -3341,7 +3388,7 @@ namespace Multimeter_Controller
         try
         {
           _Comm.Flush_Input_Buffer();
-          string SAVECFG          = _Comm.Query_Instrument( "++savecfg" )?.Split( '\n' ) [ 0 ].Trim() ?? "";
+          string SAVECFG = _Comm.Query_Instrument( "++savecfg" )?.Split( '\n' )[ 0 ].Trim() ?? "";
           Result.Prologix_SaveCfg = SAVECFG == "1" ? "Enabled" : SAVECFG == "0" ? "Disabled" : SAVECFG;
         }
         catch
@@ -3353,15 +3400,15 @@ namespace Multimeter_Controller
         try
         {
           _Comm.Flush_Input_Buffer();
-          string IDN         = _Comm.Query_Instrument( "*IDN?" );
-          string IDN_Trimmed = IDN?.Split( '\n' ) [ 0 ].Trim() ?? string.Empty;
+          string IDN = _Comm.Query_Instrument( "*IDN?" );
+          string IDN_Trimmed = IDN?.Split( '\n' )[ 0 ].Trim() ?? string.Empty;
 
-          if ( string.IsNullOrWhiteSpace( IDN_Trimmed ) )
+          if (string.IsNullOrWhiteSpace( IDN_Trimmed ))
           {
             Result.Passed_Checks.Add( "No *IDN? response — device does not support SCPI identification " +
                                       "(non-critical)." );
           }
-          else if ( double.TryParse( IDN_Trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out _ ) )
+          else if (double.TryParse( IDN_Trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out _ ))
           {
             // Measurement bled through — device is responding on the bus but not to *IDN?
             Result.Passed_Checks.Add( "Device is responding on GPIB bus but does not support *IDN? " + "(no" +
@@ -3373,7 +3420,7 @@ namespace Multimeter_Controller
             Result.Passed_Checks.Add( $"Device identity confirmed: {Result.Device_Identity}" );
           }
         }
-        catch ( Exception ex )
+        catch (Exception ex)
         {
           // Timeout on *IDN? is normal for non-SCPI instruments — treat as non-critical
           Result.Passed_Checks.Add( $"Device does not support *IDN? (non-critical): {ex.Message}" );
@@ -3392,7 +3439,7 @@ namespace Multimeter_Controller
 
     private void GPU_Info_Button_Click( object sender, EventArgs e )
     {
-      if ( _Settings.Use_GPU_Rendering )
+      if (_Settings.Use_GPU_Rendering)
       {
         Show_GPU_Info_Popup();
       }
@@ -3418,7 +3465,7 @@ namespace Multimeter_Controller
                   // Marshal back to UI thread to build and show the popup
                   this.Invoke( () =>
                                {
-                                 Cursor          = Cursors.Default;
+                                 Cursor = Cursors.Default;
                                  using var Popup = new Rich_Text_Popup( "GPU Information", 560, 640 );
                                  Populate_GPU_Popup( Popup, Data );
                                  Popup.Show_Popup( this );
@@ -3431,20 +3478,20 @@ namespace Multimeter_Controller
       // ── WMI ─────────────────────────────────────────────────────────────────
       Popup.Add_Heading_Mono( "Windows Management (WMI)" );
 
-      if ( Data.WMI_Error != null )
+      if (Data.WMI_Error != null)
       {
         Popup.Add_Error( $"  WMI query failed: {Data.WMI_Error}" );
       }
-      else if ( Data.WMI_Controllers.Count == 0 )
+      else if (Data.WMI_Controllers.Count == 0)
       {
         Popup.Add_Warning( "  No discrete GPU found via WMI." );
       }
       else
       {
         int GPU_Index = 0;
-        foreach ( var C in Data.WMI_Controllers )
+        foreach (var C in Data.WMI_Controllers)
         {
-          if ( GPU_Index > 0 )
+          if (GPU_Index > 0)
             Popup.Add_Blank();
           Popup.Add_Instrument_Header( C.Name );
           Popup.Add_Row( "Driver Version", C.DriverVersion );
@@ -3463,17 +3510,17 @@ namespace Multimeter_Controller
       Popup.Add_Blank();
       Popup.Add_Heading_Mono( "DXGI Adapter Enumeration" );
 
-      if ( Data.DXGI_Error != null )
+      if (Data.DXGI_Error != null)
       {
         Popup.Add_Error( $"  DXGI enumeration failed: {Data.DXGI_Error}" );
       }
-      else if ( Data.DXGI_Adapters.Count == 0 )
+      else if (Data.DXGI_Adapters.Count == 0)
       {
         Popup.Add_Warning( "  No DXGI adapters found." );
       }
       else
       {
-        foreach ( var A in Data.DXGI_Adapters )
+        foreach (var A in Data.DXGI_Adapters)
         {
           Popup.Add_Instrument_Header( A.Description );
           Popup.Add_Row( "Vendor", A.VendorName );
@@ -3486,19 +3533,19 @@ namespace Multimeter_Controller
       Popup.Add_Blank();
       Popup.Add_Heading_Mono( "Live Sensor Data (LHM)" );
 
-      if ( Data.LHM_Error != null )
+      if (Data.LHM_Error != null)
       {
         Popup.Add_Warning( $"  {Data.LHM_Error}" );
       }
-      else if ( Data.LHM_Sensors.Count == 0 )
+      else if (Data.LHM_Sensors.Count == 0)
       {
         Popup.Add_Warning( "  No sensor data — try running as administrator." );
       }
       else
       {
-        foreach ( var S in Data.LHM_Sensors )
+        foreach (var S in Data.LHM_Sensors)
         {
-          if ( S.Is_Header )
+          if (S.Is_Header)
           {
             Popup.Add_Instrument_Header( S.Name );
           }
@@ -3521,11 +3568,11 @@ namespace Multimeter_Controller
         using var Searcher = new System.Management.ManagementObjectSearcher( "SELECT * FROM " + "Win32_" +
                                                                              "VideoContr" + "oller" );
 
-        int       GPU_Index = 0;
-        foreach ( ManagementObject Obj in Searcher.Get() )
+        int GPU_Index = 0;
+        foreach (ManagementObject Obj in Searcher.Get())
         {
-          var  Name   = Obj[ "Name" ]?.ToString() ?? "Unknown";
-          var  Compat = Obj[ "AdapterCompatibility" ]?.ToString() ?? "";
+          var Name = Obj[ "Name" ]?.ToString() ?? "Unknown";
+          var Compat = Obj[ "AdapterCompatibility" ]?.ToString() ?? "";
 
           bool Is_Software = Name.IndexOf( "Microsoft Basic", StringComparison.OrdinalIgnoreCase ) >= 0 ||
                              Name.IndexOf( "Remote Desktop", StringComparison.OrdinalIgnoreCase ) >= 0 ||
@@ -3533,9 +3580,9 @@ namespace Multimeter_Controller
                              Name.IndexOf( "VMware", StringComparison.OrdinalIgnoreCase ) >= 0 ||
                              Compat.IndexOf( "Microsoft", StringComparison.OrdinalIgnoreCase ) >= 0;
 
-          if ( Is_Software )
+          if (Is_Software)
             continue;
-          if ( GPU_Index > 0 )
+          if (GPU_Index > 0)
             Popup.Add_Blank();
 
           Popup.Add_Instrument_Header( Name );
@@ -3551,10 +3598,10 @@ namespace Multimeter_Controller
           GPU_Index++;
         }
 
-        if ( GPU_Index == 0 )
+        if (GPU_Index == 0)
           Popup.Add_Warning( "  No discrete GPU found via WMI." );
       }
-      catch ( Exception Ex )
+      catch (Exception Ex)
       {
         Popup.Add_Error( $"  WMI query failed: {Ex.Message}" );
       }
@@ -3565,13 +3612,13 @@ namespace Multimeter_Controller
       try
       {
         var Adapters = GPU_Helper.Get_Adapter_Info();
-        if ( Adapters.Count == 0 )
+        if (Adapters.Count == 0)
         {
           Popup.Add_Warning( "  No DXGI adapters found." );
         }
         else
         {
-          foreach ( var A in Adapters )
+          foreach (var A in Adapters)
           {
             Popup.Add_Instrument_Header( A.Description );
             Popup.Add_Row( "Vendor", A.VendorName );
@@ -3580,7 +3627,7 @@ namespace Multimeter_Controller
           }
         }
       }
-      catch ( Exception Ex )
+      catch (Exception Ex)
       {
         Popup.Add_Error( $"  DXGI enumeration failed: {Ex.Message}" );
       }
@@ -3594,41 +3641,44 @@ namespace Multimeter_Controller
         Computer.Open();
         bool Any_Sensors = false;
 
-        foreach ( var HW in Computer.Hardware )
+        foreach (var HW in Computer.Hardware)
         {
           bool Is_GPU = HW.HardwareType == LibreHardwareMonitor.Hardware.HardwareType.GpuNvidia ||
                         HW.HardwareType == LibreHardwareMonitor.Hardware.HardwareType.GpuAmd ||
                         HW.HardwareType == LibreHardwareMonitor.Hardware.HardwareType.GpuIntel;
 
-          if ( ! Is_GPU )
+          if (!Is_GPU)
             continue;
           HW.Update();
           Popup.Add_Instrument_Header( HW.Name );
 
-          foreach ( var Sensor in HW.Sensors )
+          foreach (var Sensor in HW.Sensors)
           {
-            if ( Sensor.Value == null )
+            if (Sensor.Value == null)
               continue;
 
-            var ( Label, Unit, Value_Color ) =
-              Sensor.SensorType switch { LibreHardwareMonitor.Hardware.SensorType.Temperature =>
-                                           ( "Temperature",
+            var (Label, Unit, Value_Color) =
+              Sensor.SensorType switch
+              {
+                LibreHardwareMonitor.Hardware.SensorType.Temperature =>
+                                           ("Temperature",
                                              "°C",
                                              Sensor.Value > 80 ? Color.FromArgb( 180, 60, 0 )
-                                                               : Color.FromArgb( 0, 140, 0 ) ),
-                                         LibreHardwareMonitor.Hardware.SensorType.Load =>
-                                           ( "Load", "%", Color.FromArgb( 160, 120, 0 ) ),
-                                         LibreHardwareMonitor.Hardware.SensorType.Fan =>
-                                           ( "Fan Speed", " RPM", Color.FromArgb( 0, 120, 160 ) ),
-                                         LibreHardwareMonitor.Hardware.SensorType.Clock =>
-                                           ( "Clock", " MHz", Color.FromArgb( 40, 40, 40 ) ),
-                                         LibreHardwareMonitor.Hardware.SensorType.Power =>
-                                           ( "Power", " W", Color.FromArgb( 120, 0, 160 ) ),
-                                         LibreHardwareMonitor.Hardware.SensorType.SmallData =>
-                                           ( "Memory", " MB", Color.FromArgb( 40, 40, 40 ) ),
-                                         _ => ( null, null, Color.Transparent ) };
+                                                               : Color.FromArgb( 0, 140, 0 )),
+                LibreHardwareMonitor.Hardware.SensorType.Load =>
+                  ("Load", "%", Color.FromArgb( 160, 120, 0 )),
+                LibreHardwareMonitor.Hardware.SensorType.Fan =>
+                  ("Fan Speed", " RPM", Color.FromArgb( 0, 120, 160 )),
+                LibreHardwareMonitor.Hardware.SensorType.Clock =>
+                  ("Clock", " MHz", Color.FromArgb( 40, 40, 40 )),
+                LibreHardwareMonitor.Hardware.SensorType.Power =>
+                  ("Power", " W", Color.FromArgb( 120, 0, 160 )),
+                LibreHardwareMonitor.Hardware.SensorType.SmallData =>
+                  ("Memory", " MB", Color.FromArgb( 40, 40, 40 )),
+                _ => (null, null, Color.Transparent)
+              };
 
-            if ( Label == null )
+            if (Label == null)
               continue;
             Popup.Add_Row( $"  {Sensor.Name}", $"{Sensor.Value:F1}{Unit}", Value_Color );
             Any_Sensors = true;
@@ -3636,7 +3686,7 @@ namespace Multimeter_Controller
         }
 
         Computer.Close();
-        if ( ! Any_Sensors )
+        if (!Any_Sensors)
           Popup.Add_Warning( "  No sensor data — try running as administrator." );
       }
       catch
@@ -3654,7 +3704,7 @@ namespace Multimeter_Controller
 
       Tool_Tip.AutoPopDelay = 5000;
       Tool_Tip.InitialDelay = 500;
-      Tool_Tip.ReshowDelay  = 200;
+      Tool_Tip.ReshowDelay = 200;
 
       Tool_Tip.SetToolTip( Display_Recording_Button, "Playback Previous Recordings" );
       Tool_Tip.SetToolTip( GPU_Info_Button, "Not available: No discrete GPU detected on this PC." );
@@ -3665,20 +3715,15 @@ namespace Multimeter_Controller
     {
       using var Block = Trace_Block.Start_If_Enabled();
 
-  
-
       using var dlg = new Panel_Theme_Settings_Form( _Theme );
 
-      if ( dlg.ShowDialog( this ) != DialogResult.OK )
+      if (dlg.ShowDialog( this ) != DialogResult.OK)
         return;
-
-   
 
       _Theme.Copy_From( dlg.Result );
       _Theme.Save();
 
       _Settings.Set_Theme( _Theme, "Panel_Theme" );
-
 
       var Tags = Get_All_Tags( this );
 
@@ -3691,19 +3736,16 @@ namespace Multimeter_Controller
       foreach (var item in Tags)
       {
 
-        if (item.tag != null && Tags_Allowed.Contains(item.tag))
+        if (item.tag != null && Tags_Allowed.Contains( item.tag ))
         {
           Capture_Trace.Write( $"Processing Tag -> {item.tag}" );
 
           // _Settings.Apply_Theme_To_Single_Control( ctrl, _Theme );
 
           _Settings.Apply_Theme_To_Control( item.control, _Theme, item.tag );
-
         }
       }
     }
-
-
 
     public List<(Control control, string tag)> Get_All_Tags( Control root )
     {
@@ -3728,6 +3770,128 @@ namespace Multimeter_Controller
       return result;
     }
 
-  
+    private async void Test_Commands_Button_Click( object Sender, EventArgs E )
+    {
+
+      if (!Command_Dictionary_Class.Has_Test_Profile( _Selected_Meter ))
+      {
+        Append_Response( $"[{_Selected_Meter.Get_Name()} does not have a test profile implemented yet]" );
+        Append_Response( $"[Currently implemented:]" );
+        foreach (var Meter in Meter_Type_Extensions.Combo_Order)
+          if (Command_Dictionary_Class.Has_Test_Profile( Meter ))
+            Append_Response( $"  - {Meter.Get_Name()}" );
+        return;
+      }
+
+      // ── If already running, cancel ────────────────────────────────────────
+      if (_Test_Cts != null)
+      {
+        _Test_Cts.Cancel();
+        Test_Commands_Button.Text = "Stopping...";
+        Test_Commands_Button.Enabled = false;
+        return;
+      }
+
+      if (!_Comm.Is_Connected)
+      {
+        Append_Response( "[Not connected]" );
+        return;
+      }
+
+      var Profile = Command_Dictionary_Class.Get_Test_Profile( _Selected_Meter );
+      if (Profile == null)
+      {
+        Append_Response( $"[{_Selected_Meter.Get_Name()} does not have a test profile implemented yet]" );
+        Append_Response( $"[Only the following instruments support command testing:]" );
+
+        // List which ones are actually implemented
+        foreach (var Meter in Meter_Type_Extensions.Combo_Order)
+        {
+          var P = Command_Dictionary_Class.Get_Test_Profile( Meter );
+          if (P != null)
+            Append_Response( $"  - {Meter.Get_Name()}" );
+        }
+        return;
+      }
+
+      // ── Start ─────────────────────────────────────────────────────────────
+      _Test_Cts = new CancellationTokenSource();
+      Test_Commands_Button.Text = "Stop Test";
+      Test_Commands_Button.BackColor = Color.OrangeRed;
+
+      Append_Response( "" );
+      Append_Response( $"=== {_Selected_Meter.Get_Name()} Command Test Starting ===" );
+
+      try
+      {
+        var Token = _Test_Cts.Token;
+        bool Cancelled = false;
+        List<Command_Test_Result>? Results = null;
+
+        try
+        {
+          Results = await Task.Run( async () =>
+                                    {
+                                      await Task.Yield(); // force onto thread pool
+                                      return Instrument_Command_Tester.Test_All_Commands(
+              Profile: Profile,
+              Query: cmd => _Comm.Query_Instrument( cmd ),
+              Send: cmd => _Comm.Send_Instrument_Command( cmd ),
+              Progress: msg =>
+              {
+                if (_Test_Cts != null)
+                  Safe_UI_Update( () => Append_Response( $"  {msg}" ) );
+              },
+              Token: Token );
+                                    } );
+        }
+        catch (OperationCanceledException)
+        {
+          Cancelled = true;
+        }
+
+        if (Cancelled)
+        {
+          Append_Response( "" );
+          Append_Response( "[Test stopped by user]" );
+        }
+        else if (Results != null)
+        {
+          int Passed = Results.Count( R => R.Passed );
+          int Failed = Results.Count( R => !R.Passed && !R.Skipped );
+          int Skipped = Results.Count( R => R.Skipped );
+
+          if (Failed > 0)
+          {
+            Append_Response( "" );
+            Append_Response( "=== Failed Commands ===" );
+            foreach (var R in Results.Where( R => !R.Passed && !R.Skipped ))
+              Append_Response( $"  {R.Summary}" );
+          }
+
+          Append_Response( "" );
+          Append_Response( $"=== Done — Pass: {Passed}  Fail: {Failed}  Skip: {Skipped} ===" );
+        }
+      }
+      catch (Exception Ex)
+      {
+        Append_Response( $"[Test runner exception: {Ex.Message}]" );
+      }
+      finally
+      {
+        _Test_Cts?.Dispose();
+        _Test_Cts = null;
+        Test_Commands_Button.Text = "Test Commands";
+        Test_Commands_Button.BackColor = SystemColors.Control;
+        Test_Commands_Button.Enabled = true;
+      }
+    }
+
+    private void Close_Button_Click( object sender, EventArgs e )
+    {
+      Close();
+    }
+
+ 
   }
 }
