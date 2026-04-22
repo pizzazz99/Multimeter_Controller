@@ -1141,7 +1141,39 @@ namespace Multimeter_Controller
     }
 
 
+    // Extract to a helper so both passes share the same logic.
+    static Meter_Type? Detect_Meter_Type( string Response )
+    {
+      string Upper = Response.ToUpperInvariant();
 
+      // Match most-specific strings first to avoid shorter substrings
+      // stealing the match (e.g. "34401" inside "HP34411" is a substring
+      // of neither, but "3445" would be inside "34450" if we had one).
+      // Order matters — keep longer/more-specific model numbers first.
+
+      if (Upper.Contains( "34411" ))
+        return Meter_Type.HP34411;
+      if (Upper.Contains( "34401" ))
+        return Meter_Type.HP34401;
+      if (Upper.Contains( "34420" ))
+        return Meter_Type.HP34420;
+      if (Upper.Contains( "33220" ))
+        return Meter_Type.HP33220;
+      if (Upper.Contains( "33120" ))
+        return Meter_Type.HP33120;
+      if (Upper.Contains( "53181" ))
+        return Meter_Type.HP53181;
+      if (Upper.Contains( "53132" ))
+        return Meter_Type.HP53132;
+      if (Upper.Contains( "4263" ))
+        return Meter_Type.HP4263;
+      if (Upper.Contains( "3458" ))
+        return Meter_Type.HP3458;
+      if (Upper.Contains( "3456" ))
+        return Meter_Type.HP3456;
+
+      return null;  // unknown instrument — still add to results
+    }
     private Task Raw_WriteAsync ( string cmd ) =>
      Task.Run ( ( ) => Raw_Write ( cmd ) );
 
@@ -1202,19 +1234,32 @@ namespace Multimeter_Controller
               System.Globalization.CultureInfo.InvariantCulture,
               out _ );
 
-          if ( Looks_Like_Reading )
+          if (Looks_Like_Reading)
           {
-            Raw_Write ( "TRIG HOLD" );
-            await Task.Delay ( 200, Token );
-            Drain_Buffer ( );
-            All_Retry.Add ( Addr );
-            Needs_Drain.Add ( Addr );
+            Raw_Write( "TRIG HOLD" );
+            await Task.Delay( 200, Token );
+            Drain_Buffer();
+            All_Retry.Add( Addr );
+            Needs_Drain.Add( Addr );
           }
-          else if ( string.IsNullOrEmpty ( Response ) ||
-                    Response.Contains ( "Unrecognized command" ) ||
-                    Response.Contains ( "Prologix" ) )
+          else if (string.IsNullOrEmpty( Response ) ||
+                    Response.Contains( "Unrecognized command" ) ||
+                    Response.Contains( "Prologix" ))
           {
-            All_Retry.Add ( Addr );
+            All_Retry.Add( Addr );
+          }
+          else
+          {
+            var Result = new Scan_Result
+            {
+              Address = Addr,
+              ID_String = Response,
+              Detected_Type = Detect_Meter_Type( Response )
+            };
+            Results.Add( Result );
+            _Verified_Cache[ Addr ] = Result;
+            Capture_Trace.Write( $"Found at {Addr}: {Response}" );
+            Progress?.Report( $"Found at {Addr}: {Response}" );
           }
 
           await Task.Yield ( );
@@ -1278,19 +1323,12 @@ namespace Multimeter_Controller
 
             if ( !string.IsNullOrEmpty ( Response ) )
             {
-              Meter_Type? Detected = null;
-              string Upper = Response.ToUpperInvariant ( );
-              if ( Upper.Contains ( "3458" ) )
-                Detected = Meter_Type.HP3458;
-              else if ( Upper.Contains ( "34401" ) )
-                Detected = Meter_Type.HP34401;
-              else if ( Upper.Contains ( "33120" ) )
-                Detected = Meter_Type.HP33120;
+
               var Result = new Scan_Result
               {
                 Address = Addr,
                 ID_String = Response,
-                Detected_Type = Detected
+                Detected_Type = Detect_Meter_Type( Response )
               };
               Results.Add ( Result );
               _Verified_Cache [ Addr ] = Result;
@@ -1531,11 +1569,14 @@ namespace Multimeter_Controller
 
         // ── Always initialize Prologix fully before any query ────────────
         Capture_Trace.Write ( $"Initializing Prologix for address {Address}" );
-        Raw_Write ( "++mode 1" );
-        Thread.Sleep ( 100 );
-        Raw_Write ( "++auto 0" );
-        Raw_Write ( "++eoi 1" );
-        Raw_Write ( $"++addr {Address}" );
+        Raw_Write( "++mode 1" );
+        Thread.Sleep( 50 );
+        Raw_Write( "++auto 0" );
+        Thread.Sleep( 50 );
+        Raw_Write( "++eoi 1" );
+        Thread.Sleep( 50 );
+        Raw_Write( $"++addr {Address}" );
+        Thread.Sleep( 50 );
         GPIB_Address = Address;
         Thread.Sleep ( 200 );
 
